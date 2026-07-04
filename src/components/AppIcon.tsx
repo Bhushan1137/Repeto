@@ -1,0 +1,47 @@
+import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import type { StyleProp, TextStyle } from 'react-native';
+
+export type AppIconName =
+  | 'home'
+  | 'home-outline'
+  | 'people'
+  | 'people-outline'
+  | 'stats-chart'
+  | 'stats-chart-outline'
+  | 'person-circle'
+  | 'person-circle-outline'
+  | 'add'
+  | 'close'
+  | 'close-circle-outline'
+  | 'calendar-outline'
+  | 'trash-outline'
+  | 'share-outline'
+  | 'time-outline'
+  | 'create-outline'
+  | 'play-skip-forward-outline'
+  | 'chevron-down-outline'
+  | 'search-outline'
+  | 'bookmark'
+  | 'bookmark-outline'
+  | 'documents-outline'
+  | 'archive-outline'
+  | 'checkmark-circle-outline'
+  | 'checkmark-done-outline'
+  | 'notifications-outline'
+  | 'qr-code-outline'
+  | 'filter-outline'
+  | 'ellipsis-horizontal'
+  | 'star-outline'
+  | 'warning-outline';
+
+interface AppIconProps {
+  name: AppIconName;
+  size?: number;
+  color?: string;
+  style?: StyleProp<TextStyle>;
+}
+
+export function AppIcon({ name, size = 22, color = '#1B1F3B', style }: AppIconProps) {
+  return <Ionicons name={name} size={size} color={color} style={style} />;
+}

@@ -1,0 +1,123 @@
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, ScrollView } from 'react-native';
+import { Text } from 'react-native-paper';
+import { useRouter } from 'expo-router';
+import { useOnboarding } from '@/context/OnboardingProvider';
+import { useAuth } from '@/providers/AuthProvider';
+import { useTranslation } from '@/hooks/useTranslation';
+import { Button } from '@/components/Button';
+import { FormField } from '@/components/FormField';
+import { OnboardingProgress } from '@/components/OnboardingProgress';
+import { validateName, validatePhone, formatPhone } from '@/domain/validation';
+import type { TranslationKey } from '@/i18n';
+import { Colors } from '@/constants/theme';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+export default function ProfileScreen() {
+  const router = useRouter();
+  const { language, setName: setCtxName, setPhone: setCtxPhone, setEmail: setCtxEmail } = useOnboarding();
+  const { user, updateUser } = useAuth();
+  const { translate } = useTranslation(language);
+
+  const [name, setName] = useState(user?.name ?? '');
+  const [phone, setPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
+  const [email] = useState(user?.email ?? '');
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
+  const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (user?.name && !name) setName(user.name);
+    if (user?.email) setCtxEmail(user.email);
+  }, [user]);
+
+  const handleContinue = async () => {
+    const nameResult = validateName(name);
+    const phoneResult = validatePhone(phone);
+    const nextErrors: typeof errors = {};
+
+    if (!nameResult.valid && nameResult.error) {
+      nextErrors.name = translate(nameResult.error as TranslationKey);
+    }
+    if (!phoneResult.valid && phoneResult.error) {
+      nextErrors.phone = translate(phoneResult.error as TranslationKey);
+    }
+
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    setLoading(true);
+    try {
+      const formattedPhone = formatPhone(phone);
+      await updateUser({
+        name: name.trim(),
+        phone: formattedPhone || undefined,
+        email: user?.email ?? email,
+        language,
+        profileComplete: true,
+      });
+      setCtxName(name.trim());
+      setCtxPhone(formattedPhone);
+      setCtxEmail(user?.email ?? email);
+      router.push('/(onboarding)/categories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        {
+          paddingTop: Math.max(insets.top, 16) + 16,
+          paddingBottom: Math.max(insets.bottom, 16) + 16,
+        },
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
+      <OnboardingProgress step={2} />
+      <Text style={styles.title}>{translate('profileTitle')}</Text>
+      <Text style={styles.sub}>{translate('profileSub')}</Text>
+
+      <FormField
+        label={translate('fullName')}
+        value={name}
+        onChangeText={setName}
+        placeholder={translate('fullNamePlaceholder')}
+        autoCapitalize="words"
+        error={errors.name}
+      />
+
+      <FormField
+        label={translate('email')}
+        value={email || user?.email || ''}
+        editable={false}
+        error={undefined}
+        hint={translate('emailFromGoogle')}
+      />
+
+      <FormField
+        label={translate('mobileNumberOptional')}
+        value={phone}
+        onChangeText={setPhone}
+        placeholder="9876543210"
+        keyboardType="phone-pad"
+        maxLength={10}
+        error={errors.phone}
+        hint={translate('phoneOptionalHint')}
+      />
+
+      <Button title={translate('continueBtn')} style={styles.cta} loading={loading} onPress={handleContinue} />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { padding: 20, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 24, color: Colors.ink, marginTop: 14, marginBottom: 4 },
+  sub: { fontSize: 13.5, color: Colors.inkSoft, marginBottom: 18 },
+  cta: { marginTop: 12 },
+});
+

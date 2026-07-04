@@ -1,0 +1,85 @@
+import type { Language, UserProfile } from '@/types';
+import type { User } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
+import { signInWithGoogleNative, getAuthErrorMessage } from '@/services/firebase/auth';
+import { loadUserRemote } from '@/services/firebase/firestore';
+import { isFirebaseConfigured } from '@/services/firebase/config';
+import { normalizeHouseholdProfile } from '@/domain/household';
+
+export interface SignInResult {
+  ok: boolean;
+  user?: UserProfile;
+  error?: 'auth_unavailable' | 'cancelled' | 'failed' | 'redirect_pending';
+  message?: string;
+}
+
+export function profileFromFirebaseUser(fbUser: User, language: Language): UserProfile {
+  return normalizeHouseholdProfile({
+    id: fbUser.uid,
+    name: fbUser.displayName?.trim() ?? '',
+    email: fbUser.email ?? '',
+    phone: fbUser.phoneNumber ?? '',
+    photoUrl: fbUser.photoURL ?? undefined,
+    language,
+    pushOptIn: true,
+    profileComplete: false,
+    onboardingComplete: false,
+    plan: 'free',
+  });
+}
+
+async function buildProfile(fbUser: User, language: Language): Promise<UserProfile> {
+  const remote = await loadUserRemote(fbUser.uid);
+  const base = profileFromFirebaseUser(fbUser, language);
+
+  if (remote) {
+    return normalizeHouseholdProfile({
+      ...remote,
+      email: remote.email || base.email,
+      photoUrl: remote.photoUrl || base.photoUrl,
+      language: remote.language || language,
+      profileComplete: remote.profileComplete ?? remote.name.trim().length >= 2,
+    });
+  }
+
+  return normalizeHouseholdProfile(base);
+}
+
+export async function signInWithGoogle(language: Language): Promise<SignInResult> {
+  if (!isFirebaseConfigured()) {
+    return { ok: false, error: 'auth_unavailable', message: 'Firebase is not configured.' };
+  }
+
+  try {
+    const fbUser = await signInWithGoogleNative();
+    const user = await buildProfile(fbUser, language);
+    return { ok: true, user };
+  } catch (err: unknown) {
+    const code =
+      err instanceof Error && 'code' in err
+        ? String((err as { code: string }).code)
+        : err instanceof FirebaseError
+          ? err.code
+          : '';
+
+    if (code === 'cancelled' || code.includes('SIGN_IN_CANCELLED')) {
+      return { ok: false, error: 'cancelled' };
+    }
+    if (code === 'redirect_pending') {
+      return { ok: false, error: 'redirect_pending', message: 'Redirecting to Google…' };
+    }
+
+    const message =
+      err instanceof FirebaseError
+        ? getAuthErrorMessage(err.code)
+        : err instanceof Error
+          ? err.message
+          : 'Sign-in failed';
+
+    return { ok: false, error: 'failed', message };
+  }
+}
+
+export async function profileFromSignedInUser(fbUser: User, language: Language): Promise<UserProfile> {
+  return buildProfile(fbUser, language);
+}

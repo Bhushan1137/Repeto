@@ -1,0 +1,131 @@
+import {
+  GoogleAuthProvider,
+  signInWithCredential,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  type User,
+} from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
+import { Platform } from 'react-native';
+import { getFirebaseAuth } from './app';
+import { googleWebClientId } from './config';
+
+let nativeGoogleConfigured = false;
+
+export function configureGoogleSignIn(): void {
+  // Handled lazily on native platforms before signing in
+}
+
+async function configureNativeGoogleSignIn(): Promise<void> {
+  if (Platform.OS === 'web' || nativeGoogleConfigured) return;
+  const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+  GoogleSignin.configure({ webClientId: googleWebClientId, offlineAccess: false });
+  nativeGoogleConfigured = true;
+}
+
+export function subscribeToAuth(callback: (user: User | null) => void): (() => void) | null {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  return onAuthStateChanged(auth, callback);
+}
+
+/** Call once on web app load to complete redirect-based sign-in */
+export async function completeGoogleRedirectSignIn(): Promise<User | null> {
+  if (Platform.OS !== 'web') return null;
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  try {
+    const result = await getRedirectResult(auth);
+    return result?.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function googleProvider(): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+}
+
+async function signInWithGoogleWeb(auth: NonNullable<ReturnType<typeof getFirebaseAuth>>): Promise<User> {
+  const provider = googleProvider();
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  } catch (err) {
+    if (err instanceof FirebaseError) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
+      }
+      if (err.code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, provider);
+        throw Object.assign(new Error('redirect_pending'), { code: 'redirect_pending' });
+      }
+    }
+    throw err;
+  }
+}
+
+async function signInWithGoogleAndroid(): Promise<User> {
+  await configureNativeGoogleSignIn();
+  const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+
+  if (response.type === 'cancelled') {
+    throw Object.assign(new Error('cancelled'), { code: 'cancelled' });
+  }
+
+  const idToken = response.data?.idToken;
+  if (!idToken) throw new Error('no_token');
+
+  const credential = GoogleAuthProvider.credential(idToken);
+  const result = await signInWithCredential(auth, credential);
+  return result.user;
+}
+
+export async function signInWithGoogleNative(): Promise<User> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+
+  if (Platform.OS === 'web') {
+    return signInWithGoogleWeb(auth);
+  }
+
+  return signInWithGoogleAndroid();
+}
+
+export async function signOutFirebase(): Promise<void> {
+  if (Platform.OS !== 'web') {
+    try {
+      const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+      await GoogleSignin.signOut();
+    } catch {
+      // ignore
+    }
+  }
+  const auth = getFirebaseAuth();
+  if (auth) await firebaseSignOut(auth);
+}
+
+export function getAuthErrorMessage(code: string): string {
+  switch (code) {
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized. Add it in Firebase Console → Authentication → Settings → Authorized domains.';
+    case 'auth/operation-not-allowed':
+      return 'Google Sign-In is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection and try again.';
+    case 'redirect_pending':
+      return 'Redirecting to Google…';
+    default:
+      return 'Sign-in failed. Please try again.';
+  }
+}

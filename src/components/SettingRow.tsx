@@ -1,0 +1,105 @@
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { Colors, Radius, Typography } from '@/constants/theme';
+import { Toggle } from '@/components/Toggle';
+
+interface SettingRowProps {
+  label: string;
+  sub?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+}
+
+export function SettingRow({ label, sub, value, onValueChange }: SettingRowProps) {
+  return (
+    <Card style={styles.card} mode="elevated">
+      <Card.Content style={styles.cardContent}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={styles.label}>{label}</Text>
+          {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+        </View>
+        <Toggle value={value} onValueChange={onValueChange} />
+      </Card.Content>
+    </Card>
+  );
+}
+
+interface LanguagePickerProps {
+  options: Array<{ code: string; label: string; native: string }>;
+  selected: string;
+  onSelect: (code: string) => void;
+}
+
+export function LanguagePicker({ options, selected, onSelect }: LanguagePickerProps) {
+  return (
+    <>
+      {options.map((opt) => {
+        const active = selected === opt.code;
+        return (
+          <Card
+            key={opt.code}
+            style={[styles.langCard, active && styles.langCardActive]}
+            mode="elevated"
+          >
+            <TouchableRipple
+              onPress={() => onSelect(opt.code)}
+              style={styles.ripple}
+              borderless
+            >
+              <View style={styles.langInner}>
+                <View>
+                  <Text style={styles.langName}>{opt.label}</Text>
+                  <Text style={styles.langNative}>{opt.native}</Text>
+                </View>
+                {active ? <Text style={styles.langCheck}>✓</Text> : null}
+              </View>
+            </TouchableRipple>
+          </Card>
+        );
+      })}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 10,
+    elevation: 1,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  label: { ...Typography.title, fontSize: 14.5, color: Colors.ink },
+  sub: { ...Typography.caption, color: Colors.inkSoft, marginTop: 3 },
+  langCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 12,
+    elevation: 1,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  langCardActive: {
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.04)',
+  },
+  ripple: {
+    padding: 16,
+  },
+  langInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  langName: { ...Typography.title, fontSize: 15, color: Colors.ink },
+  langNative: { fontFamily: 'Fraunces_600SemiBold', fontSize: 13, color: Colors.inkSoft, marginTop: 2 },
+  langCheck: { fontSize: 18, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold' },
+});
+
