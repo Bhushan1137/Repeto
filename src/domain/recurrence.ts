@@ -240,3 +240,42 @@ export function getMonthLabel(date: Date = new Date()): string {
 export function isCurrentMonth(monthLabel: string): boolean {
   return monthLabel === getMonthLabel();
 }
+
+export function computePreviousDueDate(rule: RecurrenceRule, nextDueDateIso: string): string {
+  const next = new Date(nextDueDateIso);
+  const copy = new Date(next);
+  switch (rule.type) {
+    case 'daily':
+      copy.setDate(copy.getDate() - 1);
+      break;
+    case 'weekly':
+      copy.setDate(copy.getDate() - 7);
+      break;
+    case 'monthly':
+      copy.setMonth(copy.getMonth() - 1);
+      break;
+    case 'yearly':
+      copy.setFullYear(copy.getFullYear() - 1);
+      break;
+    case 'interval': {
+      const n = rule.interval ?? 30;
+      if (rule.intervalUnit === 'months') {
+        copy.setMonth(copy.getMonth() - n);
+      } else {
+        copy.setDate(copy.getDate() - n);
+      }
+      break;
+    }
+    case 'monthDay': {
+      copy.setMonth(copy.getMonth() - 1);
+      break;
+    }
+    case 'nthWeekday': {
+      copy.setDate(copy.getDate() - 28);
+      break;
+    }
+    default:
+      copy.setDate(copy.getDate() - 30);
+  }
+  return copy.toISOString();
+}

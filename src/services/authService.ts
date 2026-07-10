@@ -21,6 +21,7 @@ export function profileFromFirebaseUser(fbUser: User, language: Language): UserP
     phone: fbUser.phoneNumber ?? '',
     photoUrl: fbUser.photoURL ?? undefined,
     language,
+    languageSelected: false,
     pushOptIn: true,
     profileComplete: false,
     onboardingComplete: false,
@@ -38,6 +39,7 @@ async function buildProfile(fbUser: User, language: Language): Promise<UserProfi
       email: remote.email || base.email,
       photoUrl: remote.photoUrl || base.photoUrl,
       language: remote.language || language,
+      languageSelected: remote.languageSelected ?? true,
       profileComplete: remote.profileComplete ?? remote.name.trim().length >= 2,
     });
   }

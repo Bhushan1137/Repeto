@@ -17,6 +17,10 @@ export default function InsightsScreen() {
 
   const slipLabel = insights.slipCategory ? getCategoryLabel(insights.slipCategory, language) : null;
 
+  const totalTasks = tasks.length;
+  const completions = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'on_time' || h.status === 'late').length, 0);
+  const skipped = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'skipped').length, 0);
+
   return (
     <ScreenShell title={translate('insTitle')} subtitle={translate('insSub')}>
       {insights.isEmpty ? (
@@ -32,22 +36,29 @@ export default function InsightsScreen() {
               </Card.Content>
             </Card>
 
-            <Card style={styles.streakCard} mode="elevated">
-              <LinearGradient
-                colors={[Colors.marigold, Colors.marigoldDeep]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Card.Content style={styles.streakContent}>
-                <View style={styles.streakEmojiCircle}>
-                  <Text style={styles.streakEmoji}>🔥</Text>
+            <Card style={styles.metricsCard} mode="elevated">
+              <Card.Content style={styles.metricsContent}>
+                <Text style={styles.metricsHeader}>{language === 'hi' ? 'कार्य सारांश' : 'Task Summary'}</Text>
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricValue}>{totalTasks}</Text>
+                    <Text style={styles.metricLabel}>{language === 'hi' ? 'सक्रिय कार्य' : 'Active Tasks'}</Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricValue}>{completions}</Text>
+                    <Text style={styles.metricLabel}>{language === 'hi' ? 'कुल पूर्ण' : 'Completions'}</Text>
+                  </View>
                 </View>
-                <Text style={styles.streakVal}>{insights.streak}</Text>
-                <Text style={styles.streakTitle}>{translate('currentStreak')}</Text>
-                <Text style={styles.streakSub}>
-                  {translate('streakDetail', { count: insights.streak })}
-                </Text>
+                <View style={[styles.metricsRow, { marginTop: 10 }]}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricValue}>{skipped}</Text>
+                    <Text style={styles.metricLabel}>{language === 'hi' ? 'छोड़े गए' : 'Skipped'}</Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={[styles.metricValue, { color: Colors.tealDeep }]}>{insights.overallPercent}%</Text>
+                    <Text style={styles.metricLabel}>{language === 'hi' ? 'समय पर दर' : 'On-time Rate'}</Text>
+                  </View>
+                </View>
               </Card.Content>
             </Card>
           </View>
@@ -132,31 +143,44 @@ const styles = StyleSheet.create({
   },
   pct: { fontFamily: 'Fraunces_700Bold', fontSize: 30, color: Colors.ink, marginTop: -74, marginBottom: 38 },
   cap: { ...Typography.bodySm, fontSize: 11.5, color: Colors.inkSoft, textAlign: 'center', marginTop: 4, lineHeight: 16 },
-  streakCard: {
-    flex: 1,
+  metricsCard: {
+    flex: 1.2,
+    backgroundColor: Colors.white,
     borderRadius: Radius.lg,
     elevation: 1.5,
     overflow: 'hidden',
   },
-  streakContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+  metricsContent: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
-  streakEmojiCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+  metricsHeader: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.ink,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  streakEmoji: { fontSize: 18 },
-  streakVal: { fontFamily: 'Fraunces_700Bold', fontSize: 32, color: Colors.onDark, marginBottom: 2 },
-  streakTitle: { ...Typography.title, fontSize: 12.5, color: Colors.onDark, textAlign: 'center' },
-  streakSub: { ...Typography.caption, fontSize: 10, color: Colors.onDarkMuted, textAlign: 'center', marginTop: 1 },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  metricItem: {
+    flex: 1,
+  },
+  metricValue: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.marigoldDeep,
+  },
+  metricLabel: {
+    ...Typography.caption,
+    fontSize: 10,
+    color: Colors.inkSoft,
+    marginTop: 1,
+  },
   heatmapCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.md,

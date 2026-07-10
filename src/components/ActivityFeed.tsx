@@ -54,31 +54,58 @@ export function ActivityFeed({
   return (
     <Card style={styles.card} mode="elevated">
       <Card.Content style={styles.cardContent}>
-        {displayItems.map((item, idx) => (
-          <View
-            key={item.id}
-            style={[styles.row, idx === displayItems.length - 1 && styles.lastRow]}
-          >
-            <View style={[styles.avatar, { backgroundColor: item.completedByName === currentUserName ? '#E8A33D' : item.completedByColor }]}>
-              <Text style={styles.avatarText}>{initials(item.completedByName)}</Text>
+        {displayItems.map((item, idx) => {
+          const isYou = item.completedByName === currentUserName;
+          const namePart = isYou ? (language === 'hi' ? 'आपने' : 'You') : item.completedByName;
+
+          let actionLabel = '';
+          if (language === 'hi') {
+            if (item.status === 'snoozed') {
+              actionLabel = 'को सणूज़ (आगे बढ़ाया)';
+            } else if (item.status === 'skipped') {
+              actionLabel = 'को छोड़ दिया';
+            } else {
+              actionLabel = 'को पूरा किया';
+            }
+          } else {
+            if (item.status === 'snoozed') {
+              actionLabel = 'snoozed';
+            } else if (item.status === 'skipped') {
+              actionLabel = 'skipped';
+            } else {
+              actionLabel = 'completed';
+            }
+          }
+
+          const actionColor =
+            item.status === 'snoozed'
+              ? Colors.marigoldDeep
+              : item.status === 'skipped'
+              ? Colors.clay
+              : Colors.tealDeep;
+
+          return (
+            <View
+              key={item.id}
+              style={[styles.row, idx === displayItems.length - 1 && styles.lastRow]}
+            >
+              <View style={[styles.avatar, { backgroundColor: isYou ? Colors.marigold : item.completedByColor }]}>
+                <Text style={styles.avatarText}>{initials(item.completedByName)}</Text>
+              </View>
+              <View style={styles.textCol}>
+                <Text style={styles.activityText}>
+                  <Text style={styles.nameText}>{namePart}</Text>{' '}
+                  <Text style={{ color: actionColor, fontFamily: 'Manrope_700Bold' }}>{actionLabel}</Text>{' '}
+                  <Text style={styles.taskText}>{item.taskTitle}</Text>
+                </Text>
+                {item.note ? (
+                  <Text style={styles.noteText}>📝 {item.note}</Text>
+                ) : null}
+                <Text style={styles.timeText}>{formatRelativeTime(item.completedAt, language)}</Text>
+              </View>
             </View>
-            <View style={styles.textCol}>
-              <Text style={styles.activityText}>
-                <Text style={styles.nameText}>
-                  {item.completedByName === currentUserName
-                    ? language === 'hi' ? 'आपने' : 'You'
-                    : item.completedByName}
-                </Text>{' '}
-                {language === 'hi' ? 'ने पूरा किया' : 'completed'}{' '}
-                <Text style={styles.taskText}>{item.taskTitle}</Text>
-              </Text>
-              {item.note ? (
-                <Text style={styles.noteText}>📝 {item.note}</Text>
-              ) : null}
-              <Text style={styles.timeText}>{formatRelativeTime(item.completedAt, language)}</Text>
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </Card.Content>
     </Card>
   );

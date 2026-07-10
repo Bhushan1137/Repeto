@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, Text, Pressable, Modal, ScrollView } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { View, StyleSheet, Text, Pressable, Modal, ScrollView, Image, Linking } from 'react-native';
 import { Card } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
+import { useNotifications } from '@/providers/NotificationProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useGroupedTasks } from '@/hooks/useGroupedTasks';
 import { useFilteredTasks, DEFAULT_FILTER } from '@/hooks/useFilteredTasks';
@@ -21,8 +22,11 @@ import { AppIcon } from '@/components/AppIcon';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue, getTaskGroup } from '@/domain/recurrence';
 import type { RepeatingTask, TaskGroup } from '@/types';
-import { Colors } from '@/constants/theme';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
+import { CalendarView } from '@/components/CalendarView';
+import { useRecommendations } from '@/providers/RecommendationProvider';
+import type { Recommendation } from '@/types/recommendation';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth'> = {
   overdue: 'secOverdue',
@@ -37,7 +41,7 @@ export default function HomeScreen() {
   const {
     tasks,
     loading,
-    completeTask,
+    completeTask: rawCompleteTask,
     snoozeTask,
     skipTask,
     deleteTask,
@@ -50,13 +54,52 @@ export default function HomeScreen() {
     archiveTasks,
     setTaskDueDate,
     updateTask,
+    deleteHistoryEntry,
   } = useTasks();
   const { language, translate } = useTranslation();
+
+  const { findMatch, logImpression, logClick } = useRecommendations();
+  const [completedRecommendation, setCompletedRecommendation] = useState<Recommendation | null>(null);
+  const [completedTaskName, setCompletedTaskName] = useState('');
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+    if (completedRecommendation) {
+      logImpression(completedRecommendation.id);
+    }
+  }, [completedRecommendation?.id, logImpression]);
+
+  const completeTask = useCallback(
+    async (taskId: string, note?: string) => {
+      const taskObj = tasks.find((t) => t.id === taskId);
+      if (taskObj) {
+        setCompletedTaskName(taskObj.title);
+        const match = findMatch(taskObj);
+        if (match) {
+          setCompletedRecommendation(match);
+        }
+      }
+      await rawCompleteTask(taskId, note);
+    },
+    [tasks, rawCompleteTask, findMatch]
+  );
   const { selectedIds, toggleSelect, clearSelection, isSelecting } = useTaskSelection();
-  const [selectedTask, setSelectedTask] = useState<RepeatingTask | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+
+  const selectedTask = useMemo(() => {
+    return tasks.find((t) => t.id === selectedTaskId) || null;
+  }, [tasks, selectedTaskId]);
+
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
   const firstName = user?.name?.split(' ')[0] ?? 'there';
@@ -64,19 +107,30 @@ export default function HomeScreen() {
   // Apply search + filter before grouping
   const filteredTasks = useFilteredTasks(tasks, filter);
 
+  const calendarFilteredTasks = useMemo(() => {
+    if (!selectedCalendarDate) return filteredTasks;
+    return filteredTasks.filter((task) => {
+      const isDue = isSameDay(new Date(task.nextDueDate), selectedCalendarDate);
+      const isCompleted = task.history.some(
+        (h) => h.completedAt && isSameDay(new Date(h.completedAt), selectedCalendarDate)
+      );
+      return isDue || isCompleted;
+    });
+  }, [filteredTasks, selectedCalendarDate]);
+
   // Pinned tasks shown at top (before groups), only when no active filter query
-  const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all'
+  const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
     ? tasks.filter((t) => t.pinned)
     : [];
 
   // Tasks that go through the group layout (excluding pinned when not filtering)
   const unpinnedFiltered = pinnedTasks.length > 0
-    ? filteredTasks.filter((t) => !t.pinned)
-    : filteredTasks;
+    ? calendarFilteredTasks.filter((t) => !t.pinned)
+    : calendarFilteredTasks;
 
   const groups = useGroupedTasks(unpinnedFiltered);
 
-  const isFiltering = filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all';
+  const isFiltering = filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all' || !!selectedCalendarDate;
   const hasTasks = tasks.length > 0;
 
   const stats = useMemo(() => {
@@ -92,7 +146,7 @@ export default function HomeScreen() {
 
   const handleAction = async (action: () => Promise<void>) => {
     await action();
-    setSelectedTask(null);
+    setSelectedTaskId(null);
   };
 
   const greetingTitle = `Good morning, ${firstName} 👋`;
@@ -147,6 +201,55 @@ export default function HomeScreen() {
           />
         )}
 
+        {/* Calendar Toggle Card */}
+        {hasTasks && (
+          <Pressable
+            style={styles.calendarToggleContainer}
+            onPress={() => setCalendarExpanded((v) => !v)}
+          >
+            <Card style={styles.calendarToggleCard} mode="elevated">
+              <Card.Content style={styles.calendarToggleContent}>
+                <View style={styles.calendarToggleLeft}>
+                  <AppIcon name="calendar-outline" size={16} color={Colors.indigo950} />
+                  <Text style={styles.calendarToggleText}>
+                    {selectedCalendarDate
+                      ? `${language === 'hi' ? 'तारीख' : 'Selected'}: ${selectedCalendarDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { day: 'numeric', month: 'short' })}`
+                      : (language === 'hi' ? 'कैलेंडर देखें' : 'Calendar & Schedule')}
+                  </Text>
+                </View>
+                <AppIcon
+                  name={calendarExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                  size={16}
+                  color={Colors.indigo950}
+                />
+              </Card.Content>
+            </Card>
+          </Pressable>
+        )}
+
+        {/* Calendar View */}
+        {hasTasks && calendarExpanded && (
+          <CalendarView
+            tasks={tasks}
+            selectedDate={selectedCalendarDate}
+            onSelectDate={setSelectedCalendarDate}
+            language={language}
+          />
+        )}
+
+        {selectedCalendarDate && (
+          <View style={styles.filterChipRow}>
+            <Text style={styles.filterChipText}>
+              {language === 'hi'
+                ? `फ़िल्टर की गई तारीख: ${selectedCalendarDate.toLocaleDateString()}`
+                : `Filtered Date: ${selectedCalendarDate.toLocaleDateString()}`}
+            </Text>
+            <Pressable onPress={() => setSelectedCalendarDate(null)} style={styles.clearFilterBtn}>
+              <Text style={styles.clearFilterBtnText}>✕</Text>
+            </Pressable>
+          </View>
+        )}
+
         {loading && !hasTasks ? (
           <DashboardSkeleton />
         ) : !hasTasks ? (
@@ -180,7 +283,7 @@ export default function HomeScreen() {
                         if (isSelecting) {
                           toggleSelect(task.id);
                         } else {
-                          setSelectedTask(task);
+                          setSelectedTaskId(task.id);
                         }
                       }}
                       onLongPress={() => toggleSelect(task.id)}
@@ -212,7 +315,7 @@ export default function HomeScreen() {
                           if (isSelecting) {
                             toggleSelect(task.id);
                           } else {
-                            setSelectedTask(task);
+                            setSelectedTaskId(task.id);
                           }
                         }}
                         onLongPress={() => toggleSelect(task.id)}
@@ -253,19 +356,20 @@ export default function HomeScreen() {
         visible={!!selectedTask}
         language={language}
         translate={translate}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
         onComplete={(id, note) => handleAction(() => completeTask(id, note))}
-        onSnooze={(id) => handleAction(() => snoozeTask(id))}
+        onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
         onSkip={(id) => handleAction(() => skipTask(id))}
         onDelete={(id) => handleAction(() => deleteTask(id))}
         onArchive={(id) => handleAction(() => archiveTask(id))}
         onPin={(id) => handleAction(() => pinTask(id))}
-        onDuplicate={(id) => { duplicateTask(id); setSelectedTask(null); }}
+        onDuplicate={(id) => { duplicateTask(id); setSelectedTaskId(null); }}
         onEdit={(id) => {
-          setSelectedTask(null);
+          setSelectedTaskId(null);
           setEditingTaskId(id);
         }}
         onSetDueDate={(id, date) => handleAction(() => setTaskDueDate(id, date))}
+        onDeleteHistoryEntry={deleteHistoryEntry}
       />
 
       <TaskFormSheet
@@ -285,6 +389,82 @@ export default function HomeScreen() {
           setEditingTaskId(null);
         }}
       />
+
+      {/* Celebration & Recommendation Modal */}
+      <Modal
+        visible={completedRecommendation !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCompletedRecommendation(null)}
+      >
+        <View style={styles.celebrationBackdrop}>
+          <Card style={styles.celebrationCard} mode="elevated">
+            <Card.Content style={styles.celebrationContent}>
+              <View style={styles.checkCircle}>
+                <Text style={{ fontSize: 28, color: Colors.white }}>✓</Text>
+              </View>
+              <Text style={styles.celebrationTitle}>
+                {language === 'hi' ? 'शानदार काम!' : 'Task Completed!'}
+              </Text>
+              <Text style={styles.celebrationSub}>
+                {language === 'hi'
+                  ? `आपने "${completedTaskName}" को पूरा कर लिया है।`
+                  : `You've checked off "${completedTaskName}".`}
+              </Text>
+
+              {completedRecommendation && (
+                <View style={styles.celebrationPromoBox}>
+                  <Text style={styles.promoLabel}>
+                    {language === 'hi' ? 'विशेष सुझाव आपके लिए:' : 'Special Suggestion for You:'}
+                  </Text>
+                  <Card style={styles.innerPromoCard} mode="outlined">
+                    <Card.Content style={styles.innerPromoContent}>
+                      <Image
+                        source={{ uri: imageError || !completedRecommendation.imageUrl ? 'https://picsum.photos/200' : completedRecommendation.imageUrl }}
+                        style={styles.innerPromoImage}
+                        resizeMode="cover"
+                        onError={() => setImageError(true)}
+                      />
+                      <View style={styles.innerPromoText}>
+                        <Text style={styles.innerPromoTitle}>{completedRecommendation.title}</Text>
+                        <Text style={styles.innerPromoDesc} numberOfLines={2}>
+                          {completedRecommendation.description}
+                        </Text>
+                        {completedRecommendation.promoCode ? (
+                          <View style={styles.promoCodeBadge}>
+                            <Text style={styles.promoCodeText}>
+                              {language === 'hi'
+                                ? `कोड: ${completedRecommendation.promoCode}`
+                                : `CODE: ${completedRecommendation.promoCode}`}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </Card.Content>
+                  </Card>
+                  <Button
+                    title={completedRecommendation.buttonText || (language === 'hi' ? 'लाभ उठाएं' : 'Claim Offer')}
+                    onPress={async () => {
+                      const rec = completedRecommendation;
+                      setCompletedRecommendation(null);
+                      await logClick(rec.id);
+                      Linking.openURL(rec.redirectUrl).catch(() => {});
+                    }}
+                    style={styles.claimBtn}
+                  />
+                </View>
+              )}
+
+              <Button
+                title={language === 'hi' ? 'बंद करें' : 'Done'}
+                onPress={() => setCompletedRecommendation(null)}
+                variant="ghost"
+                style={styles.closeCelebrationBtn}
+              />
+            </Card.Content>
+          </Card>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -345,5 +525,164 @@ const styles = StyleSheet.create({
   },
   emojiText: {
     fontSize: 28,
+  },
+  filterChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.ivoryDim,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+    marginBottom: 12,
+  },
+  filterChipText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.indigo950,
+  },
+  clearFilterBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clearFilterBtnText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 14,
+    color: Colors.clayDeep,
+  },
+  calendarToggleContainer: {
+    marginBottom: 12,
+  },
+  calendarToggleCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    elevation: 1.5,
+  },
+  calendarToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  calendarToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  calendarToggleText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13.5,
+    color: Colors.indigo950,
+  },
+  celebrationBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  celebrationCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.white,
+    elevation: 6,
+  },
+  celebrationContent: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  checkCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  celebrationTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.indigo950,
+    textAlign: 'center',
+  },
+  celebrationSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  celebrationPromoBox: {
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
+    paddingTop: 16,
+    marginBottom: 12,
+  },
+  promoLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
+    color: Colors.inkFaint,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  innerPromoCard: {
+    backgroundColor: '#FFFBF3',
+    borderColor: '#E8A33D30',
+    borderRadius: Radius.sm,
+    marginBottom: 12,
+  },
+  innerPromoContent: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 10,
+  },
+  innerPromoImage: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.xs,
+    flexShrink: 0,
+  },
+  innerPromoText: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  innerPromoTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 13.5,
+    color: Colors.indigo950,
+  },
+  innerPromoDesc: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 10.5,
+    color: Colors.inkSoft,
+    marginTop: 3,
+    lineHeight: 14,
+  },
+  promoCodeBadge: {
+    backgroundColor: '#E8A33D15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  promoCodeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 8.5,
+    color: Colors.marigoldDeep,
+  },
+  claimBtn: {
+    width: '100%',
+  },
+  closeCelebrationBtn: {
+    marginTop: 6,
+    width: '100%',
   },
 });

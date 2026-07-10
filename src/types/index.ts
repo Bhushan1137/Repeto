@@ -25,7 +25,7 @@ export type RecurrenceType =
 
 export type TaskGroup = 'overdue' | 'today' | 'week' | 'month';
 
-export type CompletionStatus = 'on_time' | 'late' | 'missed' | 'skipped';
+export type CompletionStatus = 'on_time' | 'late' | 'missed' | 'skipped' | 'snoozed';
 
 export interface RecurrenceRule {
   type: RecurrenceType;
@@ -68,6 +68,7 @@ export interface TaskHistoryEntry {
 export interface RepeatingTask {
   id: string;
   title: string;
+  icon?: string;
   category: CategoryKey;
   recurrence: RecurrenceRule;
   frequencyLabel: string;
@@ -94,6 +95,7 @@ export interface UserProfile {
   phone?: string;
   photoUrl?: string;
   language: Language;
+  languageSelected?: boolean;
   pushOptIn: boolean;
   profileComplete: boolean;
   onboardingComplete: boolean;
@@ -109,6 +111,7 @@ export interface AppState {
 
 export interface ParsedTaskInput {
   title: string;
+  icon?: string;
   frequencyLabel: string;
   recurrence: RecurrenceRule;
   amount?: number;

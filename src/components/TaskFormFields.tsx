@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { CategoryKey, Language, RecurrenceType } from '@/types';
 import type { TranslationKey } from '@/i18n';
@@ -11,7 +11,7 @@ import { TimeField } from '@/components/TimeField';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import { frequencyLabelFromRule } from '@/domain/recurrence';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
-import { CATEGORIES, CATEGORY_GROUPS } from '@/constants/categories';
+import { CATEGORIES, CATEGORY_GROUPS, CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import {
   buildRecurrenceRule,
@@ -158,6 +158,28 @@ export function TaskFormFields({
         placeholder={translate(config.titlePlaceholder)}
         error={errors?.title}
       />
+
+      <Text style={styles.sectionLabel}>{language === 'hi' ? 'कार्य इमोजी (वैकल्पिक)' : 'Task Emoji (Optional)'}</Text>
+      <View style={styles.emojiContainer}>
+        <View style={styles.activeEmojiBadge}>
+          <Text style={styles.activeEmojiText}>{state.icon || CATEGORY_MAP[state.category].icon}</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emojiList}>
+          {['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '💇', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'].map((emoji) => {
+            const isActive = state.icon === emoji;
+            return (
+              <TouchableRipple
+                key={emoji}
+                onPress={() => onChange({ icon: emoji })}
+                style={[styles.emojiBtn, isActive && styles.emojiBtnActive]}
+                borderless
+              >
+                <Text style={styles.emojiText}>{emoji}</Text>
+              </TouchableRipple>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <SelectField<RecurrenceType>
         label={translate('howOften')}
@@ -373,6 +395,46 @@ const styles = StyleSheet.create({
     color: Colors.clay,
     marginTop: 4,
     marginLeft: 4,
+  },
+  emojiContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  activeEmojiBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(232,163,61,0.08)',
+    borderWidth: 1.5,
+    borderColor: Colors.marigold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeEmojiText: {
+    fontSize: 26,
+  },
+  emojiList: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  emojiBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.ivoryDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  emojiBtnActive: {
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.08)',
+  },
+  emojiText: {
+    fontSize: 20,
   },
 });
 

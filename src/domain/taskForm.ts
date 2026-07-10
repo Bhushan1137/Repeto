@@ -13,6 +13,7 @@ export interface TaskFormValues {
   reminderTime?: string;
   startDate?: string;
   assignedTo?: string;
+  icon?: string;
 }
 
 export interface TaskFormState {
@@ -29,6 +30,7 @@ export interface TaskFormState {
   reminderTime: string | null;
   startDate: string | null;
   assignedTo: string | null;
+  icon: string | null;
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -117,6 +119,7 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
     reminderTime: config.defaultReminderTime ?? null,
     startDate: null,
     assignedTo: null,
+    icon: null,
   };
 }
 
@@ -131,6 +134,7 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     reminderTime: values.reminderTime ?? null,
     startDate: values.startDate ?? null,
     assignedTo: values.assignedTo ?? null,
+    icon: values.icon ?? null,
   };
 }
 
@@ -146,6 +150,7 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? null,
     startDate: null,
     assignedTo: null,
+    icon: parsed.icon ?? null,
   };
 }
 
@@ -160,6 +165,7 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     reminderTime: task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? null,
     startDate: null,
     assignedTo: task.assignedTo ?? null,
+    icon: task.icon ?? null,
   };
 }
 
@@ -199,6 +205,7 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     reminderTime: config.showReminderTime && state.reminderTime ? state.reminderTime : undefined,
     startDate: config.showStartDate && state.startDate ? state.startDate : undefined,
     assignedTo: state.assignedTo || undefined,
+    icon: state.icon || undefined,
   };
 }
 
@@ -208,7 +215,8 @@ export function formStateFromLegacyFreq(
   category: CategoryKey,
   amount?: number,
   finance?: boolean,
-  lang: Language = 'en'
+  lang: Language = 'en',
+  icon?: string
 ): TaskFormState {
   const recurrence = parseFrequencyLabel(freq);
   const base = formStateFromValues({
@@ -218,6 +226,7 @@ export function formStateFromLegacyFreq(
     freq,
     amount,
     finance: finance ?? !!amount,
+    icon,
   });
   return base;
 }

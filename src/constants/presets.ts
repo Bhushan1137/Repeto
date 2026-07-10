@@ -7,56 +7,57 @@ export interface TaskPreset {
   freqHi: string;
   amount?: number;
   finance?: boolean;
+  icon?: string;
 }
 
 export const PRESETS: Record<CategoryKey, TaskPreset[]> = {
   bills: [
-    { titleEn: 'Pay rent', titleHi: 'किराया भुगतान', freqEn: 'Every 5th of month', freqHi: 'हर महीने की 5 तारीख', amount: 18000, finance: true },
-    { titleEn: 'Credit card bill', titleHi: 'क्रेडिट कार्ड बिल', freqEn: 'Every 3rd of month', freqHi: 'हर महीने की 3 तारीख', finance: true },
+    { titleEn: 'Pay rent', titleHi: 'किराया भुगतान', freqEn: 'Every 5th of month', freqHi: 'हर महीने की 5 तारीख', amount: 18000, finance: true, icon: '🏠' },
+    { titleEn: 'Credit card bill', titleHi: 'क्रेडिट कार्ड बिल', freqEn: 'Every 3rd of month', freqHi: 'हर महीने की 3 तारीख', finance: true, icon: '💳' },
   ],
   vehicle: [
-    { titleEn: 'Bike insurance renewal', titleHi: 'बाइक बीमा नवीनीकरण', freqEn: 'Every 12 months', freqHi: 'हर 12 महीने' },
-    { titleEn: 'PUC certificate', titleHi: 'PUC प्रमाणपत्र', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने' },
+    { titleEn: 'Bike insurance renewal', titleHi: 'बाइक बीमा नवीनीकरण', freqEn: 'Every 12 months', freqHi: 'हर 12 महीने', icon: '🏍️' },
+    { titleEn: 'PUC certificate', titleHi: 'PUC प्रमाणपत्र', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '📄' },
   ],
   home: [
-    { titleEn: 'Book gas cylinder', titleHi: 'गैस सिलिंडर बुक करें', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन' },
-    { titleEn: 'RO filter service', titleHi: 'RO फ़िल्टर सर्विस', freqEn: 'Every 90 days', freqHi: 'हर 90 दिन' },
+    { titleEn: 'Book gas cylinder', titleHi: 'गैस सिलिंडर बुक करें', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन', icon: '🔥' },
+    { titleEn: 'RO filter service', titleHi: 'RO फ़िल्टर सर्विस', freqEn: 'Every 90 days', freqHi: 'हर 90 दिन', icon: '💧' },
   ],
   help: [
-    { titleEn: "Pay maid's salary", titleHi: 'नौकरानी का वेतन', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 3500, finance: true },
-    { titleEn: "Pay cook's salary", titleHi: 'रसोइये का वेतन', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 4000, finance: true },
+    { titleEn: "Pay maid's salary", titleHi: 'नौकरानी का वेतन', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 3500, finance: true, icon: '🧹' },
+    { titleEn: "Pay cook's salary", titleHi: 'रसोइये का वेतन', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 4000, finance: true, icon: '🍳' },
   ],
   health: [
-    { titleEn: 'Refill BP medicine', titleHi: 'BP दवा रिफिल', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन' },
-    { titleEn: 'Take vitamin D', titleHi: 'विटामिन D लें', freqEn: 'Every day', freqHi: 'हर दिन' },
+    { titleEn: 'Refill BP medicine', titleHi: 'BP दवा रिफिल', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन', icon: '💊' },
+    { titleEn: 'Take vitamin D', titleHi: 'विटामिन D लें', freqEn: 'Every day', freqHi: 'हर दिन', icon: '☀️' },
   ],
   subs: [
-    { titleEn: 'OTT subscription renewal', titleHi: 'OTT सब्सक्रिप्शन', freqEn: 'Every month', freqHi: 'हर महीने', amount: 499, finance: true },
-    { titleEn: 'Gym membership', titleHi: 'जिम मेंबरशिप', freqEn: 'Every month', freqHi: 'हर महीने', amount: 1200, finance: true },
+    { titleEn: 'OTT subscription renewal', titleHi: 'OTT सब्सक्रिप्शन', freqEn: 'Every month', freqHi: 'हर महीने', amount: 499, finance: true, icon: '📺' },
+    { titleEn: 'Gym membership', titleHi: 'जिम मेंबरशिप', freqEn: 'Every month', freqHi: 'हर महीने', amount: 1200, finance: true, icon: '💪' },
   ],
   festival: [
-    { titleEn: 'Order Diwali sweets', titleHi: 'दिवाली मिठाई ऑर्डर', freqEn: 'Every year', freqHi: 'हर साल' },
-    { titleEn: 'Buy Rakhi for brother', titleHi: 'भाई के लिए राखी', freqEn: 'Every year', freqHi: 'हर साल' },
+    { titleEn: 'Order Diwali sweets', titleHi: 'दिवाली मिठाई ऑर्डर', freqEn: 'Every year', freqHi: 'हर साल', icon: '🍬' },
+    { titleEn: 'Buy Rakhi for brother', titleHi: 'भाई के लिए राखी', freqEn: 'Every year', freqHi: 'हर साल', icon: '🎁' },
   ],
   education: [
-    { titleEn: 'School fees', titleHi: 'स्कूल फीस', freqEn: 'Every 10th of month', freqHi: 'हर महीने की 10 तारीख', amount: 8500, finance: true },
-    { titleEn: 'Tuition class payment', titleHi: 'ट्यूशन फीस', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 2000, finance: true },
+    { titleEn: 'School fees', titleHi: 'स्कूल फीस', freqEn: 'Every 10th of month', freqHi: 'हर महीने की 10 तारीख', amount: 8500, finance: true, icon: '🏫' },
+    { titleEn: 'Tuition class payment', titleHi: 'ट्यूशन फीस', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 2000, finance: true, icon: '📝' },
   ],
   personal: [
-    { titleEn: 'Salon / haircut', titleHi: 'सैलून / हेयरकट', freqEn: 'Every month', freqHi: 'हर महीने' },
-    { titleEn: 'Parlour appointment', titleHi: 'पार्लर अपॉइंटमेंट', freqEn: 'Every 45 days', freqHi: 'हर 45 दिन' },
+    { titleEn: 'Salon / haircut', titleHi: 'सैलून / हेयरकट', freqEn: 'Every month', freqHi: 'हर महीने', icon: '💇' },
+    { titleEn: 'Parlour appointment', titleHi: 'पार्लर अपॉइंटमेंट', freqEn: 'Every 45 days', freqHi: 'हर 45 दिन', icon: '💅' },
   ],
   pets: [
-    { titleEn: 'Buy pet food', titleHi: 'पेट फूड खरीदें', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन' },
-    { titleEn: 'Vet check-up', titleHi: 'पशु चिकित्सक जांच', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने' },
+    { titleEn: 'Buy pet food', titleHi: 'पेट फूड खरीदें', freqEn: 'Every 30 days', freqHi: 'हर 30 दिन', icon: '🍖' },
+    { titleEn: 'Vet check-up', titleHi: 'पशु चिकित्सक जांच', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '🩺' },
   ],
   finance: [
-    { titleEn: 'SIP investment', titleHi: 'SIP निवेश', freqEn: 'Every 5th of month', freqHi: 'हर महीने की 5 तारीख', amount: 5000, finance: true },
-    { titleEn: 'File ITR', titleHi: 'ITR भरें', freqEn: 'Every year', freqHi: 'हर साल' },
+    { titleEn: 'SIP investment', titleHi: 'SIP निवेश', freqEn: 'Every 5th of month', freqHi: 'हर महीने की 5 तारीख', amount: 5000, finance: true, icon: '📈' },
+    { titleEn: 'File ITR', titleHi: 'ITR भरें', freqEn: 'Every year', freqHi: 'हर साल', icon: '📁' },
   ],
   kids: [
-    { titleEn: 'Swimming class fees', titleHi: 'तैराकी क्लास फीस', freqEn: 'Every month', freqHi: 'हर महीने', amount: 1500, finance: true },
-    { titleEn: 'School bus fee', titleHi: 'स्कूल बस फीस', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 1200, finance: true },
+    { titleEn: 'Swimming class fees', titleHi: 'तैराकी क्लास फीस', freqEn: 'Every month', freqHi: 'हर महीने', amount: 1500, finance: true, icon: '🏊' },
+    { titleEn: 'School bus fee', titleHi: 'स्कूल बस फीस', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 1200, finance: true, icon: '🚌' },
   ],
 };
 

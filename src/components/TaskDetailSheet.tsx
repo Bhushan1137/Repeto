@@ -8,10 +8,14 @@ import {
   TextInput,
   Keyboard,
   Platform,
+  Alert,
+  Image,
+  Linking,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
+import { useRecommendations } from '@/providers/RecommendationProvider';
 import type { CompletionStatus, Language, RepeatingTask } from '@/types';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
@@ -34,7 +38,7 @@ interface TaskDetailSheetProps {
   translate: (key: TranslationKey) => string;
   onClose: () => void;
   onComplete: (taskId: string, note?: string) => void;
-  onSnooze: (taskId: string) => void;
+  onSnooze: (taskId: string, days: number) => void;
   onSkip: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onArchive?: (taskId: string) => void;
@@ -42,6 +46,7 @@ interface TaskDetailSheetProps {
   onDuplicate?: (taskId: string) => void;
   onEdit?: (taskId: string) => void;
   onSetDueDate?: (taskId: string, date: Date) => void;
+  onDeleteHistoryEntry?: (taskId: string, index: number) => void;
 }
 
 export function TaskDetailSheet({
@@ -59,11 +64,27 @@ export function TaskDetailSheet({
   onDuplicate,
   onEdit,
   onSetDueDate,
+  onDeleteHistoryEntry,
 }: TaskDetailSheetProps) {
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [snoozeOptionsVisible, setSnoozeOptionsVisible] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const { findMatch, logImpression, logClick } = useRecommendations();
+  const match = task ? findMatch(task) : null;
+
+  React.useEffect(() => {
+    setImageError(false);
+  }, [match?.id]);
+
+  React.useEffect(() => {
+    if (visible && match) {
+      logImpression(match.id);
+    }
+  }, [visible, match?.id]);
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
@@ -91,6 +112,7 @@ export function TaskDetailSheet({
     late: translate('completedLate'),
     missed: translate('missed'),
     skipped: translate('skipped'),
+    snoozed: language === 'hi' ? 'सणूज़ किया गया' : 'Snoozed',
   };
 
   const handleMarkDone = () => {
@@ -189,6 +211,42 @@ export function TaskDetailSheet({
             </Card>
           )}
 
+          {/* Contextual Affiliate Promo */}
+          {match && (
+            <Card style={styles.promoCard} mode="elevated">
+              <View style={styles.promoContent}>
+                <Image
+                  source={{ uri: imageError || !match.imageUrl ? 'https://picsum.photos/200' : match.imageUrl }}
+                  style={styles.promoImage}
+                  resizeMode="cover"
+                  onError={() => setImageError(true)}
+                />
+                <View style={styles.promoTextCol}>
+                  <Text style={styles.promoTag}>
+                    {language === 'hi' ? 'प्रायोजित लाभ' : 'SPONSORED BENEFIT'}
+                  </Text>
+                  <Text style={styles.promoTitle}>{match.title}</Text>
+                  <Text style={styles.promoDesc}>{match.description}</Text>
+                  {match.promoCode ? (
+                    <View style={styles.promoCodeBadge}>
+                      <Text style={styles.promoCodeText}>
+                        {language === 'hi' ? `कोड: ${match.promoCode}` : `CODE: ${match.promoCode}`}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Button
+                    title={match.buttonText || (language === 'hi' ? 'अभी खरीदें' : 'Shop Now')}
+                    onPress={async () => {
+                      await logClick(match.id);
+                      Linking.openURL(match.redirectUrl).catch(() => {});
+                    }}
+                    style={styles.promoCta}
+                  />
+                </View>
+              </View>
+            </Card>
+          )}
+
           {/* Action card */}
           <Card style={styles.actionCard} mode="elevated">
             <Card.Content style={styles.actionContent}>
@@ -230,20 +288,68 @@ export function TaskDetailSheet({
                 <ActionChip
                   icon="time-outline"
                   label={translate('snooze2d')}
-                  onPress={() => onSnooze(task.id)}
+                  onPress={() => setSnoozeOptionsVisible((v) => !v)}
                 />
                 <ActionChip
                   icon="create-outline"
                   label={translate('editTask')}
-                  onPress={() => onEdit?.(task.id)}
+                  onPress={() => {
+                    setSnoozeOptionsVisible(false);
+                    onEdit?.(task.id);
+                  }}
                 />
                 <ActionChip
                   icon="play-skip-forward-outline"
                   label={translate('skipOccurrence')}
-                  onPress={() => onSkip(task.id)}
+                  onPress={() => {
+                    setSnoozeOptionsVisible(false);
+                    onSkip(task.id);
+                  }}
                   compact
                 />
               </View>
+
+              {snoozeOptionsVisible && (
+                <View style={styles.snoozeOptionsRow}>
+                  <TouchableRipple
+                    style={styles.snoozeOptBtn}
+                    onPress={() => {
+                      onSnooze(task.id, 1);
+                      setSnoozeOptionsVisible(false);
+                    }}
+                    borderless
+                  >
+                    <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'दिन' : 'Day'}</Text>
+                  </TouchableRipple>
+                  <TouchableRipple
+                    style={styles.snoozeOptBtn}
+                    onPress={() => {
+                      onSnooze(task.id, 2);
+                      setSnoozeOptionsVisible(false);
+                    }}
+                    borderless
+                  >
+                    <Text style={styles.snoozeOptText}>+2 {language === 'hi' ? 'दिन' : 'Days'}</Text>
+                  </TouchableRipple>
+                  <TouchableRipple
+                    style={styles.snoozeOptBtn}
+                    onPress={() => {
+                      onSnooze(task.id, 7);
+                      setSnoozeOptionsVisible(false);
+                    }}
+                    borderless
+                  >
+                    <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'हफ्ता' : 'Week'}</Text>
+                  </TouchableRipple>
+                  <TouchableRipple
+                    style={[styles.snoozeOptBtn, styles.snoozeCancelBtn]}
+                    onPress={() => setSnoozeOptionsVisible(false)}
+                    borderless
+                  >
+                    <Text style={[styles.snoozeOptText, { color: Colors.clay }]}>{language === 'hi' ? 'रद्द करें' : 'Cancel'}</Text>
+                  </TouchableRipple>
+                </View>
+              )}
             </Card.Content>
           </Card>
 
@@ -369,6 +475,31 @@ export function TaskDetailSheet({
                         <Text style={styles.historyNote}>📝 {h.note}</Text>
                       ) : null}
                     </View>
+                    {onDeleteHistoryEntry && (
+                      <TouchableRipple
+                        style={styles.deleteHistoryBtn}
+                        onPress={() => {
+                          const actualIdx = showAllHistory ? idx : (task.history.length > 5 ? task.history.length - 5 + idx : idx);
+                          if (Platform.OS === 'web') {
+                            if (window.confirm(language === 'hi' ? 'क्या आप इस इतिहास प्रविष्टि को हटाना चाहते हैं?' : 'Are you sure you want to delete this history entry?')) {
+                              onDeleteHistoryEntry(task.id, actualIdx);
+                            }
+                          } else {
+                            Alert.alert(
+                              language === 'hi' ? 'इतिहास प्रविष्टि हटाएं' : 'Delete History Entry',
+                              language === 'hi' ? 'क्या आप वाकई इस प्रविष्टि को हटाना चाहते हैं?' : 'Are you sure you want to delete this completion entry?',
+                              [
+                                { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+                                { text: language === 'hi' ? 'हटाएं' : 'Delete', style: 'destructive', onPress: () => onDeleteHistoryEntry(task.id, actualIdx) }
+                              ]
+                            );
+                          }
+                        }}
+                        borderless
+                      >
+                        <AppIcon name="trash-outline" size={14} color={Colors.clayDeep} />
+                      </TouchableRipple>
+                    )}
                   </Card.Content>
                 </Card>
               ))}
@@ -389,7 +520,26 @@ export function TaskDetailSheet({
           )}
 
           {/* Delete forever */}
-          <TouchableRipple style={styles.deleteBtn} onPress={() => onDelete(task.id)} borderless>
+          <TouchableRipple
+            style={styles.deleteBtn}
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                if (window.confirm(language === 'hi' ? 'क्या आप वाकई इस कार्य को हटाना चाहते हैं?' : 'Are you sure you want to delete this task?')) {
+                  onDelete(task.id);
+                }
+              } else {
+                Alert.alert(
+                  language === 'hi' ? 'कार्य हटाएं' : 'Delete Task',
+                  language === 'hi' ? 'क्या आप वाकई इस आवर्ती कार्य को हटाना चाहते हैं? इसे पूर्ववत नहीं किया जा सकता।' : 'Are you sure you want to delete this recurring task? This cannot be undone.',
+                  [
+                    { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+                    { text: language === 'hi' ? 'हटाएं' : 'Delete', style: 'destructive', onPress: () => onDelete(task.id) }
+                  ]
+                );
+              }
+            }}
+            borderless
+          >
             <View style={styles.deleteBtnInner}>
               <AppIcon name="trash-outline" size={16} color={Colors.clayDeep} />
               <Text style={styles.deleteText}>{translate('deleteTask')}</Text>
@@ -702,4 +852,106 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   deleteText: { ...Typography.caption, color: Colors.clayDeep, fontFamily: 'Manrope_700Bold' },
+  deleteHistoryBtn: {
+    padding: 6,
+    borderRadius: Radius.full,
+    alignSelf: 'center',
+    marginLeft: 6,
+  },
+  snoozeOptionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.ivoryDim,
+    borderRadius: Radius.sm,
+    padding: 6,
+    marginTop: 8,
+    gap: 6,
+  },
+  snoozeOptBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  snoozeCancelBtn: {
+    backgroundColor: 'rgba(193,80,46,0.06)',
+    borderColor: 'rgba(193,80,46,0.15)',
+  },
+  snoozeOptText: {
+    fontSize: 11,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.ink,
+  },
+  promoCard: {
+    backgroundColor: '#FFFDF9',
+    borderColor: '#E8A33D60',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: Radius.md,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#E8A33D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  promoContent: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 12,
+  },
+  promoImage: {
+    width: 80,
+    height: 80,
+    borderRadius: Radius.sm,
+    borderColor: '#E8A33D20',
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  promoTextCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  promoTag: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 9,
+    color: '#D97706',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  promoTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 14.5,
+    color: Colors.indigo950,
+  },
+  promoDesc: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  promoCodeBadge: {
+    backgroundColor: '#E8A33D15',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  promoCodeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 9.5,
+    color: Colors.marigoldDeep,
+  },
+  promoCta: {
+    marginTop: 10,
+  },
 });

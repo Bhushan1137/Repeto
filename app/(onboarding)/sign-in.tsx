@@ -11,10 +11,12 @@ import { Colors, Radius } from '@/constants/theme';
 
 function navigateAfterSignIn(
   router: ReturnType<typeof useRouter>,
-  profile: { onboardingComplete?: boolean; profileComplete?: boolean }
+  profile: { onboardingComplete?: boolean; profileComplete?: boolean; languageSelected?: boolean }
 ) {
   if (profile.onboardingComplete) {
     router.replace('/(tabs)');
+  } else if (!profile.languageSelected) {
+    router.replace('/(onboarding)/language');
   } else if (profile.profileComplete) {
     router.replace('/(onboarding)/categories');
   } else {
@@ -82,7 +84,7 @@ export default function SignInScreen() {
         },
       ]}
     >
-      <OnboardingProgress step={1} />
+      <OnboardingProgress step={0} />
       <View style={styles.hero}>
         <Surface style={styles.logo} elevation={2}>
           <Text style={styles.logoText}>R</Text>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -28,6 +28,7 @@ import type { SharedMember } from '@/types';
 
 export default function AddTaskScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ household?: string }>();
   const { user } = useAuth();
   const { addTask } = useTasks();
   const { showToast } = useToast();
@@ -41,6 +42,15 @@ export default function AddTaskScreen() {
   const lastParsedText = useRef('');
 
   const parsed = useTaskParser(text);
+
+  useEffect(() => {
+    if (params.household === 'true' && user?.householdMembers) {
+      const activeMembers = user.householdMembers
+        .filter((m) => m.status === 'active')
+        .map(toSharedMember);
+      setShared(activeMembers);
+    }
+  }, [params.household, user?.householdMembers]);
 
   useEffect(() => {
     if (!text.trim()) {

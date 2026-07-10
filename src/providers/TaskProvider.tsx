@@ -1,7 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import type { ParsedTaskInput, RepeatingTask, SharedMember } from '@/types';
 import { taskRepository } from '@/data/repositories/taskRepository';
 import { useAuth } from '@/providers/AuthProvider';
+import { useNotifications } from '@/providers/NotificationProvider';
+import { userRepository } from '@/data/repositories/userRepository';
+import type { AppNotification } from '@/types/notification';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { TaskFormValues } from '@/domain/taskForm';
@@ -25,6 +30,7 @@ import {
 } from '@/domain/task';
 import { cancelTaskReminder, scheduleTaskReminder } from '@/services/notifications';
 import { subscribeToTasks } from '@/services/firebase/taskListener';
+import { computePreviousDueDate } from '@/domain/recurrence';
 
 interface OnboardingPreset {
   title: string;
@@ -32,6 +38,7 @@ interface OnboardingPreset {
   freq: string;
   amount?: number;
   finance?: boolean;
+  icon?: string;
 }
 
 interface TaskContextValue {
@@ -58,6 +65,7 @@ interface TaskContextValue {
   updateTask: (taskId: string, values: TaskFormValues, shared?: SharedMember[]) => Promise<void>;
   completeOnboarding: (opts: { selectedPresets: OnboardingPreset[]; pushOptIn: boolean }) => Promise<void>;
   resetTasks: () => void;
+  deleteHistoryEntry: (taskId: string, entryIndex: number) => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -66,6 +74,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const { user, firebaseReady, updateUser } = useAuth();
   const { showToast } = useToast();
   const { translate } = useTranslation();
+  const { addNotification } = useNotifications();
   const [tasks, setTasks] = useState<RepeatingTask[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -129,6 +138,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     async (task: RepeatingTask, op: 'create' | 'update') => {
       if (!user?.id) return;
       await taskRepository.saveOne(task, user.id, op);
+      
+      // Propagate sync to shared members' lists in Firestore
+      for (const member of task.sharedWith) {
+        if (member.userId && member.userId !== user.id) {
+          try {
+            await taskRepository.saveOne(task, member.userId, op);
+          } catch (err) {
+            console.warn('[Repeato] Failed to sync shared task for member:', member.userId, err);
+          }
+        }
+      }
+
       if (user.pushOptIn) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
@@ -178,11 +199,81 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await persistAll(next);
         await syncTask(mutated, 'update');
         showToast(translate(toastKey));
+
+        // Trigger in-app notification logs
+        try {
+          const lastHistory = mutated.history[mutated.history.length - 1];
+          if (lastHistory && lastHistory.completedAt) {
+            // Determine action type
+            let actionType: AppNotification['type'] = 'system';
+            let title = '';
+            let body = '';
+            
+            if (mutated.category === 'bills' || mutated.category === 'finance') {
+              actionType = 'payment';
+            } else if (mutated.sharedWith.length > 0) {
+              actionType = 'household';
+            }
+
+            const userName = user?.name || 'A household member';
+
+            if (lastHistory.status === 'snoozed') {
+              title = user?.language === 'hi' ? 'कार्य आगे बढ़ाया गया' : 'Task Snoozed';
+              body = user?.language === 'hi'
+                ? `"${mutated.title}" को सणूज़ किया गया।`
+                : `"${mutated.title}" has been snoozed.`;
+            } else if (lastHistory.status === 'skipped') {
+              title = user?.language === 'hi' ? 'कार्य छोड़ा गया' : 'Task Skipped';
+              body = user?.language === 'hi'
+                ? `"${mutated.title}" का यह चक्र छोड़ दिया गया।`
+                : `"${mutated.title}" occurrence was skipped.`;
+            } else {
+              // Completion
+              title = user?.language === 'hi' ? 'कार्य पूरा हुआ' : 'Task Completed';
+              body = user?.language === 'hi'
+                ? `"${mutated.title}" को पूरा किया गया।`
+                : `"${mutated.title}" was marked complete.`;
+            }
+
+            // 1. Add notification for You locally/remotely
+            await addNotification(actionType, title, body, { taskId: mutated.id });
+
+            // 2. Add notification for other shared members in remote Firestore
+            for (const member of mutated.sharedWith) {
+              if (member.userId && member.userId !== user?.id) {
+                const peerTitle = lastHistory.status === 'snoozed'
+                  ? `${userName} snoozed task`
+                  : lastHistory.status === 'skipped'
+                  ? `${userName} skipped task`
+                  : `${userName} completed task`;
+                
+                const peerBody = lastHistory.status === 'snoozed'
+                  ? `"${mutated.title}" has been snoozed.`
+                  : lastHistory.status === 'skipped'
+                  ? `"${mutated.title}" occurrence was skipped.`
+                  : `"${mutated.title}" is complete.`;
+
+                const peerNotif: AppNotification = {
+                  id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  type: actionType,
+                  title: peerTitle,
+                  body: peerBody,
+                  timestamp: new Date().toISOString(),
+                  read: false,
+                  metadata: { taskId: mutated.id },
+                };
+                await userRepository.saveNotification(member.userId, peerNotif);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Repeato] Failed to dispatch task notifications:', err);
+        }
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, persistAll, syncTask, showToast, translate]
+    [tasks, persistAll, syncTask, showToast, translate, addNotification, user]
   );
 
   const completeTask = useCallback(
@@ -192,13 +283,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const snoozeTask = useCallback(
-    (taskId: string, days = 2) => applyMutation(taskId, (t) => snoozeTaskInstance(t, days), 'snoozed'),
-    [applyMutation]
+    (taskId: string, days = 2) => applyMutation(taskId, (t) => snoozeTaskInstance(t, days, user?.id), 'snoozed'),
+    [applyMutation, user?.id]
   );
 
   const skipTask = useCallback(
-    (taskId: string) => applyMutation(taskId, skipTaskInstance, 'skippedToast'),
-    [applyMutation]
+    (taskId: string) => applyMutation(taskId, (t) => skipTaskInstance(t, user?.id), 'skippedToast'),
+    [applyMutation, user?.id]
   );
 
   const addPresetTask = useCallback(
@@ -236,10 +327,24 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback(
     async (taskId: string) => {
       if (!user?.id) return;
+      const targetTask = tasks.find((t) => t.id === taskId);
       try {
         const next = tasks.filter((t) => t.id !== taskId);
         await persistAll(next);
         await taskRepository.deleteOne(taskId, user.id);
+
+        if (targetTask) {
+          for (const member of targetTask.sharedWith) {
+            if (member.userId && member.userId !== user.id) {
+              try {
+                await taskRepository.deleteOne(taskId, member.userId);
+              } catch (err) {
+                console.warn('[Repeato] Failed to delete shared task copy for member:', member.userId, err);
+              }
+            }
+          }
+        }
+
         await cancelTaskReminder(taskId);
         showToast(translate('taskDeleted'));
       } catch {
@@ -254,7 +359,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
       try {
         const built = opts.selectedPresets.map((p) =>
-          createTaskFromPreset(p.title, p.category, p.freq, p.amount, p.finance)
+          createTaskFromPreset(p.title, p.category, p.freq, p.amount, p.finance, p.icon)
         );
         const capped = capTasksForPlan(user, built);
         await updateUser({ onboardingComplete: true, pushOptIn: opts.pushOptIn });
@@ -409,6 +514,51 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const resetTasks = useCallback(() => setTasks([]), []);
 
+  const deleteHistoryEntry = useCallback(
+    async (taskId: string, entryIndex: number) => {
+      const existing = tasks.find((t) => t.id === taskId);
+      if (!existing) return;
+      try {
+        const nextHistory = existing.history.filter((_, idx) => idx !== entryIndex);
+        let nextDueDate = existing.nextDueDate;
+        if (entryIndex === existing.history.length - 1) {
+          nextDueDate = computePreviousDueDate(existing.recurrence, existing.nextDueDate);
+        }
+        const mutated = {
+          ...existing,
+          history: nextHistory,
+          nextDueDate,
+          updatedAt: new Date().toISOString(),
+        };
+        const next = updateTaskInList(tasks, taskId, () => mutated);
+        await persistAll(next);
+        await syncTask(mutated, 'update');
+        showToast(user?.language === 'hi' ? 'इतिहास प्रविष्टि हटा दी गई' : 'History entry deleted');
+      } catch {
+        showToast(translate('saveError'));
+      }
+    },
+    [tasks, persistAll, syncTask, showToast, translate, user?.language]
+  );
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const { actionIdentifier, notification } = response;
+      const taskId = notification.request.content.data?.taskId as string;
+      if (!taskId) return;
+
+      if (actionIdentifier === 'MARK_DONE') {
+        completeTask(taskId);
+      } else if (actionIdentifier === 'SNOOZE_2D') {
+        snoozeTask(taskId, 2);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [completeTask, snoozeTask]);
+
   const value = useMemo(
     () => ({
       tasks: hydrated ? tasks.filter((t) => !t.archived) : [],
@@ -431,8 +581,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       updateTask,
       completeOnboarding,
       resetTasks,
+      deleteHistoryEntry,
     }),
-    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks]
+    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry]
   );
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

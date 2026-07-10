@@ -33,7 +33,13 @@ export type AppIconName =
   | 'filter-outline'
   | 'ellipsis-horizontal'
   | 'star-outline'
-  | 'warning-outline';
+  | 'chevron-back'
+  | 'chevron-forward'
+  | 'chevron-up-outline'
+  | 'camera-outline'
+  | 'warning-outline'
+  | 'send-outline'
+  | 'chatbox-ellipses-outline';
 
 interface AppIconProps {
   name: AppIconName;

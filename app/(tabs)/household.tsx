@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'qrcode';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTasks } from '@/providers/TaskProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useNotifications } from '@/providers/NotificationProvider';
+import type { AppNotification } from '@/types/notification';
 import { useHousehold } from '@/hooks/useInsights';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
@@ -25,22 +29,33 @@ import {
   normalizeInviteCode,
   pendingMemberFromCode,
   removeHouseholdMember,
+  inviteProfileFromUser,
 } from '@/domain/household';
 import { Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import type { RepeatingTask } from '@/types';
 
 export default function HouseholdScreen() {
+  const router = useRouter();
   const { user, updateUser } = useAuth();
-  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask } = useTasks();
+  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry } = useTasks();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
+  const { addNotification } = useNotifications();
   const { stats, members } = useHousehold(tasks);
-  const [selectedTask, setSelectedTask] = useState<RepeatingTask | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [filterMemberCode, setFilterMemberCode] = useState<string | null>(null);
+
+  const selectedTask = useMemo(() => {
+    return tasks.find((t) => t.id === selectedTaskId) || null;
+  }, [tasks, selectedTaskId]);
+
   const [codeInput, setCodeInput] = useState('');
   const [addingCode, setAddingCode] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
   const ringPercent = stats.total > 0 ? (stats.onTime / stats.total) * 100 : 0;
@@ -53,11 +68,12 @@ export default function HouseholdScreen() {
         .catch((err) => console.warn('[Repeato] QR generation failed', err));
     }
   }, [myCode]);
+
   const message = user ? inviteMessage(user) : '';
 
   const handleAction = async (action: () => Promise<void>) => {
     await action();
-    setSelectedTask(null);
+    setSelectedTaskId(null);
   };
 
   const shareAny = async () => {
@@ -87,9 +103,9 @@ export default function HouseholdScreen() {
     }
   };
 
-  const addByCode = async () => {
+  const addByCode = async (customCode?: string) => {
     if (!user) return;
-    const code = normalizeInviteCode(codeInput);
+    const code = normalizeInviteCode(customCode ?? codeInput);
     if (!code || code.length < 7) {
       showToast(translate('invalidInviteCode'));
       return;
@@ -106,16 +122,81 @@ export default function HouseholdScreen() {
     setAddingCode(true);
     const invite = await userRepository.resolveHouseholdInvite(code);
     const member = invite ? householdMemberFromInvite(invite) : pendingMemberFromCode(code);
+    
+    // 1. Add other user to my profile
     await updateUser(addHouseholdMember(user, member));
+
+    // Add local notification
+    await addNotification(
+      'household',
+      language === 'hi' ? 'परिवार का सदस्य जुड़ गया' : 'Household Member Linked',
+      language === 'hi' ? `${member.name || code} को परिवार में जोड़ा गया।` : `Linked ${member.name || code} to your household.`
+    );
+
+    // 2. Add myself to other user's profile if registered
+    if (invite && invite.userId) {
+      try {
+        const remoteB = await userRepository.loadRemote(invite.userId);
+        if (remoteB) {
+          const myInvite = inviteProfileFromUser(user);
+          const meAsMember = householdMemberFromInvite(myInvite);
+          const updatedB = addHouseholdMember(remoteB, meAsMember);
+          await userRepository.saveOther(invite.userId, updatedB);
+
+          // Add remote notification for User B
+          const peerNotif: AppNotification = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: 'household',
+            title: language === 'hi' ? 'नया परिवार सदस्य जुड़ा' : 'Household Member Joined',
+            body: language === 'hi' ? `${user.name} आपके परिवार में शामिल हो गए हैं।` : `${user.name} joined your household.`,
+            timestamp: new Date().toISOString(),
+            read: false,
+          };
+          await userRepository.saveNotification(invite.userId, peerNotif);
+        }
+      } catch (err) {
+        console.warn('[Repeato] Bidirectional household linking failed:', err);
+      }
+    }
+
     setAddingCode(false);
     setCodeInput('');
     showToast(invite ? translate('memberAdded') : translate('memberAddedPending'));
+  };
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    setScannerVisible(false);
+    if (data) {
+      setCodeInput(data);
+      await addByCode(data);
+    }
   };
 
   const removeMember = async (code?: string) => {
     if (!user || !code) return;
     await updateUser(removeHouseholdMember(user, code));
   };
+
+  // Sort members for the leaderboard
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a, b) => b.onTimePercent - a.onTimePercent);
+  }, [members]);
+
+  const filteredSharedTasks = useMemo(() => {
+    let list = stats.shared;
+    if (filterMemberCode) {
+      list = list.filter((t) => {
+        if (filterMemberCode === 'you') {
+          return !t.assignedTo || t.assignedTo === user?.id;
+        }
+        return (
+          t.sharedWith.some((m) => m.code === filterMemberCode || m.userId === filterMemberCode) ||
+          t.assignedTo === filterMemberCode
+        );
+      });
+    }
+    return list;
+  }, [stats.shared, filterMemberCode, user?.id]);
 
   return (
     <View style={styles.root}>
@@ -164,6 +245,21 @@ export default function HouseholdScreen() {
                   activeOutlineColor={Colors.marigoldDeep}
                   style={styles.codeInput}
                   textColor={Colors.ink}
+                  right={
+                    <PaperInput.Icon
+                      icon={() => <AppIcon name="camera-outline" size={20} color={Colors.indigo950} />}
+                      onPress={async () => {
+                        if (!permission || !permission.granted) {
+                          const res = await requestPermission();
+                          if (!res.granted) {
+                            showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
+                            return;
+                          }
+                        }
+                        setScannerVisible(true);
+                      }}
+                    />
+                  }
                   theme={{
                     colors: {
                       background: Colors.white,
@@ -173,7 +269,7 @@ export default function HouseholdScreen() {
                 <Button
                   title={translate('addContact')}
                   loading={addingCode}
-                  onPress={addByCode}
+                  onPress={() => addByCode()}
                   style={styles.joinBtn}
                 />
               </View>
@@ -204,41 +300,60 @@ export default function HouseholdScreen() {
         <SectionHeader label={translate('members')} count={members.length} />
         <Card style={styles.memberCard} mode="elevated">
           <Card.Content style={styles.memberCardContent}>
-            {members.map((m, idx) => (
-              <TouchableRipple key={m.name} style={styles.memberRowRipple} borderless>
-                <View style={[styles.memberRow, idx === members.length - 1 && styles.lastRow]}>
-                  <View style={[styles.memberAvatar, { backgroundColor: m.color }]}>
-                    <Text style={styles.memberAvatarText}>{m.short}</Text>
-                  </View>
-                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>
-                      {m.isYou ? `${translate('you')} (${m.name.split(' ')[0]})` : m.name}
-                    </Text>
-                    <View style={styles.memberMetaRow}>
-                      <Text style={styles.memberStat}>
-                        {m.status === 'pending' ? translate('pendingMember') : `${m.taskCount} ${translate('tasks')}`}
-                      </Text>
+            {members.map((m, idx) => {
+              const key = m.isYou ? 'you' : (m.code || m.userId || m.name);
+              const isSelected = filterMemberCode === key;
+              const rank = sortedMembers.findIndex((sm) => (sm.isYou && m.isYou) || (sm.code && sm.code === m.code)) + 1;
+              const rankLabel = rank === 1 ? '👑 #1' : `#${rank}`;
+
+              return (
+                <TouchableRipple
+                  key={key}
+                  onPress={() => setFilterMemberCode((prev) => (prev === key ? null : key))}
+                  style={[styles.memberRowRipple, isSelected && styles.memberRowRippleActive]}
+                  borderless
+                >
+                  <View style={[styles.memberRow, idx === members.length - 1 && styles.lastRow]}>
+                    <View style={[styles.memberAvatar, { backgroundColor: m.color }, isSelected && styles.memberAvatarSelected]}>
+                      <Text style={styles.memberAvatarText}>{m.short}</Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.memberName}>
+                          {m.isYou ? `${translate('you')} (${m.name.split(' ')[0]})` : m.name}
+                        </Text>
+                        {m.status !== 'pending' && (
+                          <View style={styles.rankBadge}>
+                            <Text style={styles.rankBadgeText}>{rankLabel}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.memberMetaRow}>
+                        <Text style={styles.memberStat}>
+                          {m.status === 'pending' ? translate('pendingMember') : `${m.taskCount} ${translate('tasks')}`}
+                        </Text>
+                        {m.status !== 'pending' && (
+                          <>
+                            <Text style={styles.memberBullet}>·</Text>
+                            <Text style={styles.memberOnTimeText}>{m.onTimePercent}% {translate('memberOnTime')}</Text>
+                          </>
+                        )}
+                      </View>
                       {m.status !== 'pending' && (
-                        <>
-                          <Text style={styles.memberBullet}>·</Text>
-                          <Text style={styles.memberOnTimeText}>{m.onTimePercent}% {translate('memberOnTime')}</Text>
-                        </>
+                        <View style={styles.progressLineBg}>
+                          <View style={[styles.progressLineFill, { width: `${m.onTimePercent}%` }]} />
+                        </View>
                       )}
                     </View>
-                    {m.status !== 'pending' && (
-                      <View style={styles.progressLineBg}>
-                        <View style={[styles.progressLineFill, { width: `${m.onTimePercent}%` }]} />
-                      </View>
-                    )}
+                    {!m.isYou && m.code ? (
+                      <TouchableRipple onPress={() => removeMember(m.code)} style={styles.removeBtn} borderless>
+                        <AppIcon name="close" size={16} color={Colors.inkFaint} />
+                      </TouchableRipple>
+                    ) : null}
                   </View>
-                  {!m.isYou && m.code ? (
-                    <TouchableRipple onPress={() => removeMember(m.code)} style={styles.removeBtn} borderless>
-                      <AppIcon name="close" size={16} color={Colors.inkFaint} />
-                    </TouchableRipple>
-                  ) : null}
-                </View>
-              </TouchableRipple>
-            ))}
+                </TouchableRipple>
+              );
+            })}
           </Card.Content>
         </Card>
 
@@ -251,16 +366,30 @@ export default function HouseholdScreen() {
           language={language}
         />
 
-        <SectionHeader label={translate('sharedTasks')} count={stats.shared.length} />
-        {stats.shared.length === 0 ? (
+        <View style={styles.sharedHeaderRow}>
+          <SectionHeader label={translate('sharedTasks')} count={filteredSharedTasks.length} />
+          <TouchableRipple
+            style={styles.customAddBtn}
+            onPress={() => router.push('/(tabs)/add?household=true')}
+            borderless
+          >
+            <View style={styles.customAddInner}>
+              <AppIcon name="people" size={14} color={Colors.indigo950} />
+              <Text style={styles.customAddText}>
+                {language === 'hi' ? 'नया साझा कार्य' : 'Create Shared Task'}
+              </Text>
+            </View>
+          </TouchableRipple>
+        </View>
+        {filteredSharedTasks.length === 0 ? (
           <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
         ) : (
-          stats.shared.map((task) => (
+          filteredSharedTasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
               language={language}
-              onPress={() => setSelectedTask(task)}
+              onPress={() => setSelectedTaskId(task.id)}
               onCompletePress={() => completeTask(task.id)}
             />
           ))
@@ -272,19 +401,20 @@ export default function HouseholdScreen() {
         visible={!!selectedTask}
         language={language}
         translate={translate}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
         onComplete={(id, note) => handleAction(() => completeTask(id, note))}
-        onSnooze={(id) => handleAction(() => snoozeTask(id))}
+        onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
         onSkip={(id) => handleAction(() => skipTask(id))}
         onDelete={(id) => handleAction(() => deleteTask(id))}
         onArchive={(id) => handleAction(() => archiveTask(id))}
         onPin={(id) => handleAction(() => pinTask(id))}
-        onDuplicate={(id) => { duplicateTask(id); setSelectedTask(null); }}
+        onDuplicate={(id) => { duplicateTask(id); setSelectedTaskId(null); }}
         onEdit={(id) => {
-          setSelectedTask(null);
+          setSelectedTaskId(null);
           setEditingTaskId(id);
         }}
         onSetDueDate={(id, date) => handleAction(() => setTaskDueDate(id, date))}
+        onDeleteHistoryEntry={deleteHistoryEntry}
       />
 
       <TaskFormSheet
@@ -320,6 +450,30 @@ export default function HouseholdScreen() {
             <Button title={language === 'hi' ? 'बंद करें' : 'Close'} onPress={() => setQrVisible(false)} style={styles.qrCloseBtn} />
           </Card.Content>
         </Card>
+      </Modal>
+
+      {/* QR Scanner Camera Modal */}
+      <Modal visible={scannerVisible} transparent={false} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scanTarget} />
+            <Text style={styles.scannerInstructions}>
+              {language === 'hi' ? 'आमंत्रण कोड स्कैन करने के लिए क्यूआर कोड को फ्रेम में रखें' : 'Align QR code inside the frame to scan'}
+            </Text>
+            <Button
+              title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
+              onPress={() => setScannerVisible(false)}
+              style={styles.scannerCloseBtn}
+            />
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -469,4 +623,85 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   emptySub: { ...Typography.bodySm, color: Colors.inkSoft, textAlign: 'center', paddingVertical: 16, lineHeight: 20 },
+
+  memberRowRippleActive: {
+    backgroundColor: 'rgba(232,163,61,0.06)',
+  },
+  memberAvatarSelected: {
+    borderWidth: 2,
+    borderColor: Colors.marigold,
+  },
+  rankBadge: {
+    backgroundColor: Colors.marigold,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+  },
+  rankBadgeText: {
+    color: Colors.white,
+    fontSize: 9.5,
+    fontFamily: 'Manrope_800ExtraBold',
+  },
+  sharedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  customAddBtn: {
+    backgroundColor: Colors.marigold,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: Colors.marigold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  customAddInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  customAddText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 11,
+    color: Colors.indigo950,
+  },
+
+  // Scanner Styles
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanTarget: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: Colors.marigold,
+    backgroundColor: 'transparent',
+    borderRadius: Radius.md,
+    marginBottom: 24,
+  },
+  scannerInstructions: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    marginHorizontal: 40,
+    marginBottom: 30,
+    lineHeight: 20,
+    fontFamily: 'Manrope_500Medium',
+  },
+  scannerCloseBtn: {
+    minWidth: 150,
+  },
 });

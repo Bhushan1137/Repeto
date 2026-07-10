@@ -11,10 +11,12 @@ import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { Colors } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Language } from '@/types';
+import { useAuth } from '@/providers/AuthProvider';
 
 export default function LanguageScreen() {
   const router = useRouter();
   const { language, setLanguage } = useOnboarding();
+  const { setLanguage: setAuthLanguage } = useAuth();
   const { translate } = useTranslation(language);
   const insets = useSafeAreaInsets();
 
@@ -29,7 +31,7 @@ export default function LanguageScreen() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      <OnboardingProgress step={0} />
+      <OnboardingProgress step={1} />
       <View style={styles.hero}>
         <ProgressRing percent={100} color={Colors.marigold} size={72} stroke={6} />
         <Text style={styles.heroTitle}>{translate('obWelcomeTitle')}</Text>
@@ -42,14 +44,24 @@ export default function LanguageScreen() {
 
       <LanguagePicker
         selected={language}
-        onSelect={(code) => setLanguage(code as Language)}
+        onSelect={(code) => {
+          setLanguage(code as Language);
+          setAuthLanguage(code as Language);
+        }}
         options={[
           { code: 'en', label: 'English', native: 'English' },
           { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
         ]}
       />
 
-      <Button title={translate('continueBtn')} style={styles.cta} onPress={() => router.push('/(onboarding)/sign-in')} />
+      <Button
+        title={translate('continueBtn')}
+        style={styles.cta}
+        onPress={async () => {
+          await setAuthLanguage(language);
+          router.replace('/(onboarding)/profile');
+        }}
+      />
     </ScrollView>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Linking } from 'react-native';
+import { View, StyleSheet, Linking, Alert, Platform } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -83,7 +83,7 @@ export default function ProfileScreen() {
       />
       <LinkRow
         label={translate('helpSupport')}
-        onPress={() => Linking.openURL('mailto:support@repeato.app?subject=Repeato%20Support')}
+        onPress={() => router.push('/help-support')}
       />
       <LinkRow
         label={translate('privacyPolicy')}
@@ -96,10 +96,30 @@ export default function ProfileScreen() {
       <LinkRow
         label={translate('logOut')}
         danger
-        onPress={async () => {
-          await signOut();
-          resetTasks();
-          router.replace('/(onboarding)/language');
+        onPress={() => {
+          const performLogout = async () => {
+            await signOut();
+            resetTasks();
+            router.replace('/(onboarding)/language');
+          };
+          if (Platform.OS === 'web') {
+            if (window.confirm(user.language === 'hi' ? 'क्या आप वाकई लॉग आउट करना चाहते हैं?' : 'Are you sure you want to log out?')) {
+              performLogout();
+            }
+          } else {
+            Alert.alert(
+              user.language === 'hi' ? 'लॉग आउट करें' : 'Log Out',
+              user.language === 'hi' ? 'क्या आप वाकई लॉग आउट करना चाहते हैं?' : 'Are you sure you want to log out?',
+              [
+                { text: user.language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+                {
+                  text: user.language === 'hi' ? 'लॉग आउट' : 'Log Out',
+                  style: 'destructive',
+                  onPress: performLogout,
+                },
+              ]
+            );
+          }
         }}
       />
     </ScreenShell>

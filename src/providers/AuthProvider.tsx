@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
 import { signInWithGoogle as authSignIn, profileFromFirebaseUser } from '@/services/authService';
@@ -13,6 +14,7 @@ interface AuthContextValue {
   ready: boolean;
   user: UserProfile | null;
   language: Language;
+  languageSelected: boolean;
   firebaseReady: boolean;
   signInWithGoogle: (language: Language) => Promise<{ ok: boolean; user?: UserProfile; error?: string; message?: string }>;
   updateUser: (patch: Partial<UserProfile>) => Promise<void>;
@@ -25,88 +27,117 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [savedLanguage, setSavedLanguage] = useState<Language>('en');
+  const [languageSelected, setLanguageSelected] = useState(false);
   const firebaseReady = isFirebaseConfigured() && initFirebase();
 
-  const language: Language = user?.language ?? 'en';
+  const language: Language = user?.language ?? savedLanguage;
 
   useEffect(() => {
-    if (!firebaseReady) {
-      userRepository.load().then((loaded) => {
-        setUser(loaded);
-        setReady(true);
-      });
-      return;
-    }
-
-    configureGoogleSignIn();
     let cancelled = false;
 
-    (async () => {
+    async function init() {
+      // 1. Load saved language
+      try {
+        const val = await AsyncStorage.getItem('@repeato/selected_language');
+        if (!cancelled && val) {
+          setSavedLanguage(val as Language);
+          setLanguageSelected(true);
+        }
+      } catch (err) {
+        console.warn('[Repeato] Failed to load saved language', err);
+      }
+
+      // 2. Load local user
+      try {
+        const loaded = await userRepository.load();
+        if (!cancelled && loaded) {
+          setUser(loaded);
+          setReady(true);
+        }
+      } catch (err) {
+        console.warn('[Repeato] Failed to load local user', err);
+      }
+
+      if (!firebaseReady) {
+        setReady(true);
+        return;
+      }
+
+      configureGoogleSignIn();
       const redirectUser = await completeGoogleRedirectSignIn();
       if (cancelled) return;
       if (redirectUser) {
         try {
-          const profile = await profileFromSignedInUser(redirectUser, 'en');
+          const profile = await profileFromSignedInUser(redirectUser, language);
           setUser(profile);
           await userRepository.save(profile);
         } catch {
           // onAuthStateChanged will handle
         }
       }
-    })();
 
-    const unsubscribe = subscribeToAuth(async (firebaseUser) => {
-      if (cancelled) return;
+      const unsubscribe = subscribeToAuth(async (firebaseUser) => {
+        if (cancelled) return;
 
-      if (!firebaseUser) {
-        setUser(null);
-        setReady(true);
-        return;
-      }
-
-      try {
-        const remote = await loadUserRemote(firebaseUser.uid);
-        const base = remote ?? profileFromFirebaseUser(firebaseUser, 'en');
-        let profile: UserProfile = normalizeHouseholdProfile({
-          ...base,
-          profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
-        });
-
-        // Scan pending members and resolve them
-        let changed = false;
-        const updatedMembers = await Promise.all((profile.householdMembers ?? []).map(async (m) => {
-          if (m.status === 'pending') {
-            const resolved = await userRepository.resolveHouseholdInvite(m.code);
-            if (resolved) {
-              changed = true;
-              return {
-                ...m,
-                userId: resolved.userId,
-                name: resolved.name,
-                color: resolved.color || m.color,
-                status: 'active' as const,
-              };
-            }
-          }
-          return m;
-        }));
-        if (changed) {
-          profile = { ...profile, householdMembers: updatedMembers };
-          await userRepository.save(profile);
-        } else {
-          await userRepository.saveLocal(profile);
+        if (!firebaseUser) {
+          setUser(null);
+          setReady(true);
+          return;
         }
-        setUser(profile);
-      } catch {
-        setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, 'en')));
-      } finally {
-        if (!cancelled) setReady(true);
-      }
-    });
+
+        try {
+          const remote = await loadUserRemote(firebaseUser.uid);
+          const base = remote ?? profileFromFirebaseUser(firebaseUser, language);
+          let profile: UserProfile = normalizeHouseholdProfile({
+            ...base,
+            profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
+          });
+
+          // Scan pending members and resolve them
+          let changed = false;
+          const updatedMembers = await Promise.all((profile.householdMembers ?? []).map(async (m) => {
+            if (m.status === 'pending') {
+              const resolved = await userRepository.resolveHouseholdInvite(m.code);
+              if (resolved) {
+                changed = true;
+                return {
+                  ...m,
+                  userId: resolved.userId,
+                  name: resolved.name,
+                  color: resolved.color || m.color,
+                  status: 'active' as const,
+                };
+              }
+            }
+            return m;
+          }));
+          if (changed) {
+            profile = { ...profile, householdMembers: updatedMembers };
+            await userRepository.save(profile);
+          } else {
+            await userRepository.saveLocal(profile);
+          }
+          setUser(profile);
+        } catch {
+          setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+        } finally {
+          if (!cancelled) setReady(true);
+        }
+      });
+
+      return unsubscribe;
+    }
+
+    let unsubPromise = init();
 
     return () => {
       cancelled = true;
-      unsubscribe?.();
+      unsubPromise.then((unsub) => {
+        if (typeof unsub === 'function') {
+          unsub();
+        }
+      });
     };
   }, [firebaseReady]);
 
@@ -138,7 +169,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setLanguage = useCallback(
     async (lang: Language) => {
-      if (user) await persistUser({ ...user, language: lang });
+      try {
+        await AsyncStorage.setItem('@repeato/selected_language', lang);
+        setSavedLanguage(lang);
+        setLanguageSelected(true);
+      } catch (err) {
+        console.warn('[Repeato] Failed to save language selection', err);
+      }
+      if (user) await persistUser({ ...user, language: lang, languageSelected: true });
     },
     [user, persistUser]
   );
@@ -154,13 +192,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ready,
       user,
       language,
+      languageSelected,
       firebaseReady,
       signInWithGoogle,
       updateUser,
       setLanguage,
       signOut,
     }),
-    [ready, user, language, firebaseReady, signInWithGoogle, updateUser, setLanguage, signOut]
+    [ready, user, language, languageSelected, firebaseReady, signInWithGoogle, updateUser, setLanguage, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

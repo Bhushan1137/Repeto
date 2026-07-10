@@ -6,6 +6,7 @@ export interface ActivityItem {
   completedByName: string;
   completedByColor: string;
   completedAt: string;
+  status: 'on_time' | 'late' | 'skipped' | 'missed' | 'snoozed';
   note?: string;
 }
 
@@ -21,7 +22,7 @@ export function buildActivityFeed(
     task.history.forEach((h, idx) => {
       if (!h.completedAt) return;
 
-      // Find who completed it
+      // Find who completed / acted on it
       let completedByName = currentUserName;
       let completedByColor = '#E8A33D'; // You color
 
@@ -53,6 +54,7 @@ export function buildActivityFeed(
         completedByName,
         completedByColor,
         completedAt: h.completedAt,
+        status: h.status,
         note: h.note,
       });
     });

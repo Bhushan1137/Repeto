@@ -44,7 +44,7 @@ const paperTheme = {
 };
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
-  const { ready, user } = useAuth();
+  const { ready, user, languageSelected } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -61,24 +61,29 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     if (isPrivacyOrTerms) return;
 
     if (!user) {
-      // 1. Not logged in: must be on onboarding language or sign-in screens.
-      if (!isInsideOnboarding || (currentScreen !== 'language' && currentScreen !== 'sign-in')) {
+      // 1. Not logged in: must go to sign-in screen.
+      if (!isInsideOnboarding || currentScreen !== 'sign-in') {
+        router.replace('/(onboarding)/sign-in');
+      }
+    } else if (!user.languageSelected) {
+      // 2. Logged in, language preference not set: must select language.
+      if (!isInsideOnboarding || currentScreen !== 'language') {
         router.replace('/(onboarding)/language');
       }
     } else if (!user.profileComplete) {
-      // 2. Logged in, profile not complete: must be on onboarding profile or language.
-      if (!isInsideOnboarding || (currentScreen !== 'profile' && currentScreen !== 'language')) {
+      // 3. Logged in, language set, profile not complete: must complete profile.
+      if (!isInsideOnboarding || currentScreen !== 'profile') {
         router.replace('/(onboarding)/profile');
       }
     } else if (!user.onboardingComplete) {
-      // 3. Logged in, profile complete, but onboarding tasks/categories not complete:
-      // must be on onboarding categories, suggestions, finish, profile or language.
-      const allowed = ['categories', 'suggestions', 'finish', 'profile', 'language'];
+      // 4. Logged in, language set, profile complete, onboarding tasks not complete:
+      // must be on onboarding categories, suggestions, or finish.
+      const allowed = ['categories', 'suggestions', 'finish'];
       if (!isInsideOnboarding || !allowed.includes(currentScreen)) {
         router.replace('/(onboarding)/categories');
       }
     } else {
-      // 4. Fully onboarded: cannot access onboarding screens.
+      // 5. Fully onboarded: cannot access onboarding screens.
       if (isInsideOnboarding) {
         router.replace('/(tabs)');
       }

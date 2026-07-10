@@ -3,15 +3,34 @@ import { Platform } from 'react-native';
 import type { RepeatingTask } from '@/types';
 import { daysUntilDue } from '@/domain/recurrence';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
+  if (Platform.OS !== 'web') {
+    Notifications.setNotificationCategoryAsync('task-actions', [
+      {
+        identifier: 'MARK_DONE',
+        buttonTitle: 'Mark Done',
+        options: { opensAppToForeground: false }
+      },
+      {
+        identifier: 'SNOOZE_2D',
+        buttonTitle: 'Snooze 2 Days',
+        options: { opensAppToForeground: false }
+      }
+    ]).catch(() => {});
+  }
+} catch (error) {
+  console.warn('[Repeato] Failed to set notification handler:', error);
+}
 
 let permissionGranted = false;
 
@@ -54,6 +73,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         title: 'Repeato reminder',
         body: `${task.title} is due ${days === 0 ? 'today' : `in ${days} day(s)`}`,
         data: { taskId: task.id },
+        categoryIdentifier: 'task-actions',
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

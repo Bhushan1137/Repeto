@@ -10,11 +10,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Text, Card, Surface, IconButton } from 'react-native-paper';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Gradients, Layout, Radius, Shadows, Typography } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
+import { useNotifications } from '@/providers/NotificationProvider';
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { AppIcon } from '@/components/AppIcon';
 
@@ -40,8 +42,10 @@ export function ScreenShell({
   lightHeader = false,
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user } = useAuth();
   const { tasks } = useTasks();
+  const { unreadCount } = useNotifications();
   const [activityVisible, setActivityVisible] = useState(false);
 
   const header = lightHeader ? (
@@ -74,13 +78,18 @@ export function ScreenShell({
             style={styles.brandLogo}
             resizeMode="contain"
           />
-          <IconButton
-            icon="bell-outline"
-            iconColor={Colors.white}
-            size={22}
-            style={styles.bellButton}
-            onPress={() => setActivityVisible(true)}
-          />
+          <Pressable
+            style={styles.bellPressable}
+            onPress={() => router.push('/notifications')}
+            hitSlop={8}
+          >
+            <AppIcon name="notifications-outline" size={22} color={Colors.white} />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
+          </Pressable>
         </View>
         {typeof title === 'string' ? (
           <Text style={styles.title}>{title}</Text>
@@ -226,7 +235,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   brandLogo: { width: 92, height: 32 },
-  bellButton: {
+  bellPressable: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -236,6 +245,24 @@ const styles = StyleSheet.create({
     margin: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.marigold,
+    borderRadius: Radius.xs,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 8.5,
+    color: Colors.white,
   },
   title: { ...Typography.displayMd, color: Colors.onDark, marginBottom: 4 },
   sub: { ...Typography.bodySm, color: Colors.onDarkMuted, maxWidth: 300 },

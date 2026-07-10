@@ -22,6 +22,7 @@ export interface PresetListItem {
   freqHi: string;
   amount?: number;
   finance?: boolean;
+  icon?: string;
 }
 
 export function getAllPresets(): PresetListItem[] {
@@ -35,6 +36,7 @@ export function getAllPresets(): PresetListItem[] {
       freqHi: p.freqHi,
       amount: p.amount,
       finance: p.finance,
+      icon: p.icon,
     }))
   );
 }
@@ -47,7 +49,8 @@ export function presetToFormValues(preset: PresetListItem, language: Language): 
     preset.category,
     preset.amount,
     preset.finance ?? !!preset.amount,
-    language
+    language,
+    preset.icon
   );
   return formStateToValues(state, language);
 }
@@ -60,7 +63,8 @@ export function suggestionToFormValues(s: OnboardingSuggestion, language: Langua
     s.category,
     s.amount,
     s.finance ?? !!s.amount,
-    language
+    language,
+    s.icon
   );
   return formStateToValues(state, language);
 }
@@ -107,6 +111,7 @@ export function presetFromTaskPreset(p: TaskPreset, category: CategoryKey): Pres
     freqHi: p.freqHi,
     amount: p.amount,
     finance: p.finance,
+    icon: p.icon,
   };
 }
 

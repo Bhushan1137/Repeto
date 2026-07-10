@@ -57,6 +57,7 @@ export function createTaskFromFormValues(values: TaskFormValues, shared: SharedM
     createdAt: now,
     updatedAt: now,
     escalationCount: 0,
+    icon: values.icon,
   };
 }
 
@@ -65,12 +66,14 @@ export function createTaskFromPreset(
   category: CategoryKey,
   freq: string,
   amount?: number,
-  finance?: boolean
+  finance?: boolean,
+  icon?: string
 ): RepeatingTask {
   const recurrence = parseFrequencyLabel(freq);
   return {
     id: createTaskId(),
     title,
+    icon,
     category,
     recurrence,
     frequencyLabel: freq,
@@ -105,6 +108,7 @@ export function createTaskFromParsed(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
+    icon: parsed.icon,
   };
 }
 
@@ -161,27 +165,33 @@ export function duplicateTask(task: RepeatingTask): RepeatingTask {
   };
 }
 
-export function snoozeTaskInstance(task: RepeatingTask, days = 2): RepeatingTask {
+export function snoozeTaskInstance(task: RepeatingTask, days = 2, userId?: string): RepeatingTask {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const base = new Date(task.nextDueDate);
   const due = base < today ? today : base;
   due.setDate(due.getDate() + days);
+  const now = new Date().toISOString();
   return {
     ...task,
+    history: [
+      ...task.history.slice(-4),
+      { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${days} days` },
+    ],
     nextDueDate: due.toISOString(),
     snoozedUntil: due.toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
 }
 
-export function skipTaskInstance(task: RepeatingTask): RepeatingTask {
+export function skipTaskInstance(task: RepeatingTask, userId?: string): RepeatingTask {
+  const now = new Date().toISOString();
   return {
     ...task,
-    history: [...task.history.slice(-4), { month: getMonthLabel(), status: 'skipped' }],
+    history: [...task.history.slice(-4), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
     nextDueDate: computeNextDueDate(task.recurrence, new Date()),
     escalationCount: 0,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
 }
 
@@ -213,6 +223,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
+    icon: values.icon,
     nextDueDate,
     updatedAt: new Date().toISOString(),
   };

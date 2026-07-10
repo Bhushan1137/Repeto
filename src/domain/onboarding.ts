@@ -10,6 +10,7 @@ export interface OnboardingSuggestion {
   amount?: number;
   finance?: boolean;
   accepted: boolean;
+  icon?: string;
 }
 
 export function buildOnboardingSuggestions(categories: CategoryKey[]): OnboardingSuggestion[] {
@@ -23,6 +24,7 @@ export function buildOnboardingSuggestions(categories: CategoryKey[]): Onboardin
       amount: p.amount,
       finance: p.finance,
       accepted: true,
+      icon: p.icon,
     }))
   );
 }

@@ -52,7 +52,13 @@ export function LanguagePicker({ options, selected, onSelect }: LanguagePickerPr
                   <Text style={styles.langName}>{opt.label}</Text>
                   <Text style={styles.langNative}>{opt.native}</Text>
                 </View>
-                {active ? <Text style={styles.langCheck}>✓</Text> : null}
+                {active ? (
+                  <View style={styles.checkCircle}>
+                    <Text style={styles.checkIcon}>✓</Text>
+                  </View>
+                ) : (
+                  <View style={styles.checkCircleEmpty} />
+                )}
               </View>
             </TouchableRipple>
           </Card>
@@ -100,6 +106,27 @@ const styles = StyleSheet.create({
   },
   langName: { ...Typography.title, fontSize: 15, color: Colors.ink },
   langNative: { fontFamily: 'Fraunces_600SemiBold', fontSize: 13, color: Colors.inkSoft, marginTop: 2 },
-  langCheck: { fontSize: 18, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold' },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.marigold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkIcon: {
+    color: Colors.white,
+    fontSize: 12,
+    fontFamily: 'Manrope_800ExtraBold',
+    lineHeight: 14,
+  },
+  checkCircleEmpty: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: 'transparent',
+  },
 });
 

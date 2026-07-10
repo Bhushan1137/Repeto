@@ -78,12 +78,12 @@ export function TaskCard({
               : {})}
           >
             <Text style={[styles.icon, hovered && styles.iconCompleted, { color: hovered ? Colors.white : Colors.ink }]}>
-              {hovered ? '✓' : cat.icon}
+              {hovered ? '✓' : (task.icon || cat.icon)}
             </Text>
           </TouchableRipple>
         ) : (
           <View style={[styles.iconBadge, { backgroundColor: `${hex}12` }]}>
-            <Text style={styles.icon}>{cat.icon}</Text>
+            <Text style={styles.icon}>{task.icon || cat.icon}</Text>
           </View>
         )}
         <View style={styles.info}>

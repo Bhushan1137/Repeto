@@ -163,6 +163,7 @@ export interface HouseholdMember {
   taskCount: number;
   isYou?: boolean;
   code?: string;
+  userId?: string;
   status?: 'active' | 'pending';
   onTimePercent: number;
 }
@@ -212,6 +213,7 @@ export function deriveHouseholdMembers(
       color: member.color,
       taskCount: 0,
       code: member.code,
+      userId: member.userId,
       status: member.status,
       onTimePercent: 100,
     });
@@ -223,6 +225,7 @@ export function deriveHouseholdMembers(
       const existing = memberMap.get(key);
       if (existing) {
         existing.taskCount += 1;
+        if (member.userId) existing.userId = member.userId;
       } else {
         memberMap.set(key, {
           name: member.name,
@@ -230,6 +233,7 @@ export function deriveHouseholdMembers(
           color: member.color,
           taskCount: 1,
           code: member.code,
+          userId: member.userId,
           status: 'active',
           onTimePercent: 100,
         });
@@ -239,7 +243,7 @@ export function deriveHouseholdMembers(
 
   // Calculate stats for other members
   memberMap.forEach((m) => {
-    m.onTimePercent = calculateMemberOnTime(tasks, m.code, m.code, false);
+    m.onTimePercent = calculateMemberOnTime(tasks, m.userId, m.code, false);
   });
 
   return [you, ...memberMap.values()];
