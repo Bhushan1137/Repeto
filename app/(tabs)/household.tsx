@@ -436,20 +436,22 @@ export default function HouseholdScreen() {
       />
 
       <Modal visible={qrVisible} transparent animationType="fade" onRequestClose={() => setQrVisible(false)}>
-        <Pressable style={styles.qrBackdrop} onPress={() => setQrVisible(false)} />
-        <Card style={styles.qrSheet} mode="elevated">
-          <Card.Content style={styles.qrContent}>
-            <Text style={styles.qrTitle}>{language === 'hi' ? 'स्कैन कर आमंत्रण भेजें' : 'Scan to join household'}</Text>
-            {qrDataUrl ? (
-              <Image
-                source={{ uri: qrDataUrl }}
-                style={styles.qrImage}
-              />
-            ) : null}
-            <Text style={styles.qrCodeText}>{myCode}</Text>
-            <Button title={language === 'hi' ? 'बंद करें' : 'Close'} onPress={() => setQrVisible(false)} style={styles.qrCloseBtn} />
-          </Card.Content>
-        </Card>
+        <View style={styles.qrCenteredView}>
+          <Pressable style={styles.qrBackdrop} onPress={() => setQrVisible(false)} />
+          <Card style={styles.qrSheet} mode="elevated">
+            <Card.Content style={styles.qrContent}>
+              <Text style={styles.qrTitle}>{language === 'hi' ? 'स्कैन कर आमंत्रण भेजें' : 'Scan to join household'}</Text>
+              {qrDataUrl ? (
+                <Image
+                  source={{ uri: qrDataUrl }}
+                  style={styles.qrImage}
+                />
+              ) : null}
+              <Text style={styles.qrCodeText}>{myCode}</Text>
+              <Button title={language === 'hi' ? 'बंद करें' : 'Close'} onPress={() => setQrVisible(false)} style={styles.qrCloseBtn} />
+            </Card.Content>
+          </Card>
+        </View>
       </Modal>
 
       {/* QR Scanner Camera Modal */}
@@ -490,13 +492,18 @@ const styles = StyleSheet.create({
   inviteLabel: { ...Typography.label, color: Colors.inkFaint, marginBottom: 8 },
   codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   codeActions: { flexDirection: 'row', gap: 8 },
-  qrBackdrop: { flex: 1, backgroundColor: Colors.overlay },
+  qrCenteredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(23, 27, 54, 0.45)',
+  },
   qrSheet: {
     backgroundColor: Colors.white,
     borderRadius: Radius.lg,
-    alignSelf: 'center',
-    marginHorizontal: 32,
-    marginVertical: 'auto',
     width: 290,
     elevation: 8,
     overflow: 'hidden',
