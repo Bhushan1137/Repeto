@@ -4,11 +4,28 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Users can read/write profile if authenticated
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['householdMembers', 'householdMemberUids'])
+      );
+      allow delete: if request.auth != null && request.auth.uid == userId;
 
-      // Tasks subcollection — allowed if authenticated
+      // Tasks subcollection — allowed if owner or household member
       match /tasks/{taskId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if request.auth != null && (
+          request.auth.uid == userId ||
+          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.get('householdMemberUids', [])
+        );
+      }
+
+      // Notifications subcollection — allowed if owner or household member
+      match /notifications/{notifId} {
+        allow read, write: if request.auth != null && (
+          request.auth.uid == userId ||
+          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.get('householdMemberUids', [])
+        );
       }
     }
 

@@ -1,24 +1,24 @@
+import { ActivityFeed } from '@/components/ActivityFeed';
+import { AppIcon } from '@/components/AppIcon';
+import { Colors, Gradients, Layout, Radius, Typography } from '@/constants/theme';
+import { useAuth } from '@/providers/AuthProvider';
+import { useNotifications } from '@/providers/NotificationProvider';
+import { useTasks } from '@/providers/TaskProvider';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
-  ScrollView,
-  StyleSheet,
   Image,
   Modal,
   Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
   type ScrollViewProps,
   type ViewStyle,
 } from 'react-native';
-import { Text, Card, Surface, IconButton } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Card, Surface, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Gradients, Layout, Radius, Shadows, Typography } from '@/constants/theme';
-import { useAuth } from '@/providers/AuthProvider';
-import { useTasks } from '@/providers/TaskProvider';
-import { useNotifications } from '@/providers/NotificationProvider';
-import { ActivityFeed } from '@/components/ActivityFeed';
-import { AppIcon } from '@/components/AppIcon';
 
 interface ScreenShellProps {
   title: string | React.ReactNode;
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-  brandLogo: { width: 92, height: 32 },
+  brandLogo: { width: 140, height: 50, padding: 0, margin: 0 },
   bellPressable: {
     width: 40,
     height: 40,
@@ -301,8 +301,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(251,247,239,0.22)',
     borderRadius: Radius.md,
   },
-  statPillWarn: { 
-    backgroundColor: 'rgba(193,80,46,0.15)', 
+  statPillWarn: {
+    backgroundColor: 'rgba(193,80,46,0.15)',
     borderColor: 'rgba(193,80,46,0.3)',
   },
   statContent: {

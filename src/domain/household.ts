@@ -30,12 +30,17 @@ export function memberColor(seed: string): string {
 
 export function normalizeHouseholdProfile(
   user: UserProfile
-): UserProfile & { householdCode: string; householdMembers: HouseholdMemberProfile[] } {
+): UserProfile & { householdCode: string; householdMembers: HouseholdMemberProfile[]; householdMemberUids: string[] } {
   const householdCode = user.householdCode || generateHouseholdCode(user.id || user.email);
+  const householdMembers = user.householdMembers ?? [];
+  const householdMemberUids = householdMembers
+    .map((m) => m.userId)
+    .filter((id): id is string => !!id);
   return {
     ...user,
     householdCode,
-    householdMembers: user.householdMembers ?? [],
+    householdMembers,
+    householdMemberUids,
   };
 }
 

@@ -37,7 +37,7 @@ export function TimeField({ label, value, onChange, hint }: TimeFieldProps) {
           setOpen(true);
         }}
       >
-        <Text style={styles.triggerText}>🕐 {formatTime(value)}</Text>
+        <Text style={styles.triggerText}>🕐  {formatTime(value)}</Text>
         <Text style={styles.chevron}>▾</Text>
       </TouchableOpacity>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}

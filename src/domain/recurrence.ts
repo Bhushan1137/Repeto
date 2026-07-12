@@ -227,7 +227,7 @@ function weekdayName(day: number, lang: 'en' | 'hi'): string {
   return lang === 'hi' ? hi[day] : en[day];
 }
 
-function ordinalSuffix(n: number): string {
+export function ordinalSuffix(n: number): string {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return s[(v - 20) % 10] || s[v] || s[0];

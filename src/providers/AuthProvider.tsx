@@ -9,6 +9,8 @@ import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn } 
 import { profileFromSignedInUser } from '@/services/authService';
 import { loadUserRemote } from '@/services/firebase/firestore';
 import { normalizeHouseholdProfile } from '@/domain/household';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { getFirestoreDb } from '@/services/firebase/app';
 
 interface AuthContextValue {
   ready: boolean;
@@ -77,8 +79,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const unsubscribe = subscribeToAuth(async (firebaseUser) => {
+      let unsubscribeProfile: (() => void) | null = null;
+
+      const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
         if (cancelled) return;
+
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
+        }
 
         if (!firebaseUser) {
           setUser(null);
@@ -86,47 +95,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        try {
-          const remote = await loadUserRemote(firebaseUser.uid);
-          const base = remote ?? profileFromFirebaseUser(firebaseUser, language);
-          let profile: UserProfile = normalizeHouseholdProfile({
-            ...base,
-            profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
-          });
+        const db = getFirestoreDb();
+        if (db) {
+          unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
+            if (cancelled) return;
 
-          // Scan pending members and resolve them
-          let changed = false;
-          const updatedMembers = await Promise.all((profile.householdMembers ?? []).map(async (m) => {
-            if (m.status === 'pending') {
-              const resolved = await userRepository.resolveHouseholdInvite(m.code);
-              if (resolved) {
-                changed = true;
-                return {
-                  ...m,
-                  userId: resolved.userId,
-                  name: resolved.name,
-                  color: resolved.color || m.color,
-                  status: 'active' as const,
-                };
+            try {
+              const remote = snap.exists() ? (snap.data() as UserProfile) : null;
+              const base = remote ?? profileFromFirebaseUser(firebaseUser, language);
+              let profile: UserProfile = normalizeHouseholdProfile({
+                ...base,
+                profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
+              });
+
+              // Scan pending members and resolve them
+              let changed = false;
+              const updatedMembers = await Promise.all((profile.householdMembers ?? []).map(async (m) => {
+                if (m.status === 'pending') {
+                  const resolved = await userRepository.resolveHouseholdInvite(m.code);
+                  if (resolved) {
+                    changed = true;
+                    return {
+                      ...m,
+                      userId: resolved.userId,
+                      name: resolved.name,
+                      color: resolved.color || m.color,
+                      status: 'active' as const,
+                    };
+                  }
+                }
+                return m;
+              }));
+
+              if (changed) {
+                profile = { ...profile, householdMembers: updatedMembers };
+                await userRepository.save(profile);
+              } else {
+                await userRepository.saveLocal(profile);
               }
+              setUser(profile);
+            } catch (err) {
+              console.warn('[Repeato] Error loading snapshot profile data', err);
+              setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+            } finally {
+              setReady(true);
             }
-            return m;
-          }));
-          if (changed) {
-            profile = { ...profile, householdMembers: updatedMembers };
-            await userRepository.save(profile);
-          } else {
-            await userRepository.saveLocal(profile);
-          }
-          setUser(profile);
-        } catch {
+          }, (err) => {
+            console.warn('[Repeato] Profile snapshot listener failed', err);
+            setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+            setReady(true);
+          });
+        } else {
           setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
-        } finally {
-          if (!cancelled) setReady(true);
+          setReady(true);
         }
       });
 
-      return unsubscribe;
+      return () => {
+        if (unsubscribeAuth) unsubscribeAuth();
+        if (unsubscribeProfile) unsubscribeProfile();
+      };
     }
 
     let unsubPromise = init();

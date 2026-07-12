@@ -1,32 +1,30 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, Text, Pressable, Modal, ScrollView, Image, Linking } from 'react-native';
-import { Card } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/providers/AuthProvider';
-import { useTasks } from '@/providers/TaskProvider';
-import { useNotifications } from '@/providers/NotificationProvider';
-import { useTranslation } from '@/hooks/useTranslation';
-import { useGroupedTasks } from '@/hooks/useGroupedTasks';
-import { useFilteredTasks, DEFAULT_FILTER } from '@/hooks/useFilteredTasks';
-import type { FilterState } from '@/hooks/useFilteredTasks';
-import { useTaskSelection } from '@/hooks/useTaskSelection';
+import { AppIcon } from '@/components/AppIcon';
+import { BulkActionBar } from '@/components/BulkActionBar';
+import { Button } from '@/components/Button';
+import { CalendarView } from '@/components/CalendarView';
+import { EmptyState, ScreenShell, SectionHeader, StatPill } from '@/components/ScreenShell';
+import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { TaskFilterBar } from '@/components/TaskFilterBar';
-import { BulkActionBar } from '@/components/BulkActionBar';
-import { ActivityFeed } from '@/components/ActivityFeed';
-import { Button } from '@/components/Button';
-import { ScreenShell, SectionHeader, StatPill, EmptyState } from '@/components/ScreenShell';
-import { AppIcon } from '@/components/AppIcon';
+import { TaskFormSheet } from '@/components/TaskFormSheet';
+import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
-import { daysUntilDue, getTaskGroup } from '@/domain/recurrence';
-import type { RepeatingTask, TaskGroup } from '@/types';
-import { Colors, Radius, Typography } from '@/constants/theme';
-import { DashboardSkeleton } from '@/components/SkeletonLoader';
-import { CalendarView } from '@/components/CalendarView';
+import { daysUntilDue } from '@/domain/recurrence';
+import type { FilterState } from '@/hooks/useFilteredTasks';
+import { DEFAULT_FILTER, useFilteredTasks } from '@/hooks/useFilteredTasks';
+import { useGroupedTasks } from '@/hooks/useGroupedTasks';
+import { useTaskSelection } from '@/hooks/useTaskSelection';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/providers/AuthProvider';
 import { useRecommendations } from '@/providers/RecommendationProvider';
+import { useTasks } from '@/providers/TaskProvider';
+import type { TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Card } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth'> = {
   overdue: 'secOverdue',
@@ -149,6 +147,22 @@ export default function HomeScreen() {
     setSelectedTaskId(null);
   };
 
+  const { currentDayLabel, currentDateValue, currentWeekdayLabel } = useMemo(() => {
+    const dateToFormat = selectedCalendarDate ?? new Date();
+    const day = dateToFormat.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+      weekday: 'short',
+    });
+    const dateNum = dateToFormat.getDate();
+    const month = dateToFormat.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+      month: 'short',
+    });
+    return {
+      currentDayLabel: month.toUpperCase(),
+      currentDateValue: String(dateNum),
+      currentWeekdayLabel: day.toUpperCase(),
+    };
+  }, [selectedCalendarDate, language]);
+
   const greetingTitle = `Good morning, ${firstName} 👋`;
 
   const searchButton = (
@@ -187,6 +201,18 @@ export default function HomeScreen() {
                   tone={stats.overdue > 0 ? 'warn' : 'default'}
                 />
               </View>
+              <Pressable
+                style={[styles.dayDateCard, calendarExpanded && styles.dayDateCardActive]}
+                onPress={() => setCalendarExpanded((v) => !v)}
+              >
+                <View style={styles.miniCalHeader}>
+                  <Text style={styles.miniCalHeaderLabel}>{currentDayLabel}</Text>
+                </View>
+                <View style={styles.miniCalBody}>
+                  <Text style={styles.miniCalValue}>{currentDateValue}</Text>
+                  <Text style={styles.miniCalSub}>{currentWeekdayLabel}</Text>
+                </View>
+              </Pressable>
               {searchButton}
             </View>
           ) : null
@@ -199,32 +225,6 @@ export default function HomeScreen() {
             onChange={setFilter}
             language={language}
           />
-        )}
-
-        {/* Calendar Toggle Card */}
-        {hasTasks && (
-          <Pressable
-            style={styles.calendarToggleContainer}
-            onPress={() => setCalendarExpanded((v) => !v)}
-          >
-            <Card style={styles.calendarToggleCard} mode="elevated">
-              <Card.Content style={styles.calendarToggleContent}>
-                <View style={styles.calendarToggleLeft}>
-                  <AppIcon name="calendar-outline" size={16} color={Colors.indigo950} />
-                  <Text style={styles.calendarToggleText}>
-                    {selectedCalendarDate
-                      ? `${language === 'hi' ? 'तारीख' : 'Selected'}: ${selectedCalendarDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { day: 'numeric', month: 'short' })}`
-                      : (language === 'hi' ? 'कैलेंडर देखें' : 'Calendar & Schedule')}
-                  </Text>
-                </View>
-                <AppIcon
-                  name={calendarExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
-                  size={16}
-                  color={Colors.indigo950}
-                />
-              </Card.Content>
-            </Card>
-          </Pressable>
         )}
 
         {/* Calendar View */}
@@ -448,7 +448,7 @@ export default function HomeScreen() {
                       const rec = completedRecommendation;
                       setCompletedRecommendation(null);
                       await logClick(rec.id);
-                      Linking.openURL(rec.redirectUrl).catch(() => {});
+                      Linking.openURL(rec.redirectUrl).catch(() => { });
                     }}
                     style={styles.claimBtn}
                   />
@@ -491,6 +491,59 @@ const styles = StyleSheet.create({
   searchIconBtnActive: {
     backgroundColor: 'rgba(232,163,61,0.18)',
     borderColor: Colors.marigold,
+  },
+  dayDateCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(251,247,239,0.22)',
+    width: 50,
+    height: 50,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dayDateCardActive: {
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1.5,
+  },
+  miniCalHeader: {
+    backgroundColor: 'rgba(193, 80, 46, 0.28)',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(251,247,239,0.15)',
+  },
+  miniCalHeaderLabel: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 8,
+    color: '#FFB89A',
+    letterSpacing: 0.5,
+    lineHeight: 10,
+  },
+  miniCalBody: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 2,
+  },
+  miniCalValue: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 16.5,
+    color: Colors.white,
+    lineHeight: 18,
+  },
+  miniCalSub: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 7.5,
+    color: Colors.onDarkMuted,
+    letterSpacing: 0.2,
+    marginTop: -1,
+    lineHeight: 9,
   },
   filterActiveDot: {
     position: 'absolute',

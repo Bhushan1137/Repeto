@@ -59,7 +59,7 @@ export const hi: Record<TranslationKey, string> = {
   tagFinance: 'वित्त के रूप में टैग करें',
   tagFinanceSub: 'इस कार्य की भुगतान राशि ट्रैक करें',
   shareHousehold: 'परिवार के साथ साझा करें',
-  describeTask: 'कार्य का वर्णन करें',
+  describeTask: 'एक वाक्य में कार्य का विवरण लिखें',
   createTask: 'दोहराने वाला कार्य बनाएं',
   parseTitle: 'शीर्षक',
   parseRepeats: 'दोहराव',

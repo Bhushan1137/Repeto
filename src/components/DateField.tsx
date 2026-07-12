@@ -36,7 +36,7 @@ export function DateField({ label, value, onChange, hint, minimumDate }: DateFie
           setOpen(true);
         }}
       >
-        <Text style={styles.triggerText}>📅 {formatDisplayDate(value)}</Text>
+        <Text style={styles.triggerText}>📅  {formatDisplayDate(value)}</Text>
         <Text style={styles.chevron}>▾</Text>
       </TouchableOpacity>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}

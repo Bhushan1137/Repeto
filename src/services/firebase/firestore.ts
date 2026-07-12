@@ -51,8 +51,8 @@ export async function loadUserRemote(userId: string): Promise<UserProfile | null
   const db = getFirestoreDb();
   if (!db) return null;
 
-  const uid = (await waitForAuthUid()) ?? userId;
-  const snap = await getDoc(doc(db, 'users', uid));
+  await waitForAuthUid();
+  const snap = await getDoc(doc(db, 'users', userId));
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
@@ -60,17 +60,17 @@ export async function saveTaskRemote(userId: string, task: RepeatingTask): Promi
   const db = getFirestoreDb();
   if (!db) return;
 
-  const uid = (await waitForAuthUid()) ?? userId;
+  await waitForAuthUid();
   const payload = forFirestore(task as unknown as Record<string, unknown>);
-  await setDoc(doc(db, 'users', uid, 'tasks', task.id), payload, { merge: true });
+  await setDoc(doc(db, 'users', userId, 'tasks', task.id), payload, { merge: true });
 }
 
 export async function loadTasksRemote(userId: string): Promise<RepeatingTask[]> {
   const db = getFirestoreDb();
   if (!db) return [];
 
-  const uid = (await waitForAuthUid()) ?? userId;
-  const snap = await getDocs(collection(db, 'users', uid, 'tasks'));
+  await waitForAuthUid();
+  const snap = await getDocs(collection(db, 'users', userId, 'tasks'));
   return snap.docs.map((d) => d.data() as RepeatingTask);
 }
 
@@ -78,8 +78,8 @@ export async function deleteTaskRemote(userId: string, taskId: string): Promise<
   const db = getFirestoreDb();
   if (!db) return;
 
-  const uid = (await waitForAuthUid()) ?? userId;
-  await deleteDoc(doc(db, 'users', uid, 'tasks', taskId));
+  await waitForAuthUid();
+  await deleteDoc(doc(db, 'users', userId, 'tasks', taskId));
 }
 
 export async function saveHouseholdInviteRemote(user: UserProfile): Promise<void> {

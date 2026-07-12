@@ -22,6 +22,9 @@ export interface InsightsResult {
   isEmpty: boolean;
   streak: number;
   weeklyActivity: DailyActivity[];
+  completionsCount: number;
+  skippedCount: number;
+  activeTasksCount: number;
 }
 
 export function calculateStreak(tasks: RepeatingTask[]): number {
@@ -114,8 +117,22 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
   const streak = calculateStreak(tasks);
   const weeklyActivity = getWeeklyActivity(tasks, lang);
 
+  const completionsCount = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'on_time' || h.status === 'late').length, 0);
+  const skippedCount = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'skipped').length, 0);
+  const activeTasksCount = tasks.length;
+
   if (total === 0) {
-    return { overallPercent: 0, bars: [], slipCategory: null, isEmpty: true, streak, weeklyActivity };
+    return {
+      overallPercent: 0,
+      bars: [],
+      slipCategory: null,
+      isEmpty: true,
+      streak,
+      weeklyActivity,
+      completionsCount,
+      skippedCount,
+      activeTasksCount,
+    };
   }
 
   const onTime = completedEntries.filter((h) => h.status === 'on_time').length;
@@ -153,6 +170,9 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
     isEmpty: false,
     streak,
     weeklyActivity,
+    completionsCount,
+    skippedCount,
+    activeTasksCount,
   };
 }
 

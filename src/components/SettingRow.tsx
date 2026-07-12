@@ -9,11 +9,12 @@ interface SettingRowProps {
   sub?: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
+  flat?: boolean;
 }
 
-export function SettingRow({ label, sub, value, onValueChange }: SettingRowProps) {
+export function SettingRow({ label, sub, value, onValueChange, flat = false }: SettingRowProps) {
   return (
-    <Card style={styles.card} mode="elevated">
+    <Card style={[styles.card, flat && styles.cardFlat]} mode={flat ? 'contained' : 'elevated'}>
       <Card.Content style={styles.cardContent}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={styles.label}>{label}</Text>
@@ -74,6 +75,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: 10,
     elevation: 1,
+  },
+  cardFlat: {
+    elevation: 0,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
   },
   cardContent: {
     flexDirection: 'row',

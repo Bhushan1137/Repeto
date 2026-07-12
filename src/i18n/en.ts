@@ -57,7 +57,7 @@ export const en = {
   tagFinance: 'Tag as Finance',
   tagFinanceSub: 'Track payment amounts for this task',
   shareHousehold: 'Share with household',
-  describeTask: 'Describe the task',
+  describeTask: 'Describe the task in a sentence',
   createTask: 'Create recurring task',
   parseTitle: 'Title',
   parseRepeats: 'Repeats',

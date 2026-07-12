@@ -102,6 +102,7 @@ export interface UserProfile {
   plan: 'free' | 'plus';
   householdCode?: string;
   householdMembers?: HouseholdMemberProfile[];
+  householdMemberUids?: string[];
 }
 
 export interface AppState {

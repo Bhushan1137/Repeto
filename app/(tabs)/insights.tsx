@@ -1,25 +1,21 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Text, Card, Surface } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text, Card } from 'react-native-paper';
 import { useTasks } from '@/providers/TaskProvider';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useInsights } from '@/hooks/useInsights';
+import { useInsights, useHousehold } from '@/hooks/useInsights';
 import { ProgressRing } from '@/components/ProgressRing';
 import { ScreenShell, SectionHeader, EmptyState } from '@/components/ScreenShell';
-import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
+import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
 import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
 
 export default function InsightsScreen() {
   const { tasks } = useTasks();
   const { translate, language } = useTranslation();
   const insights = useInsights(tasks);
+  const { members } = useHousehold(tasks);
 
   const slipLabel = insights.slipCategory ? getCategoryLabel(insights.slipCategory, language) : null;
-
-  const totalTasks = tasks.length;
-  const completions = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'on_time' || h.status === 'late').length, 0);
-  const skipped = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'skipped').length, 0);
 
   return (
     <ScreenShell title={translate('insTitle')} subtitle={translate('insSub')}>
@@ -27,31 +23,64 @@ export default function InsightsScreen() {
         <EmptyState icon="◔" title={translate('insightsEmpty')} subtitle="" />
       ) : (
         <>
+          {/* 🔥 Completion Streak Banner */}
+          <Card style={styles.streakCard} mode="elevated">
+            <Card.Content style={styles.streakContent}>
+              <Text style={styles.streakEmoji}>🔥</Text>
+              <View style={styles.streakTextContainer}>
+                <Text style={styles.streakTitle}>
+                  {insights.streak > 0
+                    ? language === 'hi'
+                      ? `${insights.streak} दिनों का लगातार सिलसिला!`
+                      : `${insights.streak} Day Completion Streak!`
+                    : language === 'hi'
+                    ? 'कार्य पूरा करना शुरू करें!'
+                    : 'Start completing tasks!'}
+                </Text>
+                <Text style={styles.streakSub}>
+                  {insights.streak > 0
+                    ? language === 'hi'
+                      ? 'लगातार कार्य पूरे करते रहें।'
+                      : 'Keep completing tasks daily to grow your streak.'
+                    : language === 'hi'
+                    ? 'सिलसिला शुरू करने के लिए आज कोई कार्य पूरा करें।'
+                    : 'Complete a task today to start your streak.'}
+                </Text>
+              </View>
+            </Card.Content>
+          </Card>
+
           <View style={styles.gridRow}>
+            {/* Progress Ring Card */}
             <Card style={styles.ringCard} mode="elevated">
               <Card.Content style={styles.ringContent}>
-                <ProgressRing percent={insights.overallPercent} color={Colors.marigold} size={110} stroke={9} />
-                <Text style={styles.pct}>{insights.overallPercent}%</Text>
+                <View style={styles.ringContainer}>
+                  <ProgressRing percent={insights.overallPercent} color={Colors.marigold} size={110} stroke={9} />
+                  <View style={styles.ringTextCenter}>
+                    <Text style={styles.ringPctText}>{insights.overallPercent}%</Text>
+                  </View>
+                </View>
                 <Text style={styles.cap}>{translate('onTimeThisMonth')}</Text>
               </Card.Content>
             </Card>
 
+            {/* Task Summary Card */}
             <Card style={styles.metricsCard} mode="elevated">
               <Card.Content style={styles.metricsContent}>
                 <Text style={styles.metricsHeader}>{language === 'hi' ? 'कार्य सारांश' : 'Task Summary'}</Text>
                 <View style={styles.metricsRow}>
                   <View style={styles.metricItem}>
-                    <Text style={styles.metricValue}>{totalTasks}</Text>
+                    <Text style={styles.metricValue}>{insights.activeTasksCount}</Text>
                     <Text style={styles.metricLabel}>{language === 'hi' ? 'सक्रिय कार्य' : 'Active Tasks'}</Text>
                   </View>
                   <View style={styles.metricItem}>
-                    <Text style={styles.metricValue}>{completions}</Text>
+                    <Text style={styles.metricValue}>{insights.completionsCount}</Text>
                     <Text style={styles.metricLabel}>{language === 'hi' ? 'कुल पूर्ण' : 'Completions'}</Text>
                   </View>
                 </View>
                 <View style={[styles.metricsRow, { marginTop: 10 }]}>
                   <View style={styles.metricItem}>
-                    <Text style={styles.metricValue}>{skipped}</Text>
+                    <Text style={styles.metricValue}>{insights.skippedCount}</Text>
                     <Text style={styles.metricLabel}>{language === 'hi' ? 'छोड़े गए' : 'Skipped'}</Text>
                   </View>
                   <View style={styles.metricItem}>
@@ -63,6 +92,7 @@ export default function InsightsScreen() {
             </Card>
           </View>
 
+          {/* Weekly Heatmap */}
           <SectionHeader label={translate('weeklyActivity')} />
           <Card style={styles.heatmapCard} mode="elevated">
             <Card.Content style={styles.heatmapContent}>
@@ -89,6 +119,43 @@ export default function InsightsScreen() {
             </Card.Content>
           </Card>
 
+          {/* 👥 Household Leaderboard */}
+          {members && members.length > 0 && (
+            <>
+              <SectionHeader label={language === 'hi' ? 'गृहस्थी का योगदान' : 'Household Contribution'} />
+              <Card style={styles.leaderboardCard} mode="elevated">
+                <Card.Content style={styles.leaderboardContent}>
+                  {members.map((m) => (
+                    <View key={m.name} style={styles.leaderboardRow}>
+                      <View style={[styles.avatar, { backgroundColor: m.color || Colors.marigold }]}>
+                        <Text style={styles.avatarText}>{m.short}</Text>
+                      </View>
+                      <View style={styles.leaderboardInfo}>
+                        <View style={styles.leaderboardTopLine}>
+                          <Text style={styles.leaderboardName}>
+                            {m.name} {m.isYou ? (language === 'hi' ? '(आप)' : '(You)') : ''}
+                          </Text>
+                          <Text style={styles.leaderboardStatText}>
+                            {m.onTimePercent}% {language === 'hi' ? 'समय पर' : 'on-time'} · {m.taskCount} {language === 'hi' ? 'कार्य' : 'tasks'}
+                          </Text>
+                        </View>
+                        <View style={styles.leaderboardBarTrack}>
+                          <View
+                            style={[
+                              styles.leaderboardBarFill,
+                              { width: `${m.onTimePercent}%`, backgroundColor: m.color || Colors.marigold },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </Card.Content>
+              </Card>
+            </>
+          )}
+
+          {/* By Category */}
           <SectionHeader label={translate('byCategory')} />
           {insights.bars.map((bar) => (
             <Card key={bar.key} style={styles.barCard} mode="elevated">
@@ -109,6 +176,7 @@ export default function InsightsScreen() {
             </Card>
           ))}
 
+          {/* Slip Category Alert callout */}
           {slipLabel && insights.slipCategory && insights.bars.length > 1 && (
             <Card style={styles.calloutCard} mode="outlined">
               <Card.Content>
@@ -124,13 +192,45 @@ export default function InsightsScreen() {
 }
 
 const styles = StyleSheet.create({
+  streakCard: {
+    backgroundColor: '#FFF8EC',
+    borderWidth: 1,
+    borderColor: '#F9E5C9',
+    borderRadius: Radius.md,
+    marginBottom: 16,
+    elevation: 1,
+  },
+  streakContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  streakEmoji: {
+    fontSize: 28,
+  },
+  streakTextContainer: {
+    flex: 1,
+  },
+  streakTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 16,
+    color: Colors.indigo950,
+  },
+  streakSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
   gridRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 14,
   },
   ringCard: {
-    flex: 1,
+    flex: 1.1,
     backgroundColor: Colors.white,
     borderRadius: Radius.lg,
     elevation: 1.5,
@@ -141,8 +241,24 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 12,
   },
-  pct: { fontFamily: 'Fraunces_700Bold', fontSize: 30, color: Colors.ink, marginTop: -74, marginBottom: 38 },
-  cap: { ...Typography.bodySm, fontSize: 11.5, color: Colors.inkSoft, textAlign: 'center', marginTop: 4, lineHeight: 16 },
+  ringContainer: {
+    width: 110,
+    height: 110,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ringTextCenter: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ringPctText: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 26,
+    color: Colors.ink,
+  },
+  cap: { ...Typography.bodySm, fontSize: 11.5, color: Colors.inkSoft, textAlign: 'center', marginTop: 8, lineHeight: 16 },
   metricsCard: {
     flex: 1.2,
     backgroundColor: Colors.white,
@@ -210,6 +326,63 @@ const styles = StyleSheet.create({
   dayCircleToday: { borderColor: Colors.marigold },
   checkText: { color: Colors.white, fontSize: 11, fontFamily: 'Manrope_800ExtraBold', lineHeight: 14 },
   todayIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.marigold },
+  leaderboardCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 14,
+    elevation: 1.5,
+  },
+  leaderboardContent: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 12,
+    color: Colors.white,
+    fontFamily: 'Manrope_800ExtraBold',
+  },
+  leaderboardInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  leaderboardTopLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  leaderboardName: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+  },
+  leaderboardStatText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.inkSoft,
+  },
+  leaderboardBarTrack: {
+    height: 6,
+    backgroundColor: Colors.ivoryDim,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  leaderboardBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
   barCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.sm,

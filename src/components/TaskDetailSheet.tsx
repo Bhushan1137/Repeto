@@ -281,7 +281,19 @@ export function TaskDetailSheet({
                   </View>
                 </>
               ) : (
-                <Button title={translate('markDone')} onPress={handleMarkDone} />
+                <View style={styles.doneButtonsRow}>
+                  <Button
+                    title={translate('markDone')}
+                    onPress={handleMarkDoneDirectly}
+                    style={styles.donePrimaryBtn}
+                  />
+                  <Button
+                    title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
+                    variant="outline"
+                    onPress={handleMarkDone}
+                    style={styles.doneSecondaryBtn}
+                  />
+                </View>
               )}
 
               <View style={styles.secondaryRow}>
@@ -444,6 +456,13 @@ export function TaskDetailSheet({
             />
           )}
 
+          {/* Metadata info */}
+          <View style={styles.metadataContainer}>
+            <Text style={styles.metadataText}>
+              ℹ️ {language === 'hi' ? 'कार्य निर्माण तिथि:' : 'Created on:'} {new Date(task.createdAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US')}
+            </Text>
+          </View>
+
           {/* History */}
           <Text style={styles.sectionLabel}>{translate('history')}</Text>
           {task.history.length === 0 ? (
@@ -471,6 +490,11 @@ export function TaskDetailSheet({
                         <Text style={styles.historyMonth}>{h.month}</Text>
                         <Text style={styles.historyStatus}>{statusText[h.status]}</Text>
                       </View>
+                      {h.completedAt && (
+                        <Text style={styles.historyTime}>
+                          📅 {new Date(h.completedAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US')}
+                        </Text>
+                      )}
                       {h.note ? (
                         <Text style={styles.historyNote}>📝 {h.note}</Text>
                       ) : null}
@@ -953,5 +977,32 @@ const styles = StyleSheet.create({
   },
   promoCta: {
     marginTop: 10,
+  },
+  doneButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  donePrimaryBtn: {
+    flex: 1,
+  },
+  doneSecondaryBtn: {
+    flex: 1,
+  },
+  metadataContainer: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.ivoryLine,
+    marginBottom: 12,
+  },
+  metadataText: {
+    ...Typography.caption,
+    color: Colors.inkSoft,
+  },
+  historyTime: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Colors.inkFaint,
+    marginTop: 2,
   },
 });
