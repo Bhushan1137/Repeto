@@ -6,7 +6,7 @@
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/43ce41eb-5d1d-4945-8191-450e042a0b9f",
-      "checkAutomatically": "ON_APP_START",
+      "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": "1.0.0",
