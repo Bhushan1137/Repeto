@@ -214,7 +214,17 @@ export default function HelpSupportScreen() {
     <View style={styles.root}>
       {/* Header Row */}
       <View style={styles.header}>
-        <TouchableRipple onPress={() => router.back()} style={styles.backBtn} borderless>
+        <TouchableRipple
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
+          style={styles.backBtn}
+          borderless
+        >
           <AppIcon name="chevron-back" size={22} color={Colors.indigo950} />
         </TouchableRipple>
         <Text style={styles.headerTitle}>{language === 'hi' ? 'सहायता और टिकट' : 'Help & Support'}</Text>

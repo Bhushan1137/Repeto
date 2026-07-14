@@ -15,7 +15,8 @@ export default function Index() {
     );
   }
 
-  if (!user) return <Redirect href="/(onboarding)/language" />;
+  if (!user) return <Redirect href="/(onboarding)/sign-in" />;
+  if (!user.languageSelected) return <Redirect href="/(onboarding)/language" />;
   if (!user.profileComplete) return <Redirect href="/(onboarding)/profile" />;
   if (!user.onboardingComplete) return <Redirect href="/(onboarding)/categories" />;
   return <Redirect href="/(tabs)" />;

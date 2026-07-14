@@ -95,13 +95,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: 12,
     elevation: 1,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
     overflow: 'hidden',
   },
   langCardActive: {
+    borderWidth: 1.5,
     borderColor: Colors.marigold,
     backgroundColor: 'rgba(232,163,61,0.04)',
+    elevation: 0,
   },
   ripple: {
     padding: 16,

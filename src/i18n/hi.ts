@@ -146,6 +146,7 @@ export const hi: Record<TranslationKey, string> = {
   presetLibrarySub: 'प्रीसेट पर टैप करें, अनुकूलित करें और दोहराने वाला कार्य जोड़ें।',
   allCategories: 'सभी',
   addFromPreset: 'प्रीसेट से जोड़ें',
+  createdBy: '{name} द्वारा बनाया गया',
   editTask: 'कार्य संपादित करें',
   taskUpdated: 'कार्य अपडेट किया गया',
   howOften: 'कितनी बार?',

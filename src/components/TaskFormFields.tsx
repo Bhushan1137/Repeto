@@ -333,12 +333,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     borderRadius: Radius.sm,
     backgroundColor: Colors.white,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
     overflow: 'hidden',
     elevation: 1,
   },
-  catChipActive: { borderColor: Colors.marigold, backgroundColor: 'rgba(232,163,61,0.04)' },
+  catChipActive: {
+    borderWidth: 1.5,
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.04)',
+    elevation: 0,
+  },
   catChipInner: {
     paddingVertical: 10,
     paddingHorizontal: 4,
@@ -360,12 +363,15 @@ const styles = StyleSheet.create({
   presetChip: {
     borderRadius: 999,
     backgroundColor: Colors.ivoryDim,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
     overflow: 'hidden',
     elevation: 0.5,
   },
-  presetChipActive: { borderColor: Colors.marigold, backgroundColor: 'rgba(232,163,61,0.1)' },
+  presetChipActive: {
+    borderWidth: 1.5,
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.1)',
+    elevation: 0,
+  },
   presetChipInner: {
     paddingVertical: 6,
     paddingHorizontal: 12,

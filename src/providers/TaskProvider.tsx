@@ -27,10 +27,12 @@ import {
   restoreTask,
   setNextDueDate,
   duplicateTask,
+  cleanupTasksOnRemoval,
 } from '@/domain/task';
 import { cancelTaskReminder, scheduleTaskReminder } from '@/services/notifications';
 import { subscribeToTasks } from '@/services/firebase/taskListener';
 import { computePreviousDueDate } from '@/domain/recurrence';
+import { removeHouseholdMember, normalizeHouseholdProfile } from '@/domain/household';
 
 interface OnboardingPreset {
   title: string;
@@ -61,11 +63,13 @@ interface TaskContextValue {
   snoozeTasks: (taskIds: string[], days?: number) => Promise<void>;
   deleteTasks: (taskIds: string[]) => Promise<void>;
   archiveTasks: (taskIds: string[]) => Promise<void>;
-  addPresetTask: (values: TaskFormValues) => Promise<boolean>;
+  addPresetTask: (values: TaskFormValues, shared?: SharedMember[]) => Promise<boolean>;
   updateTask: (taskId: string, values: TaskFormValues, shared?: SharedMember[]) => Promise<void>;
   completeOnboarding: (opts: { selectedPresets: OnboardingPreset[]; pushOptIn: boolean }) => Promise<void>;
   resetTasks: () => void;
   deleteHistoryEntry: (taskId: string, entryIndex: number) => Promise<void>;
+  removeHouseholdMemberAndCleanup: (memberCode: string, removeSharedTasks: boolean) => Promise<void>;
+  unshareAllLocalTasks: () => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -172,7 +176,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       try {
-        const task = createTaskFromParsed(parsed, opts);
+        const task = createTaskFromParsed(parsed, opts, user?.name);
         const next = [task, ...tasks];
         await persistAll(next);
         await syncTask(task, 'create');
@@ -293,13 +297,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addPresetTask = useCallback(
-    async (values: TaskFormValues): Promise<boolean> => {
+    async (values: TaskFormValues, shared?: SharedMember[]): Promise<boolean> => {
       if (!canAddTask(user, tasks.length)) {
         showToast(translate('freeTierLimit'));
         return false;
       }
       try {
-        const task = createTaskFromFormValues(values);
+        const task = createTaskFromFormValues(values, shared, user?.name);
         const next = [task, ...tasks];
         await persistAll(next);
         await syncTask(task, 'create');
@@ -359,7 +363,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
       try {
         const built = opts.selectedPresets.map((p) =>
-          createTaskFromPreset(p.title, p.category, p.freq, p.amount, p.finance, p.icon)
+          createTaskFromPreset(p.title, p.category, p.freq, p.amount, p.finance, p.icon, user.name)
         );
         const capped = capTasksForPlan(user, built);
         await updateUser({ onboardingComplete: true, pushOptIn: opts.pushOptIn });
@@ -541,6 +545,99 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [tasks, persistAll, syncTask, showToast, translate, user?.language]
   );
 
+  const removeHouseholdMemberAndCleanup = useCallback(
+    async (memberCode: string, removeSharedTasks: boolean) => {
+      if (!user) return;
+
+      const member = (user.householdMembers ?? []).find((m) => m.code === memberCode);
+      if (!member) return;
+
+      const updatedProfile = removeHouseholdMember(user, memberCode);
+      const normalized = normalizeHouseholdProfile(updatedProfile);
+
+      await updateUser({
+        householdMembers: normalized.householdMembers,
+        householdMemberUids: normalized.householdMemberUids,
+      });
+
+      if (firebaseReady && member.userId) {
+        try {
+          const remoteB = await userRepository.loadRemote(member.userId);
+          if (remoteB) {
+            const updatedMembersB = (remoteB.householdMembers ?? []).filter(
+              (m) => m.userId !== user.id && m.code !== user.householdCode
+            );
+            const updatedUidsB = (remoteB.householdMemberUids ?? []).filter((uid) => uid !== user.id);
+            const updatedB = {
+              ...remoteB,
+              householdMembers: updatedMembersB,
+              householdMemberUids: updatedUidsB,
+              removedBy: user.name,
+            };
+            await userRepository.saveOther(member.userId, updatedB);
+          }
+        } catch (err) {
+          console.warn('[Repeato] Failed to remove myself from B\'s remote profile:', err);
+        }
+      }
+
+      const nextTasks = cleanupTasksOnRemoval(tasks, memberCode, member.userId, removeSharedTasks);
+      await persistAll(nextTasks);
+
+      if (firebaseReady && member.userId) {
+        const sharedTasks = tasks.filter((t) =>
+          t.sharedWith.some((m) => m.code === memberCode || m.userId === member.userId)
+        );
+
+        for (const task of sharedTasks) {
+          try {
+            if (removeSharedTasks) {
+              await taskRepository.deleteOne(task.id, member.userId);
+            } else {
+              const unsharedTask = {
+                ...task,
+                sharedWith: task.sharedWith.filter((m) => m.code !== memberCode && m.userId !== member.userId),
+                assignedTo: task.assignedTo === memberCode || task.assignedTo === member.userId ? undefined : task.assignedTo,
+                updatedAt: new Date().toISOString(),
+              };
+              await taskRepository.saveOne(unsharedTask, member.userId, 'update');
+            }
+          } catch (err) {
+            console.warn('[Repeato] Failed to clean up remote task on peer device:', task.id, err);
+          }
+        }
+      }
+
+      showToast(user?.language === 'hi' ? 'सदस्य को हटा दिया गया' : 'Member removed');
+    },
+    [user, tasks, firebaseReady, updateUser, persistAll, showToast, translate]
+  );
+
+  const unshareAllLocalTasks = useCallback(async () => {
+    if (!user?.id) return;
+    const cleanedTasks = tasks.map((t) => {
+      if (t.sharedWith && t.sharedWith.length > 0) {
+        return {
+          ...t,
+          sharedWith: [],
+          assignedTo: undefined,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return t;
+    });
+    await persistAll(cleanedTasks);
+    if (firebaseReady) {
+      for (const t of cleanedTasks) {
+        try {
+          await taskRepository.saveOne(t, user.id, 'update');
+        } catch (err) {
+          console.warn('[Repeato] Failed to sync unshared task in cleanup:', t.id, err);
+        }
+      }
+    }
+  }, [user?.id, tasks, persistAll, firebaseReady]);
+
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
@@ -582,8 +679,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       completeOnboarding,
       resetTasks,
       deleteHistoryEntry,
+      removeHouseholdMemberAndCleanup,
+      unshareAllLocalTasks,
     }),
-    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry]
+    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks]
   );
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

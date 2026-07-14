@@ -81,12 +81,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     borderRadius: Radius.md,
     backgroundColor: Colors.white,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
     overflow: 'hidden',
     elevation: 1,
   },
-  catCardActive: { borderColor: Colors.marigold, backgroundColor: 'rgba(232,163,61,0.04)' },
+  catCardActive: {
+    borderWidth: 1.5,
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.04)',
+    elevation: 0,
+  },
   cardRipple: {
     padding: 14,
   },

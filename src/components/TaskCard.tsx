@@ -8,6 +8,8 @@ import { daysUntilDue, dayLabel, shortDayLabel, daysPercent } from '@/domain/rec
 import { initials } from '@/domain/insights';
 import { ProgressRing } from '@/components/ProgressRing';
 import { useAuth } from '@/providers/AuthProvider';
+import { useTranslation } from '@/hooks/useTranslation';
+import { AppIcon } from '@/components/AppIcon';
 
 interface TaskCardProps {
   task: RepeatingTask;
@@ -32,6 +34,7 @@ export function TaskCard({
   const overdue = days < 0;
   const [hovered, setHovered] = useState(false);
   const { user } = useAuth();
+  const { translate } = useTranslation();
 
   const assignee = useMemo(() => {
     if (!task.assignedTo || !user) return null;
@@ -132,6 +135,17 @@ export function TaskCard({
               ))}
             </View>
           )}
+
+          {task.creatorName && (
+            <View style={styles.creatorRow}>
+              <AppIcon name="create-outline" size={11} color={Colors.inkSoft} />
+              <Text style={styles.creatorText}>
+                {task.creatorName === user?.name
+                  ? (language === 'hi' ? 'आपके द्वारा बनाया गया' : 'Created by you')
+                  : translate('createdBy').replace('{name}', task.creatorName)}
+              </Text>
+            </View>
+          )}
         </View>
         <ProgressRing
           percent={daysPercent(days)}
@@ -153,12 +167,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     overflow: 'hidden',
     elevation: 1.5,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
   },
   cardSelected: {
+    borderWidth: 1.5,
     borderColor: Colors.marigold,
     backgroundColor: Colors.ivory,
+    elevation: 0,
   },
   cardContent: {
     flexDirection: 'row',
@@ -233,6 +247,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.inkSoft,
     fontFamily: 'Manrope_600SemiBold',
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  creatorText: {
+    ...Typography.caption,
+    fontSize: 10.5,
+    color: Colors.inkSoft,
+    fontStyle: 'italic',
   },
 });
 

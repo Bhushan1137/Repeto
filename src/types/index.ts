@@ -86,6 +86,7 @@ export interface RepeatingTask {
   pinned?: boolean;
   archived?: boolean;
   archivedAt?: string;
+  creatorName?: string;
 }
 
 export interface UserProfile {
@@ -103,6 +104,8 @@ export interface UserProfile {
   householdCode?: string;
   householdMembers?: HouseholdMemberProfile[];
   householdMemberUids?: string[];
+  removedBy?: string;
+  termsAcceptedAt?: string;
 }
 
 export interface AppState {

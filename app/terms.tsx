@@ -15,7 +15,13 @@ export default function TermsScreen() {
       title={lang === 'hi' ? 'पीछे' : 'Back'}
       variant="ghost"
       style={styles.backBtn}
-      onPress={() => router.back()}
+      onPress={() => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+      }}
     />
   );
 
@@ -42,60 +48,66 @@ export default function TermsScreen() {
             <>
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>1. Acceptance of Terms</Text>
+                  <Text style={styles.sectionTitle}>1. Welcome & Acceptance of Terms</Text>
                   <Text style={styles.bodyText}>
-                    By creating an account or accessing the Repeato application, you agree to comply with and be bound by these Terms of Service. If you do not agree, you must immediately cease using the app.
+                    Hello there! We are absolutely delighted to have you use Repeato. By installing, signing into, or using our app, you are entering into a friendly agreement to follow these simple rules. These rules (which we call our "Terms of Service") are here to ensure that everyone in our community has a safe, supportive, and wonderful experience. If for any reason you do not agree with these guidelines, we kindly ask that you do not use the application.
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>2. Account Usage & Responsibility</Text>
+                  <Text style={styles.sectionTitle}>2. Personal Responsibility & Account Security</Text>
                   <Text style={styles.bodyText}>
-                    • You are responsible for safeguarding your Google account details used to log in.
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • You are solely responsible for any activity that occurs under your profile credentials, including household invites and task additions.
+                    Your account is your private space. Since you log in securely using your Google account, we ask that you take reasonable steps to keep your account safe. You are responsible for any tasks created or shared under your name. If you ever notice any unauthorized activity on your profile, please notify us immediately so we can help you secure it.
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>3. Acceptable Use & Collaboration</Text>
+                  <Text style={styles.sectionTitle}>3. Polite Collaboration & Household Rules</Text>
                   <Text style={styles.bodyText}>
-                    • You agree to use the household sharing features respectfully. You must not send spam invites, modify another user's private settings, or post inappropriate content in task notes.
+                    Repeato is designed to bring households closer together through shared tasks. To keep the app a warm and positive place:
                   </Text>
                   <Text style={styles.bodyText}>
-                    • Repeato reserves the right to suspend accounts that engage in abusive or malicious behavior.
+                    • Please treat household members with kindness and respect.
                   </Text>
-                </Card.Content>
-              </Card>
-
-              <Card style={styles.sectionCard} mode="elevated">
-                <Card.Content>
-                  <Text style={styles.sectionTitle}>4. Disclaimer & Limitations</Text>
                   <Text style={styles.bodyText}>
-                    Repeato is provided "as is" and "as available". We do not guarantee that the app will always be error-free or uninterrupted. We are not liable for any missed tasks, scheduling conflicts, database syncing delay, or financial losses resulting from task tracking.
+                    • Do not send spam household invitations to people you do not know.
                   </Text>
-                </Card.Content>
-              </Card>
-
-              <Card style={styles.sectionCard} mode="elevated">
-                <Card.Content>
-                  <Text style={styles.sectionTitle}>5. Modifying Terms</Text>
                   <Text style={styles.bodyText}>
-                    We may update these terms occasionally. Your continued use of Repeato after changes are posted constitutes acceptance of the modified Terms of Service.
+                    • Do not write abusive, offensive, or inappropriate text inside task titles or notes.
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    • We reserve the right to remove access or suspend accounts that engage in harassment, abuse, or malicious activity.
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>6. Legal Inquiries</Text>
+                  <Text style={styles.sectionTitle}>4. Task Data, Personalized Recommendations, & Data Integrity</Text>
                   <Text style={styles.bodyText}>
-                    For any questions regarding these terms, please contact us at:
+                    To provide you with a customized and helpful experience, we save your task lists and complete actions. This data is used to customize your dashboard and offer personalized in-app recommendations (such as tools or suggest chores). We guarantee that **we do not sell your personal task data to third parties**. While we do our very best to ensure all data is synced instantly and accurately, we cannot guarantee that the app will never experience minor errors or database delays. We are not liable for any missed chores or scheduling overlaps.
+                  </Text>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.sectionCard} mode="elevated">
+                <Card.Content>
+                  <Text style={styles.sectionTitle}>5. Changes & Updates to These Terms</Text>
+                  <Text style={styles.bodyText}>
+                    As Repeato grows and improves, we may occasionally need to update these terms. When we do, we will make sure the revised terms are accessible right here inside the app. Continuing to enjoy Repeato after these changes are posted means you agree to the new terms. We promise to always keep these rules simple, clear, and fair.
+                  </Text>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.sectionCard} mode="elevated">
+                <Card.Content>
+                  <Text style={styles.sectionTitle}>6. Getting in Touch</Text>
+                  <Text style={styles.bodyText}>
+                    If you ever have any questions about these terms, need help with your account, or just want to suggest a new feature, please send us a message! We love hearing from you:
                   </Text>
                   <Text style={styles.contactEmail}>✉ support@repeato.app</Text>
                 </Card.Content>
@@ -105,42 +117,48 @@ export default function TermsScreen() {
             <>
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>1. शर्तों की स्वीकृति</Text>
+                  <Text style={styles.sectionTitle}>1. सेवा की शर्तों की स्वीकृति</Text>
                   <Text style={styles.bodyText}>
-                    Repeato एप्लिकेशन में खाता बनाकर या उसका उपयोग करके, आप इन सेवा की शर्तों का पालन करने और उनसे बाध्य होने के लिए सहमत होते हैं। यदि आप असहमत हैं, तो कृपया ऐप का उपयोग बंद कर दें।
+                    नमस्कार! Repeato का उपयोग करने के लिए हम आपका हृदय से आभार व्यक्त करते हैं। हमारे ऐप का उपयोग करके, आप हमारे सरल नियमों का पालन करने के लिए सहमत हो रहे हैं। ये नियम (जिन्हें हम "सेवा की शर्तें" कहते हैं) इसलिए बनाए गए हैं ताकि हमारे समुदाय के प्रत्येक सदस्य का अनुभव सुरक्षित, सहयोगी और शानदार हो। यदि आप किसी भी कारण से इन नियमों से सहमत नहीं हैं, तो हम आपसे अनुरोध करते हैं कि ऐप का उपयोग न करें।
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>2. खाते का उपयोग और जिम्मेदारी</Text>
+                  <Text style={styles.sectionTitle}>2. व्यक्तिगत जिम्मेदारी और खाता सुरक्षा</Text>
                   <Text style={styles.bodyText}>
-                    • आप अपने Google खाते के विवरण की सुरक्षा के लिए स्वयं जिम्मेदार हैं।
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • आपके प्रोफ़ाइल क्रेडेंशियल के तहत होने वाली किसी भी गतिविधि के लिए आप पूरी तरह उत्तरदायी हैं।
+                    आपका खाता आपकी निजी जगह है। चूंकि आप अपने Google खाते के माध्यम से सुरक्षित लॉग इन करते हैं, हम आपसे अनुरोध करते हैं कि अपने खाते को सुरक्षित रखने के लिए आवश्यक कदम उठाएं। आपके खाते के तहत होने वाली सभी गतिविधियों (जैसे नए कार्य जोड़ना या परिवार को आमंत्रित करना) के लिए आप स्वयं जिम्मेदार होंगे।
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>3. स्वीकार्य उपयोग और सहयोग</Text>
+                  <Text style={styles.sectionTitle}>3. पारिवारिक शिष्टाचार और नियम</Text>
                   <Text style={styles.bodyText}>
-                    • आप परिवार साझाकरण सुविधाओं का उपयोग सम्मानपूर्वक करने के लिए सहमत हैं। गलत या अनुचित कंटेंट डालना प्रतिबंधित है।
+                    Repeato को परिवार के सदस्यों को जोड़ने और मिलकर कार्य करने के लिए बनाया गया है। ऐप को एक सकारात्मक और मैत्रीपूर्ण स्थान बनाए रखने के लिए:
                   </Text>
                   <Text style={styles.bodyText}>
-                    • किसी भी अनुचित या दुर्व्यवहार वाले व्यवहार के मामले में Repeato खाते को निलंबित करने का अधिकार सुरक्षित रखता है।
+                    • कृपया परिवार के सभी सदस्यों के साथ आदर और सम्मान से व्यवहार करें।
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    • उन लोगों को आमंत्रित न करें जिन्हें आप नहीं जानते हैं।
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    • कार्यों के शीर्षकों या नोट्स में किसी भी प्रकार की अनुचित या अभद्र भाषा का उपयोग न करें।
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    • दुर्व्यवहार या किसी को परेशान करने की स्थिति में हम संबंधित खाते को निलंबित करने का अधिकार रखते हैं।
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>4. अस्वीकरण और सीमाएं</Text>
+                  <Text style={styles.sectionTitle}>4. कार्य डेटा और सुझावों की गोपनीयता</Text>
                   <Text style={styles.bodyText}>
-                    Repeato "जैसा है" और "जैसी उपलब्धता" के आधार पर प्रदान किया जाता है। हम किसी भी छूटे हुए कार्यों, समय-सारणी के टकराव, या वित्तीय नुकसान के लिए उत्तरदायी नहीं हैं।
+                    आपके अनुभव को व्यक्तिगत और सहायक बनाने के लिए, हम आपके कार्यों की जानकारी सहेजते हैं। इस डेटा का उपयोग आपके ऐप में सुधार करने और आपको उपयोगी सुझाव देने के लिए किया जाता है। हम गारंटी देते हैं कि **हम आपका डेटा कभी किसी को नहीं बेचते हैं**। हालांकि हम डेटा को हमेशा सुरक्षित रखने का पूरा प्रयास करते हैं, फिर भी तकनीकी सीमाओं के कारण होने वाली किसी भी कमी या डेटा विलंब के लिए हम जिम्मेदार नहीं होंगे।
                   </Text>
                 </Card.Content>
               </Card>
@@ -149,16 +167,16 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>5. शर्तों में संशोधन</Text>
                   <Text style={styles.bodyText}>
-                    हम समय-समय पर इन शर्तों को बदल सकते हैं। अपडेट की गई शर्तों की घोषणा के बाद ऐप का उपयोग जारी रखना आपकी स्वीकृति माना जाएगा।
+                    जैसे-जैसे Repeato में नए फीचर्स जुड़ेंगे, हमें समय-समय पर इन शर्तों को अपडेट करना पड़ सकता है। नए नियमों की जानकारी हमेशा आपको यहाँ मिल जाएगी। शर्तों में बदलाव के बाद भी ऐप का उपयोग जारी रखने का अर्थ है कि आप नई शर्तों से सहमत हैं।
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>6. कानूनी पूछताछ</Text>
+                  <Text style={styles.sectionTitle}>6. हमसे संपर्क करें</Text>
                   <Text style={styles.bodyText}>
-                    इन शर्तों के बारे में किसी भी प्रश्न के लिए, कृपया हमसे यहाँ संपर्क करें:
+                    यदि आपके पास शर्तों को लेकर कोई प्रश्न या सुझाव हैं, तो कृपया हमसे बेझिझक संपर्क करें:
                   </Text>
                   <Text style={styles.contactEmail}>✉ support@repeato.app</Text>
                 </Card.Content>

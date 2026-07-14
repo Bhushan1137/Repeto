@@ -181,8 +181,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result.ok || !result.user) {
         return { ok: false, error: result.error, message: result.message };
       }
-      await persistUser(result.user);
-      return { ok: true, user: result.user };
+      const finalUser: UserProfile = {
+        ...result.user,
+        termsAcceptedAt: result.user.termsAcceptedAt ?? new Date().toISOString(),
+      };
+      await persistUser(finalUser);
+      return { ok: true, user: finalUser };
     },
     [persistUser]
   );

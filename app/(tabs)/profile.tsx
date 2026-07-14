@@ -100,7 +100,6 @@ export default function ProfileScreen() {
           const performLogout = async () => {
             await signOut();
             resetTasks();
-            router.replace('/(onboarding)/language');
           };
           if (Platform.OS === 'web') {
             if (window.confirm(user.language === 'hi' ? 'क्या आप वाकई लॉग आउट करना चाहते हैं?' : 'Are you sure you want to log out?')) {

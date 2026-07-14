@@ -39,7 +39,7 @@ interface TaskFormSheetProps {
   mode: 'create' | 'edit';
   saveLabel?: string;
   onClose: () => void;
-  onSave: (values: TaskFormValues, shared?: SharedMember[]) => void;
+  onSave: (values: TaskFormValues, shared?: SharedMember[]) => void | Promise<void | boolean>;
   initialShared?: SharedMember[];
   editingTaskId?: string;
 }
@@ -62,15 +62,17 @@ export function TaskFormSheet({
   const [formState, setFormState] = useState<TaskFormState | null>(null);
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
   const [shared, setShared] = useState<SharedMember[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!initial || !visible) return;
     setFormState(formStateFromValues(initial));
     setErrors({});
     setShared(initialShared ?? []);
+    setSaving(false);
   }, [initial, visible, initialShared]);
 
-  if (!initial || !formState) return null;
+  if (!formState) return null;
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -106,12 +108,19 @@ export function TaskFormSheet({
     setShared(shared.filter((s) => s.phone !== phone));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const nextErrors = validateFormState(formState, translate);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    onSave(formStateToValues(formState, language), shared);
-    onClose();
+    setSaving(true);
+    try {
+      await onSave(formStateToValues(formState, language), shared);
+      onClose();
+    } catch (err) {
+      console.warn('[Repeato] TaskFormSheet save failed:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -136,7 +145,7 @@ export function TaskFormSheet({
               editingTaskId={editingTaskId}
             />
 
-            {mode === 'edit' ? (
+            {user?.householdMembers && user.householdMembers.length > 0 ? (
               <>
                 <Text style={styles.label}>{translate('shareHousehold')}</Text>
                 <View style={styles.chips}>
@@ -165,11 +174,14 @@ export function TaskFormSheet({
             <Button
               title={saveLabel ?? (mode === 'edit' ? translate('savePreset') : translate('addFromPreset'))}
               onPress={handleSave}
+              loading={saving}
+              disabled={saving}
               style={{ marginTop: 20 }}
             />
             <Button
               title={translate('backBtn')}
               variant="ghost"
+              disabled={saving}
               style={{ marginTop: 10, marginBottom: 28 }}
               onPress={onClose}
             />

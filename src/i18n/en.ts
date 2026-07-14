@@ -144,6 +144,7 @@ export const en = {
   presetLibrarySub: 'Tap a preset to customize and add it as a recurring task.',
   allCategories: 'All',
   addFromPreset: 'Add from preset',
+  createdBy: 'Created by {name}',
   editTask: 'Edit task',
   taskUpdated: 'Task updated',
   howOften: 'How often?',

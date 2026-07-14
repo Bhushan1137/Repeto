@@ -48,7 +48,17 @@ export default function NotificationsScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <TouchableRipple onPress={() => router.back()} style={styles.backBtn} borderless>
+        <TouchableRipple
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
+          style={styles.backBtn}
+          borderless
+        >
           <AppIcon name="chevron-back" size={22} color={Colors.indigo950} />
         </TouchableRipple>
         <Text style={styles.headerTitle}>{language === 'hi' ? 'सूचनाएं' : 'Notifications'}</Text>
@@ -73,7 +83,13 @@ export default function NotificationsScreen() {
             </Text>
             <Button
               title={language === 'hi' ? 'वापस जाएं' : 'Go Back'}
-              onPress={() => router.back()}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)');
+                }
+              }}
               style={styles.goBackBtn}
             />
           </View>

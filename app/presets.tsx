@@ -8,8 +8,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useTasks } from '@/providers/TaskProvider';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { ScreenShell } from '@/components/ScreenShell';
-import { getAllPresets, presetToFormValues, type PresetListItem } from '@/domain/preset';
-import type { CategoryKey } from '@/types';
+import { getAllPresets, presetToFormValues, type PresetListItem, type TaskFormValues } from '@/domain/preset';
+import type { CategoryKey, SharedMember } from '@/types';
 
 export default function PresetsScreen() {
   const router = useRouter();
@@ -28,9 +28,14 @@ export default function PresetsScreen() {
     setDraft({ preset, values: presetToFormValues(preset, language) });
   };
 
-  const handleSave = async (values: Parameters<typeof addPresetTask>[0]) => {
-    const ok = await addPresetTask(values);
-    if (ok) setDraft(null);
+  const handleSave = async (values: TaskFormValues, shared?: SharedMember[]) => {
+    const ok = await addPresetTask(values, shared);
+    if (ok) {
+      setDraft(null);
+      router.replace('/(tabs)');
+    } else {
+      throw new Error('Failed to create task from preset');
+    }
   };
 
   return (
@@ -39,7 +44,17 @@ export default function PresetsScreen() {
         title={translate('presetLibraryTitle')}
         subtitle={translate('presetLibrarySub')}
         headerExtra={
-          <TouchableRipple onPress={() => router.back()} style={styles.backBtn} borderless>
+          <TouchableRipple
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)');
+              }
+            }}
+            style={styles.backBtn}
+            borderless
+          >
             <Text style={styles.backText}>← {translate('backBtn')}</Text>
           </TouchableRipple>
         }
@@ -91,6 +106,7 @@ export default function PresetsScreen() {
         heading={translate('addFromPreset')}
         initial={draft?.values ?? null}
         mode="create"
+        saveLabel={translate('navAdd')}
         onClose={() => setDraft(null)}
         onSave={handleSave}
       />

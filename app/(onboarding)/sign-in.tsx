@@ -9,21 +9,6 @@ import { Button } from '@/components/Button';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { Colors, Radius } from '@/constants/theme';
 
-function navigateAfterSignIn(
-  router: ReturnType<typeof useRouter>,
-  profile: { onboardingComplete?: boolean; profileComplete?: boolean; languageSelected?: boolean }
-) {
-  if (profile.onboardingComplete) {
-    router.replace('/(tabs)');
-  } else if (!profile.languageSelected) {
-    router.replace('/(onboarding)/language');
-  } else if (profile.profileComplete) {
-    router.replace('/(onboarding)/categories');
-  } else {
-    router.replace('/(onboarding)/profile');
-  }
-}
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SignInScreen() {
@@ -36,13 +21,6 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const insets = useSafeAreaInsets();
-
-  // After redirect sign-in, auth state updates and we navigate
-  React.useEffect(() => {
-    if (ready && user) {
-      navigateAfterSignIn(router, user);
-    }
-  }, [ready, user?.id, user?.onboardingComplete, user?.profileComplete]);
 
   const handleSignIn = async () => {
     if (!agreed) {
@@ -67,10 +45,6 @@ export default function SignInScreen() {
       }
       setError(result.message ?? translate('signInFailed'));
       return;
-    }
-
-    if (result.user) {
-      navigateAfterSignIn(router, result.user);
     }
   };
 
@@ -123,7 +97,18 @@ export default function SignInScreen() {
         <Text style={styles.webHint}>{translate('signInWebHint')}</Text>
       ) : null}
 
-      <Button title={translate('backBtn')} variant="ghost" style={{ marginTop: 8 }} onPress={() => router.back()} />
+      <Button
+        title={translate('backBtn')}
+        variant="ghost"
+        style={{ marginTop: 8 }}
+        onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(onboarding)/language');
+          }
+        }}
+      />
     </ScrollView>
   );
 }

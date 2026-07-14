@@ -40,7 +40,11 @@ export function createTaskId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function createTaskFromFormValues(values: TaskFormValues, shared: SharedMember[] = []): RepeatingTask {
+export function createTaskFromFormValues(
+  values: TaskFormValues,
+  shared: SharedMember[] = [],
+  creatorName?: string
+): RepeatingTask {
   const now = new Date().toISOString();
   return {
     id: createTaskId(),
@@ -58,6 +62,7 @@ export function createTaskFromFormValues(values: TaskFormValues, shared: SharedM
     updatedAt: now,
     escalationCount: 0,
     icon: values.icon,
+    creatorName,
   };
 }
 
@@ -67,7 +72,8 @@ export function createTaskFromPreset(
   freq: string,
   amount?: number,
   finance?: boolean,
-  icon?: string
+  icon?: string,
+  creatorName?: string
 ): RepeatingTask {
   const recurrence = parseFrequencyLabel(freq);
   return {
@@ -85,12 +91,14 @@ export function createTaskFromPreset(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
+    creatorName,
   };
 }
 
 export function createTaskFromParsed(
   parsed: ParsedTaskInput,
-  opts: { finance: boolean; shared: SharedMember[] }
+  opts: { finance: boolean; shared: SharedMember[] },
+  creatorName?: string
 ): RepeatingTask {
   return {
     id: createTaskId(),
@@ -109,6 +117,7 @@ export function createTaskFromParsed(
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
     icon: parsed.icon,
+    creatorName,
   };
 }
 
@@ -235,4 +244,33 @@ export function updateTaskInList(
   updater: (task: RepeatingTask) => RepeatingTask
 ): RepeatingTask[] {
   return tasks.map((task) => (task.id === taskId ? updater(task) : task));
+}
+
+export function cleanupTasksOnRemoval(
+  tasks: RepeatingTask[],
+  removedCode: string,
+  removedUserId?: string,
+  removeSharedTasks: boolean = false
+): RepeatingTask[] {
+  const matchesRemoved = (idOrCode?: string) => {
+    if (!idOrCode) return false;
+    return idOrCode === removedCode || (!!removedUserId && idOrCode === removedUserId);
+  };
+
+  if (removeSharedTasks) {
+    return tasks.filter((t) => !t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId)));
+  } else {
+    return tasks.map((t) => {
+      const isShared = t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId));
+      if (isShared) {
+        return {
+          ...t,
+          sharedWith: t.sharedWith.filter((m) => !matchesRemoved(m.code) && !matchesRemoved(m.userId)),
+          assignedTo: matchesRemoved(t.assignedTo) ? undefined : t.assignedTo,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return t;
+    });
+  }
 }

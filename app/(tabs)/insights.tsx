@@ -125,31 +125,34 @@ export default function InsightsScreen() {
               <SectionHeader label={language === 'hi' ? 'गृहस्थी का योगदान' : 'Household Contribution'} />
               <Card style={styles.leaderboardCard} mode="elevated">
                 <Card.Content style={styles.leaderboardContent}>
-                  {members.map((m) => (
-                    <View key={m.name} style={styles.leaderboardRow}>
-                      <View style={[styles.avatar, { backgroundColor: m.color || Colors.marigold }]}>
-                        <Text style={styles.avatarText}>{m.short}</Text>
-                      </View>
-                      <View style={styles.leaderboardInfo}>
-                        <View style={styles.leaderboardTopLine}>
-                          <Text style={styles.leaderboardName}>
-                            {m.name} {m.isYou ? (language === 'hi' ? '(आप)' : '(You)') : ''}
-                          </Text>
-                          <Text style={styles.leaderboardStatText}>
-                            {m.onTimePercent}% {language === 'hi' ? 'समय पर' : 'on-time'} · {m.taskCount} {language === 'hi' ? 'कार्य' : 'tasks'}
-                          </Text>
+                  {members.map((m) => {
+                    const key = m.isYou ? 'you' : (m.code || m.userId || m.name);
+                    return (
+                      <View key={key} style={styles.leaderboardRow}>
+                        <View style={[styles.avatar, { backgroundColor: m.color || Colors.marigold }]}>
+                          <Text style={styles.avatarText}>{m.short}</Text>
                         </View>
-                        <View style={styles.leaderboardBarTrack}>
-                          <View
-                            style={[
-                              styles.leaderboardBarFill,
-                              { width: `${m.onTimePercent}%`, backgroundColor: m.color || Colors.marigold },
-                            ]}
-                          />
+                        <View style={styles.leaderboardInfo}>
+                          <View style={styles.leaderboardTopLine}>
+                            <Text style={styles.leaderboardName}>
+                              {m.name} {m.isYou ? (language === 'hi' ? '(आप)' : '(You)') : ''}
+                            </Text>
+                            <Text style={styles.leaderboardStatText}>
+                              {m.onTimePercent}% {language === 'hi' ? 'समय पर' : 'on-time'} · {m.taskCount} {language === 'hi' ? 'कार्य' : 'tasks'}
+                            </Text>
+                          </View>
+                          <View style={styles.leaderboardBarTrack}>
+                            <View
+                              style={[
+                                styles.leaderboardBarFill,
+                                { width: `${m.onTimePercent}%`, backgroundColor: m.color || Colors.marigold },
+                              ]}
+                            />
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </Card.Content>
               </Card>
             </>

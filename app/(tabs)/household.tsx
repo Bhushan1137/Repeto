@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable } from 'react-native';
+import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'qrcode';
+import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTasks } from '@/providers/TaskProvider';
 import { useAuth } from '@/providers/AuthProvider';
@@ -37,7 +37,7 @@ import type { RepeatingTask } from '@/types';
 export default function HouseholdScreen() {
   const router = useRouter();
   const { user, updateUser } = useAuth();
-  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry } = useTasks();
+  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks } = useTasks();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
   const { addNotification } = useNotifications();
@@ -50,24 +50,48 @@ export default function HouseholdScreen() {
     return tasks.find((t) => t.id === selectedTaskId) || null;
   }, [tasks, selectedTaskId]);
 
+  useEffect(() => {
+    if (user?.removedBy) {
+      const removedBy = user.removedBy;
+      if (Platform.OS === 'web') {
+        window.alert(
+          language === 'hi'
+            ? `आपको ${removedBy} द्वारा परिवार से हटा दिया गया है। सभी साझा कार्य अनशेयर या हटा दिए गए हैं।`
+            : `You were removed from the household by ${removedBy}. All shared tasks are unshared or removed.`
+        );
+        (async () => {
+          await updateUser({ removedBy: undefined });
+          await unshareAllLocalTasks();
+        })();
+      } else {
+        Alert.alert(
+          language === 'hi' ? 'परिवार से हटाया गया' : 'Removed from Household',
+          language === 'hi'
+            ? `आपको ${removedBy} द्वारा परिवार से हटा दिया गया है। सभी साझा कार्य अनशेयर या हटा दिए गए हैं।`
+            : `You were removed from the household by ${removedBy}. All shared tasks are unshared or removed.`,
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await updateUser({ removedBy: undefined });
+                await unshareAllLocalTasks();
+              },
+            },
+          ]
+        );
+      }
+    }
+  }, [user?.removedBy, language, unshareAllLocalTasks, updateUser]);
+
   const [codeInput, setCodeInput] = useState('');
   const [addingCode, setAddingCode] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [scannerVisible, setScannerVisible] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
   const ringPercent = stats.total > 0 ? (stats.onTime / stats.total) * 100 : 0;
   const myCode = user?.householdCode ?? '';
-
-  useEffect(() => {
-    if (myCode) {
-      QRCode.toDataURL(myCode, { margin: 1 })
-        .then((url) => setQrDataUrl(url))
-        .catch((err) => console.warn('[Repeato] QR generation failed', err));
-    }
-  }, [myCode]);
 
   const message = user ? inviteMessage(user) : '';
 
@@ -174,7 +198,58 @@ export default function HouseholdScreen() {
 
   const removeMember = async (code?: string) => {
     if (!user || !code) return;
-    await updateUser(removeHouseholdMember(user, code));
+    const member = (user.householdMembers ?? []).find((m) => m.code === code);
+    const memberName = member ? member.name : code;
+
+    if (Platform.OS === 'web') {
+      const confirmRemove = window.confirm(
+        language === 'hi'
+          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
+          : `Are you sure you want to remove ${memberName} from your household?`
+      );
+      if (!confirmRemove) return;
+
+      const deleteTasks = window.confirm(
+        language === 'hi'
+          ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
+          : 'Do you want to delete all shared tasks associated with this member from both devices?'
+      );
+
+      await removeHouseholdMemberAndCleanup(code, deleteTasks);
+    } else {
+      Alert.alert(
+        language === 'hi' ? 'सदस्य को हटाएं?' : 'Remove Member?',
+        language === 'hi'
+          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
+          : `Are you sure you want to remove ${memberName} from your household?`,
+        [
+          { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+          {
+            text: language === 'hi' ? 'हटाएं' : 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                language === 'hi' ? 'साझा कार्य हटाएं?' : 'Remove Shared Tasks?',
+                language === 'hi'
+                  ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
+                  : 'Do you want to delete all shared tasks associated with this member from both devices?',
+                [
+                  {
+                    text: language === 'hi' ? 'कार्य रखें' : 'Keep Tasks',
+                    onPress: () => removeHouseholdMemberAndCleanup(code, false),
+                  },
+                  {
+                    text: language === 'hi' ? 'कार्य हटाएं' : 'Remove Tasks',
+                    style: 'destructive',
+                    onPress: () => removeHouseholdMemberAndCleanup(code, true),
+                  },
+                ]
+              );
+            },
+          },
+        ]
+      );
+    }
   };
 
   // Sort members for the leaderboard
@@ -277,24 +352,58 @@ export default function HouseholdScreen() {
           </Card>
         ) : null}
 
-        {stats.total === 0 ? (
+        <View style={styles.sharedHeaderRow}>
+          <SectionHeader label={translate('sharedTasks')} count={filteredSharedTasks.length} />
+          <TouchableRipple
+            style={styles.customAddBtn}
+            onPress={() => router.push('/(tabs)/add?household=true')}
+            borderless
+          >
+            <View style={styles.customAddInner}>
+              <AppIcon name="people" size={14} color={Colors.indigo950} />
+              <Text style={styles.customAddText}>
+                {language === 'hi' ? 'नया साझा कार्य' : 'Create Shared Task'}
+              </Text>
+            </View>
+          </TouchableRipple>
+        </View>
+
+        {stats.shared.length === 0 ? (
           <EmptyState
             icon="🏠"
             title={translate('householdEmptyTitle')}
             subtitle={translate('householdEmptySub')}
           />
         ) : (
-          <Card style={styles.summaryCard} mode="elevated">
-            <LinearGradient colors={[...Gradients.hero]} style={styles.summary}>
-              <ProgressRing percent={ringPercent} color={Colors.marigold} size={64} stroke={6} />
-              <View>
-                <Text style={styles.summaryBig}>
-                  {stats.onTime}/{stats.total}
-                </Text>
-                <Text style={styles.summaryLbl}>{translate('householdOnTime')}</Text>
-              </View>
-            </LinearGradient>
-          </Card>
+          <>
+            {stats.total > 0 && (
+              <Card style={styles.summaryCard} mode="elevated">
+                <LinearGradient colors={[...Gradients.hero]} style={styles.summary}>
+                  <ProgressRing percent={ringPercent} color={Colors.marigold} size={64} stroke={6} />
+                  <View>
+                    <Text style={styles.summaryBig}>
+                      {stats.onTime}/{stats.total}
+                    </Text>
+                    <Text style={styles.summaryLbl}>{translate('householdOnTime')}</Text>
+                  </View>
+                </LinearGradient>
+              </Card>
+            )}
+
+            {filteredSharedTasks.length === 0 ? (
+              <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
+            ) : (
+              filteredSharedTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  language={language}
+                  onPress={() => setSelectedTaskId(task.id)}
+                  onCompletePress={() => completeTask(task.id)}
+                />
+              ))
+            )}
+          </>
         )}
 
         <SectionHeader label={translate('members')} count={members.length} />
@@ -346,8 +455,15 @@ export default function HouseholdScreen() {
                       )}
                     </View>
                     {!m.isYou && m.code ? (
-                      <TouchableRipple onPress={() => removeMember(m.code)} style={styles.removeBtn} borderless>
-                        <AppIcon name="close" size={16} color={Colors.inkFaint} />
+                      <TouchableRipple
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          removeMember(m.code);
+                        }}
+                        style={styles.removeBtn}
+                        borderless
+                      >
+                        <AppIcon name="close" size={16} color={Colors.indigo950} />
                       </TouchableRipple>
                     ) : null}
                   </View>
@@ -365,35 +481,6 @@ export default function HouseholdScreen() {
           currentUserName={user?.name ?? 'You'}
           language={language}
         />
-
-        <View style={styles.sharedHeaderRow}>
-          <SectionHeader label={translate('sharedTasks')} count={filteredSharedTasks.length} />
-          <TouchableRipple
-            style={styles.customAddBtn}
-            onPress={() => router.push('/(tabs)/add?household=true')}
-            borderless
-          >
-            <View style={styles.customAddInner}>
-              <AppIcon name="people" size={14} color={Colors.indigo950} />
-              <Text style={styles.customAddText}>
-                {language === 'hi' ? 'नया साझा कार्य' : 'Create Shared Task'}
-              </Text>
-            </View>
-          </TouchableRipple>
-        </View>
-        {filteredSharedTasks.length === 0 ? (
-          <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
-        ) : (
-          filteredSharedTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              language={language}
-              onPress={() => setSelectedTaskId(task.id)}
-              onCompletePress={() => completeTask(task.id)}
-            />
-          ))
-        )}
       </ScreenShell>
 
       <TaskDetailSheet
@@ -441,10 +528,10 @@ export default function HouseholdScreen() {
           <Card style={styles.qrSheet} mode="elevated">
             <Card.Content style={styles.qrContent}>
               <Text style={styles.qrTitle}>{language === 'hi' ? 'स्कैन कर आमंत्रण भेजें' : 'Scan to join household'}</Text>
-              {qrDataUrl ? (
-                <Image
-                  source={{ uri: qrDataUrl }}
-                  style={styles.qrImage}
+              {myCode ? (
+                <QRCode
+                  value={myCode}
+                  size={180}
                 />
               ) : null}
               <Text style={styles.qrCodeText}>{myCode}</Text>
@@ -518,10 +605,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.ink,
     textAlign: 'center',
-  },
-  qrImage: {
-    width: 180,
-    height: 180,
   },
   qrCodeText: {
     fontFamily: 'Manrope_800ExtraBold',
