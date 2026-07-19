@@ -15,13 +15,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SuggestionsScreen() {
   const router = useRouter();
-  const { suggestions, toggleSuggestion, updateSuggestion, language } = useOnboarding();
+  const { suggestions, toggleSuggestion, updateSuggestion, language, categories } = useOnboarding();
   const { translate } = useTranslation(language);
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const acceptedCount = suggestions.filter((s) => s.accepted).length;
   const insets = useSafeAreaInsets();
 
   const editing = editIndex !== null ? suggestions[editIndex] : null;
+
+  // Group suggestions by selected category to match requirements
+  const groupedSuggestions = categories.map((catKey) => {
+    const items = suggestions
+      .map((s, idx) => ({ s, idx }))
+      .filter((item) => item.s.category === catKey);
+    return {
+      categoryKey: catKey,
+      items,
+    };
+  }).filter((group) => group.items.length > 0);
 
   return (
     <View style={styles.screen}>
@@ -33,56 +44,79 @@ export default function SuggestionsScreen() {
             paddingBottom: Math.max(insets.bottom, 16) + 16,
           },
         ]}
+        showsVerticalScrollIndicator={false}
       >
         <OnboardingProgress step={4} />
         <Text style={styles.title}>{translate('suggestedForYou')}</Text>
         <Text style={styles.sub}>{translate('tasksWillBeAdded', { count: acceptedCount })}</Text>
         <Text style={styles.hint}>{translate('tapToEditPreset')}</Text>
 
-        {suggestions.map((s, i) => {
-          const cat = CATEGORY_MAP[s.category];
-          const title = language === 'hi' ? s.titleHi : s.title;
-          const freq = language === 'hi' ? s.freqHi : s.freq;
+        {groupedSuggestions.map((group) => {
+          const cat = CATEGORY_MAP[group.categoryKey];
+          const catLabel = language === 'hi' ? cat.labelHi : cat.labelEn;
+
           return (
-            <Card
-              key={`preset-${i}`}
-              style={[styles.rowCard, !s.accepted && styles.rowSkipped]}
-              mode="elevated"
-            >
-              <TouchableRipple
-                onPress={() => setEditIndex(i)}
-                style={styles.cardRipple}
-                borderless
-              >
-                <View style={styles.rowContent}>
-                  <View style={styles.rowIconWrap}>
-                    <Text style={styles.rowIcon}>{cat.icon}</Text>
-                  </View>
-                  <View style={styles.rowInfo}>
-                    <Text style={[styles.rowTitle, !s.accepted && styles.skipped]}>{title}</Text>
-                    <Text style={styles.rowFreq}>
-                      {freq}
-                      {s.amount ? ` · ₹${s.amount.toLocaleString('en-IN')}` : ''}
-                    </Text>
-                    <Text style={styles.editHint}>{translate('editPreset')}</Text>
-                  </View>
-                  <TouchableRipple
-                    style={[styles.toggleBtn, s.accepted ? styles.toggleOn : styles.toggleOff]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      toggleSuggestion(i);
-                    }}
-                    borderless
+            <View key={group.categoryKey} style={styles.sectionBlock}>
+              <Text style={styles.sectionHeader}>{catLabel}</Text>
+              
+              {group.items.map(({ s, idx }) => {
+                const title = language === 'hi' ? s.titleHi : s.title;
+                const freq = language === 'hi' ? s.freqHi : s.freq;
+                return (
+                  <Card
+                    key={`preset-${idx}`}
+                    style={[styles.rowCard, !s.accepted && styles.rowSkipped]}
+                    mode="elevated"
                   >
-                    <Text style={styles.toggleText}>{s.accepted ? '✓' : '✕'}</Text>
-                  </TouchableRipple>
-                </View>
-              </TouchableRipple>
-            </Card>
+                    <TouchableRipple
+                      onPress={() => setEditIndex(idx)}
+                      style={styles.cardRipple}
+                      borderless
+                    >
+                      <View style={styles.rowContent}>
+                        <View style={styles.rowIconWrap}>
+                          <Text style={styles.rowIcon}>{cat.icon}</Text>
+                        </View>
+                        <View style={styles.rowInfo}>
+                          <Text style={[styles.rowTitle, !s.accepted && styles.skipped]}>{title}</Text>
+                          <Text style={styles.rowFreq}>
+                            {freq}
+                            {s.amount ? ` · ₹${s.amount.toLocaleString('en-IN')}` : ''}
+                          </Text>
+                          <Text style={styles.editHint}>{translate('editPreset')}</Text>
+                        </View>
+                        <View onStartShouldSetResponder={() => true}>
+                          <TouchableRipple
+                            style={[styles.toggleBtn, s.accepted ? styles.toggleOn : styles.toggleOff]}
+                            onPress={() => toggleSuggestion(idx)}
+                            borderless
+                          >
+                            <Text style={styles.toggleText}>{s.accepted ? '✓' : '✕'}</Text>
+                          </TouchableRipple>
+                        </View>
+                      </View>
+                    </TouchableRipple>
+                  </Card>
+                );
+              })}
+            </View>
           );
         })}
 
-        <Button title={translate('continueBtn')} style={styles.cta} onPress={() => router.push('/(onboarding)/finish')} />
+        <View style={styles.ctaRow}>
+          <Button
+            title={translate('skipSuggestions')}
+            variant="ghost"
+            style={styles.skipBtn}
+            onPress={() => router.push('/(onboarding)/finish')}
+          />
+          <Button
+            title={translate('continueBtn')}
+            style={styles.ctaBtn}
+            disabled={acceptedCount === 0}
+            onPress={() => router.push('/(onboarding)/finish')}
+          />
+        </View>
       </ScrollView>
 
       <TaskFormSheet
@@ -149,8 +183,33 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   toggleOn: { backgroundColor: Colors.teal, borderColor: Colors.teal },
-  toggleOff: { backgroundColor: Colors.clay, borderColor: Colors.clay, opacity: 0.5 },
+  toggleOff: { backgroundColor: Colors.clay, borderColor: Colors.clay },
   toggleText: { color: Colors.white, fontSize: 13, textAlign: 'center' },
-  cta: { marginTop: 22 },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 22,
+    gap: 12,
+  },
+  skipBtn: {
+    flex: 1,
+  },
+  ctaBtn: {
+    flex: 1.2,
+  },
+  sectionBlock: {
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  sectionHeader: {
+    fontSize: 12,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
 });
 

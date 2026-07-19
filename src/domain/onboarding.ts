@@ -23,7 +23,7 @@ export function buildOnboardingSuggestions(categories: CategoryKey[]): Onboardin
       category: cat,
       amount: p.amount,
       finance: p.finance,
-      accepted: true,
+      accepted: false,
       icon: p.icon,
     }))
   );

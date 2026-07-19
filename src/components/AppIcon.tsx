@@ -39,7 +39,8 @@ export type AppIconName =
   | 'camera-outline'
   | 'warning-outline'
   | 'send-outline'
-  | 'chatbox-ellipses-outline';
+  | 'chatbox-ellipses-outline'
+  | 'lock-closed-outline';
 
 interface AppIconProps {
   name: AppIconName;

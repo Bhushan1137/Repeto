@@ -118,6 +118,7 @@ export function TaskFormSheet({
       onClose();
     } catch (err) {
       console.warn('[Repeato] TaskFormSheet save failed:', err);
+      showToast(translate('saveError'));
     } finally {
       setSaving(false);
     }
@@ -134,6 +135,7 @@ export function TaskFormSheet({
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <Text style={styles.heading}>{heading}</Text>
+            <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
 
             <TaskFormFields
               language={language}
@@ -143,6 +145,7 @@ export function TaskFormSheet({
               onCategoryChange={handleCategoryChange}
               errors={errors}
               editingTaskId={editingTaskId}
+              sharedMembers={shared}
             />
 
             {user?.householdMembers && user.householdMembers.length > 0 ? (
@@ -222,7 +225,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   body: { paddingHorizontal: 22, paddingBottom: 28 },
-  heading: { fontFamily: 'Fraunces_700Bold', fontSize: 20, color: Colors.ink, marginBottom: 12 },
+  heading: { fontFamily: 'Fraunces_700Bold', fontSize: 20, color: Colors.ink, marginBottom: 4 },
+  subHeading: { fontFamily: 'Manrope_600SemiBold', fontSize: 12.5, color: Colors.inkSoft, marginBottom: 14 },
   label: { ...Typography.label, color: Colors.inkSoft, marginBottom: 8, marginTop: 16 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, marginTop: 6 },
   chipCard: {

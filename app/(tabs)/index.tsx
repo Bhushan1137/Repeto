@@ -23,7 +23,7 @@ import type { TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import { Card } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth'> = {
@@ -32,6 +32,62 @@ const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 's
   week: 'secWeek',
   month: 'secMonth',
 };
+
+function HomeStatCard({
+  iconName,
+  iconBg,
+  iconColor,
+  label,
+  count,
+  countLabel,
+  linkColor,
+  borderColor,
+  onPress,
+  active = false,
+}: {
+  iconName: string;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  count: string;
+  countLabel: string;
+  linkColor: string;
+  borderColor: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Card
+      style={[
+        styles.homeStatCard,
+        {
+          borderColor: active ? iconColor : borderColor,
+          borderWidth: active ? 1.8 : 1,
+          backgroundColor: active ? 'rgba(255,255,255,0.85)' : Colors.white,
+        },
+      ]}
+      mode="outlined"
+      onPress={onPress}
+    >
+      <Card.Content style={styles.homeStatContent}>
+        <View style={styles.homeStatHeader}>
+          <View style={[styles.homeStatIconWrap, { backgroundColor: iconBg }]}>
+            <AppIcon name={iconName as any} size={13} color={iconColor} />
+          </View>
+          <Text style={styles.homeStatLabel} numberOfLines={1}>{label}</Text>
+        </View>
+        <View style={styles.homeStatBody}>
+          <Text style={[styles.homeStatCount, { color: iconColor }]}>{count}</Text>
+          <Text style={styles.homeStatCountLabel}>{countLabel}</Text>
+        </View>
+        <View style={styles.homeStatFooter}>
+          <Text style={[styles.homeStatLink, { color: linkColor }]}>View</Text>
+          <AppIcon name="chevron-forward" size={11} color={linkColor} style={{ marginLeft: 2 }} />
+        </View>
+      </Card.Content>
+    </Card>
+  );
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -142,6 +198,17 @@ export default function HomeScreen() {
     return { today, overdue };
   }, [tasks]);
 
+  const upcomingCount = useMemo(() => {
+    let count = 0;
+    for (const t of tasks) {
+      const d = daysUntilDue(t.nextDueDate);
+      if (d > 0 && d <= 7) {
+        count += 1;
+      }
+    }
+    return count;
+  }, [tasks]);
+
   const handleAction = async (action: () => Promise<void>) => {
     await action();
     setSelectedTaskId(null);
@@ -163,27 +230,24 @@ export default function HomeScreen() {
     };
   }, [selectedCalendarDate, language]);
 
-  const greetingTitle = `Good morning, ${firstName} 👋`;
+  const calendarButtonLabel = useMemo(() => {
+    const dateToFormat = selectedCalendarDate ?? new Date();
+    const monthStr = dateToFormat.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+      month: 'short',
+    });
+    const dateNum = dateToFormat.getDate();
+    return language === 'hi' ? `${dateNum} ${monthStr}` : `${monthStr} ${dateNum}`;
+  }, [selectedCalendarDate, language]);
 
-  const searchButton = (
-    <Pressable
-      style={[styles.searchIconBtn, filterVisible && styles.searchIconBtnActive]}
-      onPress={() => {
-        setFilterVisible((v) => !v);
-        if (filterVisible) setFilter(DEFAULT_FILTER);
-      }}
-      hitSlop={8}
-    >
-      <AppIcon
-        name={filterVisible ? 'close' : 'search-outline'}
-        size={20}
-        color={filterVisible ? Colors.marigold : Colors.onDarkMuted}
-      />
-      {isFiltering && !filterVisible && (
-        <View style={styles.filterActiveDot} />
-      )}
-    </Pressable>
-  );
+  const greetingTitle = useMemo(() => {
+    const hour = new Date().getHours();
+    if (language === 'hi') {
+      const timeHi = hour < 12 ? 'सुप्रभात' : hour < 17 ? 'नमस्ते' : 'शुभ संध्या';
+      return `${timeHi}, ${firstName} 👋`;
+    }
+    const timeEn = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    return `${timeEn}, ${firstName} 👋`;
+  }, [language, firstName]);
 
   return (
     <View style={styles.root}>
@@ -193,37 +257,246 @@ export default function HomeScreen() {
         headerExtra={
           hasTasks ? (
             <View style={styles.headerExtraRow}>
-              <View style={styles.statsRow}>
-                <StatPill label={translate('secToday')} value={String(stats.today)} />
-                <StatPill
-                  label={translate('secOverdue')}
-                  value={String(stats.overdue)}
-                  tone={stats.overdue > 0 ? 'warn' : 'default'}
-                />
-              </View>
-              <Pressable
-                style={[styles.dayDateCard, calendarExpanded && styles.dayDateCardActive]}
-                onPress={() => setCalendarExpanded((v) => !v)}
-              >
-                <View style={styles.miniCalHeader}>
-                  <Text style={styles.miniCalHeaderLabel}>{currentDayLabel}</Text>
-                </View>
-                <View style={styles.miniCalBody}>
-                  <Text style={styles.miniCalValue}>{currentDateValue}</Text>
-                  <Text style={styles.miniCalSub}>{currentWeekdayLabel}</Text>
-                </View>
-              </Pressable>
-              {searchButton}
+              <HomeStatCard
+                iconName="calendar-outline"
+                iconBg="#DCFCE7"
+                iconColor="#0F766E"
+                label={translate('secToday')}
+                count={String(stats.today)}
+                countLabel={language === 'hi' ? 'कार्य' : (stats.today === 1 ? 'task' : 'tasks')}
+                linkColor="#0F766E"
+                borderColor="rgba(13, 148, 136, 0.15)"
+                active={filter.group === 'today'}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  group: prev.group === 'today' ? 'all' : 'today',
+                  category: 'all'
+                }))}
+              />
+              <HomeStatCard
+                iconName="time-outline"
+                iconBg="#FEE2E2"
+                iconColor="#C1502E"
+                label={translate('secOverdue')}
+                count={String(stats.overdue)}
+                countLabel={language === 'hi' ? 'कार्य' : (stats.overdue === 1 ? 'task' : 'tasks')}
+                linkColor="#C1502E"
+                borderColor="rgba(193, 80, 46, 0.15)"
+                active={filter.group === 'overdue'}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  group: prev.group === 'overdue' ? 'all' : 'overdue',
+                  category: 'all'
+                }))}
+              />
+              <HomeStatCard
+                iconName="calendar-sharp"
+                iconBg="#EFF6FF"
+                iconColor="#1D4ED8"
+                label={language === 'hi' ? 'आगामी' : 'Upcoming'}
+                count={String(upcomingCount)}
+                countLabel={language === 'hi' ? 'इस सप्ताह' : 'this week'}
+                linkColor="#1D4ED8"
+                borderColor="rgba(29, 78, 216, 0.15)"
+                active={filter.group === 'week'}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  group: prev.group === 'week' ? 'all' : 'week',
+                  category: 'all'
+                }))}
+              />
             </View>
           ) : null
         }
       >
+        {/* Search & Actions Bar */}
+        {hasTasks && (
+          <View style={styles.searchActionRow}>
+            <View style={styles.searchInputContainer}>
+              <AppIcon name="search-outline" size={18} color={Colors.inkFaint} />
+              <TextInput
+                placeholder={language === 'hi' ? 'खोजें...' : 'Search tasks...'}
+                value={filter.query}
+                onChangeText={(text) => setFilter(prev => ({ ...prev, query: text }))}
+                style={styles.searchInput}
+                placeholderTextColor={Colors.inkFaint}
+              />
+            </View>
+
+            <Pressable
+              style={[styles.actionBtnSquare, calendarExpanded && styles.actionBtnActive]}
+              onPress={() => setCalendarExpanded((v) => !v)}
+            >
+              <AppIcon name="calendar-outline" size={18} color={calendarExpanded ? Colors.marigoldDeep : Colors.indigo950} />
+              <Text style={[styles.actionBtnSquareText, calendarExpanded && styles.actionBtnActiveText]}>
+                {calendarButtonLabel}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.actionBtnRow, filterVisible && styles.actionBtnActive]}
+              onPress={() => setFilterVisible((v) => !v)}
+            >
+              <AppIcon name="filter-outline" size={16} color={filterVisible ? Colors.marigoldDeep : Colors.indigo950} />
+              <Text style={[styles.actionBtnRowText, filterVisible && styles.actionBtnActiveText]}>
+                {language === 'hi' ? 'फ़िल्टर' : 'Filters'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Filter chips bar */}
+        {hasTasks && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipsScroll}
+            contentContainerStyle={styles.chipsScrollContent}
+          >
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.group === 'all' && filter.category === 'all' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter({ query: '', group: 'all', category: 'all' })}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  filter.group === 'all' && filter.category === 'all' && styles.chipTextActive
+                ]}
+              >
+                {language === 'hi' ? 'सभी' : 'All'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.group === 'today' && filter.category === 'all' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                group: prev.group === 'today' ? 'all' : 'today',
+                category: 'all'
+              }))}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  filter.group === 'today' && filter.category === 'all' && styles.chipTextActive
+                ]}
+              >
+                {language === 'hi' ? 'आज' : 'Today'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.group === 'overdue' && filter.category === 'all' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                group: prev.group === 'overdue' ? 'all' : 'overdue',
+                category: 'all'
+              }))}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  filter.group === 'overdue' && filter.category === 'all' && styles.chipTextActive
+                ]}
+              >
+                {language === 'hi' ? 'विलंबित' : 'Overdue'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.group === 'week' && filter.category === 'all' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                group: prev.group === 'week' ? 'all' : 'week',
+                category: 'all'
+              }))}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  filter.group === 'week' && filter.category === 'all' && styles.chipTextActive
+                ]}
+              >
+                {language === 'hi' ? 'आगामी' : 'Upcoming'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.category === 'bills' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                category: prev.category === 'bills' ? 'all' : 'bills',
+                group: 'all'
+              }))}
+            >
+              <View style={styles.chipInner}>
+                <Text style={{ fontSize: 12, marginRight: 2 }}>💵</Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    filter.category === 'bills' && styles.chipTextActive
+                  ]}
+                >
+                  {language === 'hi' ? 'बिल' : 'Bills'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.category === 'health' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                category: prev.category === 'health' ? 'all' : 'health',
+                group: 'all'
+              }))}
+            >
+              <View style={styles.chipInner}>
+                <Text style={{ fontSize: 12, marginRight: 2 }}>💖</Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    filter.category === 'health' && styles.chipTextActive
+                  ]}
+                >
+                  {language === 'hi' ? 'स्वास्थ्य' : 'Health'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.chipBtn}
+              onPress={() => setFilterVisible(v => !v)}
+            >
+              <Text style={styles.chipText}>••• {language === 'hi' ? 'अधिक' : 'More'}</Text>
+            </Pressable>
+          </ScrollView>
+        )}
+
         {/* Filter bar */}
         {filterVisible && (
           <TaskFilterBar
             filter={filter}
             onChange={setFilter}
             language={language}
+            hideSearchAndGroups={true}
           />
         )}
 
@@ -737,5 +1010,164 @@ const styles = StyleSheet.create({
   closeCelebrationBtn: {
     marginTop: 6,
     width: '100%',
+  },
+
+  // Mockup Horizontal Stats Cards Row
+  homeStatCard: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  homeStatContent: {
+    padding: 8,
+  },
+  homeStatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  homeStatIconWrap: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeStatLabel: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkSoft,
+    flex: 1,
+  },
+  homeStatBody: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+    marginVertical: 1,
+  },
+  homeStatCount: {
+    fontSize: 20,
+    fontFamily: 'Fraunces_700Bold',
+    color: Colors.ink,
+    lineHeight: 24,
+  },
+  homeStatCountLabel: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.inkSoft,
+  },
+  homeStatFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  homeStatLink: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_800ExtraBold',
+  },
+
+  // Mockup Search & Actions row
+  searchActionRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 14,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.sm,
+    borderWidth: 1.2,
+    borderColor: Colors.ivoryLine,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: 42,
+    marginLeft: 6,
+    fontSize: 13.5,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.ink,
+    padding: 0,
+  },
+  actionBtnSquare: {
+    width: 52,
+    height: 42,
+    borderRadius: Radius.sm,
+    borderWidth: 1.2,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  actionBtnSquareText: {
+    fontSize: 8.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkFaint,
+  },
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: Radius.sm,
+    borderWidth: 1.2,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
+    gap: 4,
+  },
+  actionBtnRowText: {
+    fontSize: 12.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.indigo950,
+  },
+  actionBtnActive: {
+    borderColor: Colors.marigoldDeep,
+    backgroundColor: 'rgba(232,163,61,0.06)',
+  },
+  actionBtnActiveText: {
+    color: Colors.marigoldDeep,
+  },
+
+  // Mockup scrollable chips
+  chipsScroll: {
+    marginBottom: 12,
+  },
+  chipsScrollContent: {
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 16,
+  },
+  chipBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1.2,
+    borderColor: Colors.ivoryLine,
+  },
+  chipBtnActive: {
+    backgroundColor: Colors.indigo950,
+    borderColor: Colors.indigo950,
+  },
+  chipText: {
+    fontSize: 12,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.indigo950,
+  },
+  chipTextActive: {
+    color: Colors.white,
+  },
+  chipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

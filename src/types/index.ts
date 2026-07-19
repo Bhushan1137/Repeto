@@ -12,7 +12,11 @@ export type CategoryKey =
   | 'personal'
   | 'pets'
   | 'finance'
-  | 'kids';
+  | 'kids'
+  | 'shopping'
+  | 'fitness'
+  | 'medicines'
+  | 'work';
 
 export type RecurrenceType =
   | 'daily'

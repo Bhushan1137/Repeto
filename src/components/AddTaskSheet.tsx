@@ -11,16 +11,10 @@ import {
 } from 'react-native';
 import { Text, Card, TextInput as PaperInput, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { RecurrenceDatePicker } from '@/components/RecurrenceDatePicker';
+import { TaskFormFields } from '@/components/TaskFormFields';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useTaskParser } from '@/hooks/useTaskParser';
-import { parseTaskInput } from '@/domain/parser';
-import { Button } from '@/components/Button';
-import { SettingRow } from '@/components/SettingRow';
-import { SelectField } from '@/components/SelectField';
-import { TimeField } from '@/components/TimeField';
 import { FormField } from '@/components/FormField';
 import { AppIcon } from '@/components/AppIcon';
 import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
@@ -30,7 +24,9 @@ import { useAuth } from '@/providers/AuthProvider';
 import { canShareWith } from '@/domain/task';
 import { initials } from '@/domain/insights';
 import { toSharedMember } from '@/domain/household';
+import { Button } from '@/components/Button';
 import {
+  defaultFormState,
   applyCategoryChange,
   formStateFromParsed,
   formStateToValues,
@@ -59,144 +55,25 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
   const { showToast, message } = useToast();
   const { translate, language } = useTranslation();
   
-  const [step, setStep] = useState(1);
-  const [text, setText] = useState('');
-  const [debouncedText, setDebouncedText] = useState('');
-  const [formState, setFormState] = useState<TaskFormState | null>(null);
+  const [formState, setFormState] = useState<TaskFormState>(() => defaultFormState('bills'));
   const [shared, setShared] = useState<SharedMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
-  const lastParsedText = useRef('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDateForRecurrence, setSelectedDateForRecurrence] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!text.trim()) {
-      setDebouncedText('');
-      return;
-    }
-    const handler = setTimeout(() => {
-      setDebouncedText(text);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [text]);
-
-  const parsed = useTaskParser(debouncedText);
-
-  const currentFrequencyLabel = useMemo(() => {
-    if (!formState) return parsed?.frequencyLabel ?? '';
-    const rule = buildRecurrenceRule(formState);
-    return frequencyLabelFromRule(rule, language);
-  }, [formState, parsed, language]);
-
-  const openDatePicker = () => {
-    setSelectedDateForRecurrence(formState?.startDate ? new Date(formState.startDate) : new Date());
-    setShowDatePicker(true);
-  };
-
-  const handleDateConfirm = (date: Date) => {
-    setSelectedDateForRecurrence(date);
-    setShowDatePicker(false);
-  };
-
-  const recurrenceOptionsForDate = useMemo(() => {
-    if (!selectedDateForRecurrence) return [];
-
-    const date = selectedDateForRecurrence;
-    const weekdayIndex = date.getDay();
-    const dateNum = date.getDate();
-    const weekdayNameStr = weekdayLabel(weekdayIndex, language);
-    
-    const suffix = language === 'hi' ? '' : ordinalSuffix(dateNum);
-    const dayName = language === 'hi' ? `${dateNum} तारीख` : `${dateNum}${suffix} of the month`;
-
-    const monthName = date.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
-      month: 'short',
-    });
-    
-    const nth = Math.ceil(dateNum / 7);
-    const nthStr = nthLabel(nth, language);
-
-    return [
-      {
-        key: 'daily' as const,
-        label: language === 'hi' ? 'हर दिन' : 'Every day',
-        rule: { recurrenceType: 'daily' as const },
-      },
-      {
-        key: 'weekly' as const,
-        label: language === 'hi' ? `हर हफ्ते ${weekdayNameStr} को` : `Every week on ${weekdayNameStr}`,
-        rule: { recurrenceType: 'weekly' as const, weekday: weekdayIndex },
-      },
-      {
-        key: 'monthly' as const,
-        label: language === 'hi' ? `हर महीने की ${dayName} को` : `Every month on the ${dayName}`,
-        rule: { recurrenceType: 'monthDay' as const, dayOfMonth: dateNum },
-      },
-      {
-        key: 'yearly' as const,
-        label: language === 'hi' ? `हर साल ${dateNum} ${monthName} को` : `Every year on ${monthName} ${dateNum}`,
-        rule: { recurrenceType: 'yearly' as const },
-      },
-      {
-        key: 'nthWeekday' as const,
-        label: language === 'hi' 
-          ? `हर महीने का ${nthStr} ${weekdayNameStr}` 
-          : `Every ${nthStr} ${weekdayNameStr} of the month`,
-        rule: { recurrenceType: 'nthWeekday' as const, nthWeekday: nth, weekday: weekdayIndex },
-      },
-    ];
-  }, [selectedDateForRecurrence, language]);
-
-  const selectRecurrencePattern = (option: typeof recurrenceOptionsForDate[number]) => {
-    if (!formState || !selectedDateForRecurrence) return;
-    
-    const isoDateStr = selectedDateForRecurrence.toISOString().slice(0, 10);
-    
-    patchForm({
-      ...option.rule,
-      startDate: isoDateStr,
-    });
-    
-    setSelectedDateForRecurrence(null);
-  };
-
-  // Reset fields when sheet opens/closes
-  useEffect(() => {
-    if (!visible) {
-      setText('');
-      setFormState(null);
+    if (visible) {
+      setFormState(defaultFormState('bills'));
       setShared([]);
       setErrors({});
-      setStep(1);
-      lastParsedText.current = '';
-      setShowDatePicker(false);
-      setSelectedDateForRecurrence(null);
     }
   }, [visible]);
 
-  useEffect(() => {
-    if (!debouncedText.trim()) {
-      setFormState(null);
-      lastParsedText.current = '';
-      return;
-    }
-    if (!parsed || debouncedText === lastParsedText.current) return;
-
-    lastParsedText.current = debouncedText;
-    const next = formStateFromParsed(parsed);
-    setFormState(next);
-    setErrors({});
-  }, [debouncedText, parsed]);
-
   const patchForm = (patch: Partial<TaskFormState>) => {
-    setFormState((prev) => (prev ? { ...prev, ...patch } : prev));
+    setFormState((prev) => ({ ...prev, ...patch }));
   };
 
   const handleCategoryChange = (category: TaskFormState['category']) => {
-    setFormState((prev) => (prev ? applyCategoryChange(prev, category) : prev));
+    setFormState((prev) => applyCategoryChange(prev, category));
   };
 
   const addContact = () => {
@@ -227,25 +104,7 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
     setShared(shared.filter((s) => s.phone !== phone));
   };
 
-  const handleNextStep = () => {
-    if (step === 1) {
-      if (!text.trim()) {
-        showToast(translate('typeFirst'));
-        return;
-      }
-      if (!formState || formState.title !== text.trim()) {
-        const instantParsed = parseTaskInput(text, language);
-        setFormState(formStateFromParsed(instantParsed));
-      }
-      setStep(2);
-    } else if (step === 2) {
-      setStep(3);
-    }
-  };
-
   const save = async () => {
-    if (!formState) return;
-
     const nextErrors = validateFormState(formState, translate);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -275,27 +134,6 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
     }
   };
 
-  const defaultIcon = formState ? CATEGORY_MAP[formState.category]?.icon ?? '📝' : '📝';
-  const emojiOptions = useMemo(() => {
-    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '💇', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'];
-    return [defaultIcon, ...baseEmojis.filter((e) => e !== defaultIcon)];
-  }, [defaultIcon]);
-
-  const assignOptions = useMemo(() => {
-    const opts = [{ value: '', label: language === 'hi' ? 'कोई नहीं' : 'Unassigned' }];
-    if (user) {
-      opts.push({ value: user.id, label: language === 'hi' ? `आप (${user.name})` : `You (${user.name})` });
-      for (const m of user.householdMembers ?? []) {
-        if (m.userId) {
-          opts.push({ value: m.userId, label: m.name });
-        } else if (m.code) {
-          opts.push({ value: m.code, label: m.name });
-        }
-      }
-    }
-    return opts;
-  }, [user, language]);
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -306,461 +144,85 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
         <Card style={styles.sheet} mode="elevated">
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            
-            {/* ── STEP 1: WHAT'S THE TASK? ── */}
-            {step === 1 && (
-              <View>
-                <View style={styles.stepIndicatorRow}>
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <View style={styles.stepDot} />
-                  <View style={styles.stepDot} />
-                  <Text style={styles.stepIndicatorText}>{language === 'hi' ? 'चरण 1/3: कार्य विवरण' : 'Step 1 of 3: Task Description'}</Text>
-                </View>
+            <Text style={styles.heading}>{language === 'hi' ? 'कार्य विवरण' : 'Task Details'}</Text>
+            <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
 
-                <Text style={styles.serifHeading}>{language === 'hi' ? 'कार्य क्या है?' : "What's the task?"}</Text>
-                <Text style={styles.subText}>{language === 'hi' ? 'एक कार्य टाइप करें या एक उदाहरण चुनें' : 'Type a task or pick an example'}</Text>
+            <TaskFormFields
+              language={language}
+              translate={translate}
+              state={formState}
+              onChange={patchForm}
+              onCategoryChange={handleCategoryChange}
+              errors={errors}
+              sharedMembers={shared}
+            />
 
-                <PaperInput
-                  mode="outlined"
-                  multiline
-                  numberOfLines={3}
-                  placeholder={language === 'hi' ? 'जैसे: हर 1 तारीख को किराया ₹3500' : "e.g. Pay rent every 1st of month, ₹3500"}
-                  value={text}
-                  onChangeText={setText}
-                  outlineColor={Colors.ivoryLine}
-                  activeOutlineColor={Colors.marigoldDeep}
-                  textColor={Colors.ink}
-                  style={styles.textarea}
-                  theme={{
-                    colors: {
-                      background: Colors.white,
-                    },
-                  }}
-                />
-
-                {!text.trim() && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickChipsRow}>
-                    {(language === 'hi' ? [
-                      { label: '💰 किराया हर 1 तारीख', value: 'किराया हर 1 तारीख को ₹10000' },
-                      { label: '🏥 डॉक्टर जांच', value: 'डॉक्टर जांच हर 3 महीने' },
-                      { label: '📈 SIP निवेश', value: 'SIP निवेश ₹5000 हर महीने' },
-                      { label: '💊 दवाई रिमाइंडर', value: 'दवाई रिमाइंडर हर दिन सुबह 9 बजे' },
-                      { label: '💳 क्रेडिट कार्ड बिल', value: 'क्रेडिट कार्ड बिल हर महीने' },
-                    ] : [
-                      { label: '💰 Pay rent', value: 'Pay rent every 1st of month ₹10000' },
-                      { label: '🏥 Doctor checkup', value: 'Doctor checkup every 3 months' },
-                      { label: '📈 SIP investment', value: 'SIP investment ₹5000 every month' },
-                      { label: '💊 Medicine reminder', value: 'Medicine reminder every day at 9am' },
-                      { label: '💳 Credit card bill', value: 'Credit card bill every month' },
-                    ]).map((chip) => (
-                      <TouchableOpacity
-                        key={chip.value}
-                        style={styles.quickChip}
-                        onPress={() => setText(chip.value)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.quickChipText}>{chip.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
-
-                <View style={styles.orDivider}>
-                  <View style={styles.orDividerLine} />
-                  <Text style={styles.orDividerText}>{language === 'hi' ? 'या एक प्रीसेट से शुरू करें' : 'or start from a template'}</Text>
-                  <View style={styles.orDividerLine} />
-                </View>
-
-                <Card style={styles.presetLibraryCard} mode="elevated">
-                  <TouchableRipple
-                    onPress={() => {
-                      onClose();
-                      router.push('/presets');
-                    }}
-                    style={styles.presetLibraryCardInner}
-                    borderless
-                  >
-                    <View style={styles.presetLibraryRow}>
-                      <View style={styles.presetIconContainer}>
-                        <Text style={styles.presetIcon}>📚</Text>
+            <View style={styles.shareSection}>
+              <Text style={styles.shareTitle}>{translate('shareHousehold')}</Text>
+              <View style={styles.shareChipsRow}>
+                {shared.map((s) => (
+                  <Card key={s.phone} style={styles.chipCard} mode="elevated">
+                    <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
+                      <View style={styles.chipContent}>
+                        <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
+                          <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
+                        </View>
+                        <Text style={styles.chipText}>{s.name}</Text>
+                        <Text style={styles.chipRemove}>×</Text>
                       </View>
-                      <View style={styles.presetTextContainer}>
-                        <Text style={styles.presetTitleText}>{language === 'hi' ? 'प्रीसेट लाइब्रेरी ब्राउज़ करें' : 'Browse Preset Library'}</Text>
-                        <Text style={styles.presetSubText}>{language === 'hi' ? 'घर, वाहन, वित्त और अधिक के लिए टेम्पलेट' : 'Templates for home, vehicle, finance & more'}</Text>
-                      </View>
-                      <Text style={styles.presetArrow}>›</Text>
-                    </View>
+                    </TouchableRipple>
+                  </Card>
+                ))}
+                <Card style={styles.addChipCard} mode="elevated">
+                  <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
+                    <Text style={styles.addChipText}>{translate('addContact')}</Text>
                   </TouchableRipple>
                 </Card>
-
-                <View style={styles.navRow}>
-                  <Button
-                    title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
-                    variant="ghost"
-                    style={styles.navBtn}
-                    onPress={onClose}
-                  />
-                  <Button
-                    title={language === 'hi' ? 'आगे बढ़ें →' : 'Next →'}
-                    style={[styles.navBtn, styles.ctaInline]}
-                    onPress={handleNextStep}
-                    disabled={!text.trim()}
-                  />
-                </View>
               </View>
-            )}
+            </View>
 
-            {/* ── STEP 2: HOW OFTEN? ── */}
-            {step === 2 && formState && (
-              <View>
-                <View style={styles.stepIndicatorRow}>
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <View style={styles.stepDot} />
-                  <Text style={styles.stepIndicatorText}>{language === 'hi' ? 'चरण 2/3: पुनरावृत्ति / आवृत्ति' : 'Step 2 of 3: How often?'}</Text>
-                </View>
-
-                <Text style={styles.serifHeading}>{language === 'hi' ? 'कितनी बार दोहराएं?' : 'How often?'}</Text>
-                <Text style={styles.subText}>{language === 'hi' ? 'चुनें कि यह कार्य कैसे दोहराया जाए' : 'Choose how this task repeats'}</Text>
-
-                {/* Option Card A: Calendar day pattern */}
-                <TouchableOpacity
-                  style={[
-                    styles.optionSelectionCard,
-                    formState.recurrenceType !== 'interval' && styles.optionSelectionCardActive,
-                  ]}
-                  onPress={() => {
-                    if (formState.recurrenceType === 'interval') {
-                      patchForm({ recurrenceType: 'monthDay', dayOfMonth: new Date().getDate() });
-                    }
-                    openDatePicker();
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.optionCardLeft}>
-                    <View style={[styles.optionEmojiCircle, formState.recurrenceType !== 'interval' && styles.optionEmojiCircleActive]}>
-                      <Text style={styles.optionEmoji}>📅</Text>
-                    </View>
-                    <View style={styles.optionCardTextWrap}>
-                      <Text style={styles.optionCardTitle}>{language === 'hi' ? 'एक निश्चित दिन पर' : 'On a specific day'}</Text>
-                      <Text style={styles.optionCardSub}>{language === 'hi' ? 'जैसे: हर महीने की 1 तारीख, हर मंगलवार' : 'e.g. Every 1st of month, Every Tuesday'}</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.optionRadio, formState.recurrenceType !== 'interval' && styles.optionRadioActive]}>
-                    {formState.recurrenceType !== 'interval' && <View style={styles.optionRadioInner} />}
-                  </View>
-                </TouchableOpacity>
-
-                {formState.recurrenceType !== 'interval' && (
-                  <View style={styles.inlineCalendarContainer}>
-                    <View style={styles.inlineCalendarHeader}>
-                      <Text style={styles.inlineCalendarTitle}>
-                        {language === 'hi' ? 'सक्रिय अनुसूची:' : 'Active Schedule:'}
-                      </Text>
-                      <Text style={styles.inlineCalendarValue}>{currentFrequencyLabel}</Text>
-                    </View>
-                    <TouchableOpacity style={styles.inlineCalendarChangeBtn} onPress={openDatePicker}>
-                      <Text style={styles.inlineCalendarChangeBtnText}>
-                        {language === 'hi' ? '🗓️ बदलें' : '🗓️ Change'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                <View style={styles.orDivider}>
-                  <View style={styles.orDividerLine} />
-                  <Text style={styles.orDividerText}>{language === 'hi' ? 'या' : 'or'}</Text>
-                  <View style={styles.orDividerLine} />
-                </View>
-
-                {/* Option Card B: Interval repeating */}
-                <TouchableOpacity
-                  style={[
-                    styles.optionSelectionCard,
-                    formState.recurrenceType === 'interval' && styles.optionSelectionCardActive,
-                  ]}
-                  onPress={() => patchForm({ recurrenceType: 'interval' })}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.optionCardLeft}>
-                    <View style={[styles.optionEmojiCircle, formState.recurrenceType === 'interval' && styles.optionEmojiCircleActive]}>
-                      <Text style={styles.optionEmoji}>🔄</Text>
-                    </View>
-                    <View style={styles.optionCardTextWrap}>
-                      <Text style={styles.optionCardTitle}>{language === 'hi' ? 'हर N दिनों या महीनों में' : 'Every N days or months'}</Text>
-                      <Text style={styles.optionCardSub}>{language === 'hi' ? 'जैसे: हर 7 दिन, हर 3 महीने' : 'e.g. Every 7 days, every 3 months'}</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.optionRadio, formState.recurrenceType === 'interval' && styles.optionRadioActive]}>
-                    {formState.recurrenceType === 'interval' && <View style={styles.optionRadioInner} />}
-                  </View>
-                </TouchableOpacity>
-
-                {formState.recurrenceType === 'interval' && (
-                  <Card style={styles.inlineIntervalCard} mode="outlined">
-                    <Card.Content>
-                      <View style={styles.intervalRow}>
-                        {intervalPresets(formState.category).map((n) => {
-                          const active =
-                            formState.interval === n &&
-                            formState.intervalUnit === (formState.category === 'vehicle' || formState.category === 'education' ? 'months' : 'days');
-                          const unit =
-                            formState.category === 'vehicle' || (formState.category === 'education' && n >= 3)
-                              ? 'months'
-                              : 'days';
-                          return (
-                            <Card
-                              key={n}
-                              style={[styles.presetChip, active && styles.presetChipActive]}
-                              mode="elevated"
-                            >
-                              <TouchableRipple
-                                onPress={() => patchForm({ interval: n, intervalUnit: unit })}
-                                style={styles.presetChipInner}
-                                borderless
-                              >
-                                <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
-                                  {n} {unit === 'months' ? (language === 'hi' ? 'महीने' : 'mo') : language === 'hi' ? 'दिन' : 'd'}
-                                </Text>
-                              </TouchableRipple>
-                            </Card>
-                          );
-                        })}
-                      </View>
-                      <FormField
-                        label={translate('customInterval')}
-                        value={String(formState.interval)}
-                        onChangeText={(v) => {
-                          patchForm({ interval: Math.max(1, parseInt(v.replace(/\D/g, ''), 10) || 1) });
-                        }}
-                        keyboardType="number-pad"
-                      />
-                      <SelectField
-                        label={translate('intervalUnit')}
-                        value={formState.intervalUnit}
-                        options={[
-                          { value: 'days' as const, label: translate('intervalDays') },
-                          { value: 'months' as const, label: translate('intervalMonths') },
-                        ]}
-                        onChange={(intervalUnit) => patchForm({ intervalUnit })}
-                      />
-                    </Card.Content>
-                  </Card>
-                )}
-
-                <View style={styles.navRow}>
-                  <Button
-                    title={language === 'hi' ? '← पीछे' : '← Back'}
-                    variant="outline"
-                    style={styles.navBtn}
-                    onPress={() => setStep(1)}
-                  />
-                  <Button
-                    title={language === 'hi' ? 'आगे बढ़ें →' : 'Next →'}
-                    style={[styles.navBtn, styles.ctaInline]}
-                    onPress={() => setStep(3)}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* ── STEP 3: SET IT UP ── */}
-            {step === 3 && formState && (
-              <View>
-                <View style={styles.stepIndicatorRow}>
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <View style={[styles.stepDot, styles.stepDotActive]} />
-                  <Text style={styles.stepIndicatorText}>{language === 'hi' ? 'चरण 3/3: सेट अप करें' : 'Step 3 of 3: Almost done!'}</Text>
-                </View>
-
-                <Text style={styles.serifHeading}>{language === 'hi' ? 'बस होने ही वाला है!' : 'Almost done!'}</Text>
-                <Text style={styles.subText}>{language === 'hi' ? 'विवरण की पुष्टि करें और कार्य बनाएं' : 'Confirm details and create task'}</Text>
-
-                <Card style={styles.summaryCard} mode="elevated">
-                  <View style={styles.summaryCardAccent} />
-                  <Card.Content style={styles.summaryCardContent}>
-                    <View style={styles.summaryTitleRow}>
-                      <PaperInput
-                        mode="flat"
-                        label={language === 'hi' ? 'कार्य का नाम' : 'Task Name'}
-                        value={formState.title}
-                        onChangeText={(title) => patchForm({ title })}
-                        style={styles.summaryTitleInput}
-                        textColor={Colors.ink}
-                        activeUnderlineColor={Colors.marigoldDeep}
-                        underlineColor={Colors.ivoryLine}
-                        theme={{
-                          colors: {
-                            background: 'transparent',
-                          },
-                        }}
-                      />
-                    </View>
-                    <View style={styles.summaryFreqRow}>
-                      <Text style={styles.summaryFreqText}>🔁  {currentFrequencyLabel}</Text>
-                    </View>
-                  </Card.Content>
-                </Card>
-
-                <Text style={styles.optionalSectionTitle}>{language === 'hi' ? 'वैकल्पिक विवरण' : 'OPTIONAL DETAILS'}</Text>
-
-                <FormField
-                  label={translate('presetAmount')}
-                  value={formState.amountText}
-                  onChangeText={(amountText) => patchForm({ amountText })}
-                  placeholder="3500"
-                  keyboardType="number-pad"
-                  hint={translate('presetAmountOptional')}
-                  error={errors?.amount}
-                />
-
-                <TimeField
-                  label={translate('reminderTime')}
-                  value={formState.reminderTime}
-                  onChange={(reminderTime) => patchForm({ reminderTime })}
-                  hint={translate('reminderTimeHint')}
-                />
-
-                <View style={styles.shareSection}>
-                  <Text style={styles.shareTitle}>{translate('shareHousehold')}</Text>
-                  <View style={styles.shareChipsRow}>
-                    {shared.map((s) => (
-                      <Card key={s.phone} style={styles.chipCard} mode="elevated">
-                        <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                          <View style={styles.chipContent}>
-                            <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                              <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
-                            </View>
-                            <Text style={styles.chipText}>{s.name}</Text>
-                            <Text style={styles.chipRemove}>×</Text>
-                          </View>
-                        </TouchableRipple>
-                      </Card>
-                    ))}
-                    <Card style={styles.addChipCard} mode="elevated">
-                      <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
-                        <Text style={styles.addChipText}>{translate('addContact')}</Text>
-                      </TouchableRipple>
-                    </Card>
-                  </View>
-                </View>
-
-                {user && user.householdMembers && user.householdMembers.length > 0 && (
-                  <SelectField
-                    label={language === 'hi' ? 'किसे सौंपें' : 'Assign to'}
-                    value={formState.assignedTo ?? ''}
-                    options={assignOptions}
-                    onChange={(assignedTo) => patchForm({ assignedTo: assignedTo || null })}
-                  />
-                )}
-
-                {/* Collapsible Advanced Customizer */}
-                <TouchableOpacity
-                  style={styles.advancedHeader}
-                  onPress={() => setShowAdvanced(!showAdvanced)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.advancedTitle}>
-                    ⚙️  {language === 'hi' ? 'श्रेणी और आइकन बदलें' : 'Change Category & Icon'}
-                  </Text>
-                  <Text style={styles.advancedChevron}>{showAdvanced ? '▴' : '▾'}</Text>
-                </TouchableOpacity>
-
-                {showAdvanced && (
-                  <View style={styles.advancedContent}>
-                    <Text style={styles.sectionLabel}>{translate('parseCategory')}</Text>
-                    {CATEGORY_GROUPS.map((group) => (
-                      <View key={group.key} style={styles.groupBlock}>
-                        <Text style={styles.groupLabel}>{language === 'hi' ? group.labelHi : group.labelEn}</Text>
-                        <View style={styles.catGrid}>
-                          {CATEGORIES.filter((c) => c.group === group.key).map((cat) => {
-                            const active = formState.category === cat.key;
-                            return (
-                              <Card
-                                key={cat.key}
-                                style={[styles.catChip, active && styles.catChipActive]}
-                                mode="elevated"
-                              >
-                                <TouchableRipple
-                                  onPress={() => handleCategoryChange(cat.key)}
-                                  style={styles.catChipInner}
-                                  borderless
-                                >
-                                  <View style={styles.catContent}>
-                                    <Text style={styles.catChipIcon}>{cat.icon}</Text>
-                                    <Text style={[styles.catChipText, active && styles.catChipTextActive]} numberOfLines={2}>
-                                      {getCategoryLabel(cat.key, language)}
-                                    </Text>
-                                  </View>
-                                </TouchableRipple>
-                              </Card>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ))}
-
-                    <Text style={[styles.sectionLabel, { marginTop: 16 }]}>{language === 'hi' ? 'कार्य इमोजी (वैकल्पिक)' : 'Task Emoji (Optional)'}</Text>
-                    <View style={styles.emojiContainer}>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emojiList}>
-                        {emojiOptions.map((emoji) => {
-                          const isActive = formState.icon === emoji || (!formState.icon && emoji === defaultIcon);
-                          return (
-                            <TouchableRipple
-                              key={emoji}
-                              onPress={() => patchForm({ icon: emoji })}
-                              style={[styles.emojiBtn, isActive && styles.emojiBtnActive]}
-                              borderless
-                            >
-                              <Text style={styles.emojiText}>{emoji}</Text>
-                            </TouchableRipple>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  </View>
-                )}
-
-                <View style={styles.navRow}>
-                  <Button
-                    title={language === 'hi' ? '← पीछे' : '← Back'}
-                    variant="outline"
-                    style={styles.navBtn}
-                    onPress={() => setStep(2)}
-                  />
-                  <Button
-                    title={language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task'}
-                    style={[styles.navBtn, styles.ctaInline, { backgroundColor: Colors.tealDeep }]}
-                    loading={loading}
-                    onPress={save}
-                  />
-                </View>
-              </View>
-            )}
-
+            <Button
+              title={language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task'}
+              style={{ marginTop: 24, marginBottom: 10 }}
+              loading={loading}
+              disabled={loading}
+              onPress={save}
+            />
+            <Button
+              title={translate('backBtn')}
+              variant="ghost"
+              disabled={loading}
+              style={{ marginBottom: 20 }}
+              onPress={onClose}
+            />
           </ScrollView>
         </Card>
         <Toast message={message} />
       </KeyboardAvoidingView>
-
-      <RecurrenceDatePicker
-        visible={showDatePicker}
-        value={selectedDateForRecurrence || new Date()}
-        onClose={() => setShowDatePicker(false)}
-        onConfirm={handleDateConfirm}
-        options={recurrenceOptionsForDate}
-        onSelectOption={selectRecurrencePattern as any}
-        language={language}
-      />
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(23,27,54,0.45)',
+  },
+  heading: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.ink,
+    marginBottom: 4,
+  },
+  subHeading: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12.5,
+    color: Colors.inkSoft,
+    marginBottom: 14,
   },
   modalContainer: {
     flex: 1,

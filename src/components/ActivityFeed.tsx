@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, Card } from 'react-native-paper';
 import type { RepeatingTask, HouseholdMemberProfile } from '@/types';
+import { AppIcon } from '@/components/AppIcon';
 import { buildActivityFeed } from '@/domain/activityFeed';
 import { initials } from '@/domain/insights';
 import { Colors, Radius, Typography } from '@/constants/theme';
@@ -84,13 +85,17 @@ export function ActivityFeed({
               ? Colors.clay
               : Colors.tealDeep;
 
+          const iconName = item.status === 'snoozed' ? 'time-outline' : (item.status === 'skipped' ? 'play-skip-forward-outline' : 'checkmark-circle-outline');
+          const iconColor = item.status === 'snoozed' ? '#EA580C' : (item.status === 'skipped' ? '#4B5563' : '#16A34A');
+          const iconBg = item.status === 'snoozed' ? '#FFEDD5' : (item.status === 'skipped' ? '#F3F4F6' : '#DCFCE7');
+
           return (
             <View
               key={item.id}
               style={[styles.row, idx === displayItems.length - 1 && styles.lastRow]}
             >
-              <View style={[styles.avatar, { backgroundColor: isYou ? Colors.marigold : item.completedByColor }]}>
-                <Text style={styles.avatarText}>{initials(item.completedByName)}</Text>
+              <View style={[styles.avatar, { backgroundColor: iconBg }]}>
+                <AppIcon name={iconName} size={16} color={iconColor} />
               </View>
               <View style={styles.textCol}>
                 <Text style={styles.activityText}>

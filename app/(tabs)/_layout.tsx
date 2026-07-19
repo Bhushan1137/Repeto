@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   },
   fabOuter: {
     position: 'absolute',
-    top: -24,
+    top: -32,
     width: 58,
     height: 58,
     borderRadius: 29,

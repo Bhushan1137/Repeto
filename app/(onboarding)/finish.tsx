@@ -38,6 +38,7 @@ export default function FinishScreen() {
         freq: language === 'hi' ? s.freqHi : s.freq,
         amount: s.amount,
         finance: s.finance,
+        icon: s.icon,
       })),
     });
     setLoading(false);

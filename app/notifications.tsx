@@ -1,14 +1,13 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useNotifications } from '@/providers/NotificationProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
-import { ScreenShell } from '@/components/ScreenShell';
+import { ScreenShell, EmptyState } from '@/components/ScreenShell';
 import { Button } from '@/components/Button';
 import { Colors, Radius, Typography } from '@/constants/theme';
-import { initials } from '@/domain/insights';
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -35,52 +34,36 @@ export default function NotificationsScreen() {
   const getNotifIconAndColor = (type: string): { icon: AppIconName; color: string; bg: string } => {
     switch (type) {
       case 'household':
-        return { icon: 'people-outline', color: Colors.marigoldDeep, bg: 'rgba(232,163,61,0.08)' };
+        return { icon: 'people-outline', color: '#0D9488', bg: 'rgba(13, 148, 136, 0.08)' };
       case 'payment':
-        return { icon: 'trash-outline', color: Colors.clayDeep, bg: 'rgba(193,80,46,0.08)' }; // Wallet / Expense placeholder
+      case 'finance':
+        return { icon: 'documents-outline', color: Colors.clayDeep, bg: 'rgba(193, 80, 46, 0.08)' };
       case 'streak':
-        return { icon: 'star-outline', color: Colors.tealDeep, bg: 'rgba(62,124,106,0.08)' };
+        return { icon: 'star-outline', color: Colors.marigoldDeep, bg: 'rgba(232, 163, 61, 0.08)' };
       default:
-        return { icon: 'notifications-outline', color: Colors.indigo950, bg: Colors.ivoryDim };
+        return { icon: 'notifications-outline', color: Colors.indigo950, bg: 'rgba(23, 27, 54, 0.08)' };
     }
   };
 
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <TouchableRipple
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)');
-            }
-          }}
-          style={styles.backBtn}
-          borderless
-        >
-          <AppIcon name="chevron-back" size={22} color={Colors.indigo950} />
-        </TouchableRipple>
-        <Text style={styles.headerTitle}>{language === 'hi' ? 'सूचनाएं' : 'Notifications'}</Text>
-        {unreadCount > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unreadCount}</Text>
-          </View>
-        )}
-      </View>
-
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {notifications.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Text style={{ fontSize: 32 }}>🔔</Text>
-            </View>
-            <Text style={styles.emptyTitle}>
-              {language === 'hi' ? 'आप बिल्कुल अपडेट हैं' : "You're all caught up!"}
-            </Text>
-            <Text style={styles.emptySub}>
-              {language === 'hi' ? 'अभी कोई नई सूचना उपलब्ध नहीं है।' : 'No new updates or alerts at the moment.'}
-            </Text>
+    <ScreenShell
+      title={language === 'hi' ? 'सूचनाएं' : 'Notifications'}
+      subtitle={language === 'hi' ? 'आपकी हालिया सूचनाएं और अपडेट' : 'Your recent updates and alerts'}
+      showBack={true}
+      onBackPress={() => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+      }}
+    >
+      {notifications.length === 0 ? (
+        <EmptyState
+          icon="🔔"
+          title={language === 'hi' ? 'आप बिल्कुल अपडेट हैं' : "You're all caught up!"}
+          subtitle={language === 'hi' ? 'अभी कोई नई सूचना उपलब्ध नहीं है।' : 'No new updates or alerts at the moment.'}
+          action={
             <Button
               title={language === 'hi' ? 'वापस जाएं' : 'Go Back'}
               onPress={() => {
@@ -92,9 +75,11 @@ export default function NotificationsScreen() {
               }}
               style={styles.goBackBtn}
             />
-          </View>
-        ) : (
-          notifications.map((item) => {
+          }
+        />
+      ) : (
+        <View style={styles.listContainer}>
+          {notifications.map((item) => {
             const styleOpts = getNotifIconAndColor(item.type);
             return (
               <Card key={item.id} style={[styles.notifCard, !item.read && styles.unreadCard]} mode="elevated">
@@ -117,63 +102,31 @@ export default function NotificationsScreen() {
                 </Card.Content>
               </Card>
             );
-          })
-        )}
-      </ScrollView>
-    </View>
+          })}
+        </View>
+      )}
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.surfaceMuted,
-    paddingTop: Platform.OS === 'ios' ? 44 : 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.ivoryLine,
-  },
-  backBtn: {
-    padding: 6,
-    borderRadius: Radius.full,
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontFamily: 'Fraunces_700Bold',
-    fontSize: 20,
-    color: Colors.indigo950,
-  },
-  badge: {
-    backgroundColor: Colors.marigold,
-    borderRadius: Radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 8,
-  },
-  badgeText: {
-    fontFamily: 'Manrope_800ExtraBold',
-    color: Colors.white,
-    fontSize: 10,
-  },
-  container: {
-    padding: 16,
-    flexGrow: 1,
+  listContainer: {
+    paddingVertical: 8,
   },
   notifCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.md,
-    marginBottom: 10,
-    elevation: 1,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
   },
   unreadCard: {
-    borderLeftWidth: 3,
+    borderLeftWidth: 4,
     borderLeftColor: Colors.marigold,
+    backgroundColor: '#FFFDF9',
   },
   cardContent: {
     flexDirection: 'row',
@@ -194,61 +147,30 @@ const styles = StyleSheet.create({
   },
   notifTitle: {
     fontFamily: 'Manrope_700Bold',
-    fontSize: 13.5,
+    fontSize: 14,
     color: Colors.ink,
     lineHeight: 18,
   },
   notifBody: {
     fontFamily: 'Manrope_500Medium',
-    fontSize: 12,
+    fontSize: 12.5,
     color: Colors.inkSoft,
     marginTop: 4,
-    lineHeight: 16,
+    lineHeight: 17,
   },
   timeText: {
     fontFamily: 'Manrope_600SemiBold',
-    fontSize: 10,
+    fontSize: 10.5,
     color: Colors.inkFaint,
     marginTop: 6,
   },
   deleteBtn: {
-    padding: 6,
+    padding: 8,
     borderRadius: Radius.full,
     alignSelf: 'center',
   },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 1,
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontFamily: 'Fraunces_700Bold',
-    fontSize: 18,
-    color: Colors.indigo950,
-    textAlign: 'center',
-  },
-  emptySub: {
-    fontFamily: 'Manrope_500Medium',
-    fontSize: 13,
-    color: Colors.inkSoft,
-    textAlign: 'center',
-    marginTop: 6,
-    marginHorizontal: 32,
-    lineHeight: 18,
-  },
   goBackBtn: {
-    marginTop: 24,
+    marginTop: 8,
     minWidth: 150,
   },
 });

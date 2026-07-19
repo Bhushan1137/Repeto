@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
-import type { Language, RepeatingTask } from '@/types';
+import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, shortDayLabel, daysPercent } from '@/domain/recurrence';
@@ -28,27 +28,56 @@ export function TaskCard({
   selected,
   onLongPress,
 }: TaskCardProps) {
-  const cat = CATEGORY_MAP[task.category];
-  const hex = AccentHex[cat.accent];
+  const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋', accent: 'marigold' };
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;
-  const [hovered, setHovered] = useState(false);
   const { user } = useAuth();
   const { translate } = useTranslation();
 
-  const assignee = useMemo(() => {
-    if (!task.assignedTo || !user) return null;
-    if (task.assignedTo === user.id) {
-      return { name: user.name, color: '#E8A33D', isYou: true };
+  const { catBg, catColor } = useMemo(() => {
+    switch (task.category) {
+      case 'medicines':
+      case 'health':
+        return { catBg: '#FCE7F3', catColor: '#9D174D' }; // soft pink/magenta
+      case 'fitness':
+        return { catBg: '#EFF6FF', catColor: '#1E40AF' }; // soft blue
+      case 'bills':
+      case 'finance':
+      case 'work':
+        return { catBg: '#EFF6FF', catColor: '#1E40AF' }; // soft blue
+      case 'home':
+      case 'subs':
+      case 'help':
+        return { catBg: '#FFFBEB', catColor: '#B45309' }; // soft yellow/amber
+      default:
+        return { catBg: '#F3F4F6', catColor: '#374151' }; // soft grey
     }
-    const member = user.householdMembers?.find(
-      (m) => m.userId === task.assignedTo || m.code === task.assignedTo
-    );
-    if (member) {
-      return { name: member.name, color: member.color, isYou: false };
+  }, [task.category]);
+
+  const reminderText = useMemo(() => {
+    const time = task.reminderTime || '9:00 AM';
+    if (days === 0) {
+      return language === 'hi' ? `आज ${time}` : `Today at ${time}`;
     }
-    return null;
-  }, [task.assignedTo, user]);
+    if (days === 1) {
+      return language === 'hi' ? `कल ${time}` : `Tomorrow at ${time}`;
+    }
+    if (days < 0) {
+      if (days === -1) {
+        return language === 'hi' ? 'कल याद दिलाया गया था' : 'Reminder was yesterday';
+      }
+      const n = Math.abs(days);
+      return language === 'hi' ? `${n} दिन पहले याद दिलाया गया था` : `Reminder was ${n} days ago`;
+    }
+    const d = new Date(task.nextDueDate);
+    const weekday = d.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { weekday: 'short' });
+    const dayNum = d.getDate();
+    const month = d.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short' });
+    const formattedDate = `${dayNum} ${month}`;
+    return language === 'hi'
+      ? `${days} दिनों में - ${weekday}, ${formattedDate}`
+      : `In ${days} days - ${weekday}, ${formattedDate}`;
+  }, [days, task.nextDueDate, task.reminderTime, language]);
 
   return (
     <Card
@@ -58,37 +87,31 @@ export function TaskCard({
       onLongPress={onLongPress}
     >
       <Card.Content style={styles.cardContent}>
-        <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : hex }]} />
+        <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : catColor }]} />
         
         {selected ? (
           <View style={[styles.iconBadge, { backgroundColor: Colors.marigold }]}>
             <Text style={[styles.icon, { color: Colors.white }]}>✓</Text>
           </View>
         ) : onCompletePress ? (
-
           <TouchableRipple
-            style={[styles.iconBadge, { backgroundColor: hovered ? (overdue ? Colors.clay : hex) : `${hex}12` }]}
+            style={[styles.iconBadge, { backgroundColor: catBg }]}
             onPress={(e) => {
               e.stopPropagation();
               onCompletePress();
             }}
             borderless
-            {...(Platform.OS === 'web'
-              ? {
-                  onMouseEnter: () => setHovered(true),
-                  onMouseLeave: () => setHovered(false),
-                }
-              : {})}
           >
-            <Text style={[styles.icon, hovered && styles.iconCompleted, { color: hovered ? Colors.white : Colors.ink }]}>
-              {hovered ? '✓' : (task.icon || cat.icon)}
+            <Text style={styles.icon}>
+              {task.icon || cat.icon}
             </Text>
           </TouchableRipple>
         ) : (
-          <View style={[styles.iconBadge, { backgroundColor: `${hex}12` }]}>
+          <View style={[styles.iconBadge, { backgroundColor: catBg }]}>
             <Text style={styles.icon}>{task.icon || cat.icon}</Text>
           </View>
         )}
+
         <View style={styles.info}>
           <View style={styles.titleRow}>
             {task.pinned && (
@@ -101,60 +124,33 @@ export function TaskCard({
               <Text style={styles.flameBadge}>🔥</Text>
             )}
           </View>
-          <View style={styles.meta}>
-            <Text style={styles.freq}>{task.frequencyLabel}</Text>
+          
+          <View style={styles.metaRow}>
+            <Text style={styles.freqText}>{task.frequencyLabel}</Text>
             {task.amount ? (
-              <Text style={styles.amount}>· ₹{task.amount.toLocaleString('en-IN')}</Text>
+              <Text style={styles.amountText}> • ₹{task.amount.toLocaleString('en-IN')}</Text>
             ) : null}
-            <Text
-              style={[
-                styles.dueText,
-                overdue ? styles.dueOverdue : days === 0 ? styles.dueToday : styles.dueUpcoming,
-              ]}
-            >
-              · {dayLabel(days, language)}
+          </View>
+
+          <View style={styles.reminderRow}>
+            <AppIcon name="notifications-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 4 }} />
+            <Text style={styles.reminderText} numberOfLines={1}>
+              {reminderText}
             </Text>
           </View>
-          {assignee && (
-            <View style={styles.assigneeRow}>
-              <View style={[styles.assigneeAvatar, { backgroundColor: assignee.color }]}>
-                <Text style={styles.assigneeAvatarText}>{initials(assignee.name)}</Text>
-              </View>
-              <Text style={styles.assigneeText} numberOfLines={1}>
-                {assignee.isYou ? (language === 'hi' ? 'आपको सौंपा' : 'Assigned to you') : assignee.name}
-              </Text>
-            </View>
-          )}
-
-          {task.sharedWith.length > 0 && !assignee && (
-            <View style={styles.avatars}>
-              {task.sharedWith.map((s) => (
-                <View key={s.phone} style={[styles.avatar, { backgroundColor: s.color }]}>
-                  <Text style={styles.avatarText}>{initials(s.name)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {task.creatorName && (
-            <View style={styles.creatorRow}>
-              <AppIcon name="create-outline" size={11} color={Colors.inkSoft} />
-              <Text style={styles.creatorText}>
-                {task.creatorName === user?.name
-                  ? (language === 'hi' ? 'आपके द्वारा बनाया गया' : 'Created by you')
-                  : translate('createdBy').replace('{name}', task.creatorName)}
-              </Text>
-            </View>
-          )}
         </View>
-        <ProgressRing
-          percent={daysPercent(days)}
-          color={overdue ? AccentHex.clay : hex}
-          size={44}
-          stroke={4}
-          label={shortDayLabel(days, language)}
-          labelColor={overdue ? Colors.clayDeep : Colors.ink}
-        />
+
+        <View style={styles.rightCol}>
+          <ProgressRing
+            percent={daysPercent(days)}
+            color={overdue ? Colors.clay : days === 0 ? '#2563EB' : '#16A34A'}
+            size={54}
+            stroke={4.5}
+            label={shortDayLabel(days, language)}
+            labelColor={overdue ? Colors.clayDeep : Colors.ink}
+          />
+          <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
+        </View>
       </Card.Content>
     </Card>
   );
@@ -179,86 +175,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    paddingLeft: 18,
+    paddingHorizontal: 14,
+    paddingLeft: 16,
   },
   accentBar: {
     position: 'absolute',
     left: 0,
-    top: 12,
-    bottom: 12,
-    width: 3.5,
-    borderRadius: 3,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   iconBadge: { 
-    width: 44, 
-    height: 44, 
+    width: 46, 
+    height: 46, 
     borderRadius: 14, 
     alignItems: 'center', 
     justifyContent: 'center',
     overflow: 'hidden'
   },
   icon: { fontSize: 20, textAlign: 'center' },
-  iconCompleted: { fontFamily: 'Manrope_800ExtraBold', fontSize: 18 },
-  info: { flex: 1, minWidth: 0 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  title: { ...Typography.title, fontSize: 14.5, color: Colors.ink, flex: 1 },
+  info: { flex: 1, minWidth: 0, marginLeft: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  title: { ...Typography.title, fontSize: 15, color: Colors.ink, flex: 1 },
   pinBadge: { fontSize: 12 },
   flameBadge: { fontSize: 13 },
-  meta: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
-  freq: { ...Typography.caption, color: Colors.inkSoft },
-  amount: { ...Typography.caption, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold' },
-  dueText: { ...Typography.caption, fontFamily: 'Manrope_700Bold' },
-  dueOverdue: { color: Colors.clay },
-  dueToday: { color: Colors.marigoldDeep },
-  dueUpcoming: { color: Colors.teal },
-  avatars: { flexDirection: 'row', marginTop: 8 },
-  avatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -6,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  avatarText: { fontSize: 9, fontFamily: 'Manrope_800ExtraBold', color: Colors.white },
-  assigneeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  assigneeAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assigneeAvatarText: {
-    fontSize: 8,
-    fontFamily: 'Manrope_800ExtraBold',
-    color: Colors.white,
-  },
-  assigneeText: {
-    ...Typography.caption,
-    fontSize: 11,
-    color: Colors.inkSoft,
-    fontFamily: 'Manrope_600SemiBold',
-  },
-  creatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  creatorText: {
-    ...Typography.caption,
-    fontSize: 10.5,
-    color: Colors.inkSoft,
-    fontStyle: 'italic',
-  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 },
+  freqText: { ...Typography.caption, color: Colors.inkSoft, fontSize: 11 },
+  amountText: { ...Typography.caption, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold', fontSize: 11 },
+  reminderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
+  reminderText: { ...Typography.caption, fontSize: 10.5, color: Colors.inkFaint, fontFamily: 'Manrope_600SemiBold' },
+  rightCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 });
 

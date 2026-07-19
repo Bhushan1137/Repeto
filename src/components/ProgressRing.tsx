@@ -75,7 +75,14 @@ export function ProgressRing({
         </G>
       </Svg>
       {label ? (
-        <Text style={[styles.label, { color: labelColor, fontSize: size < 50 ? 9.5 : 12 }]}>
+        <Text style={[
+          styles.label, 
+          { 
+            color: labelColor, 
+            fontSize: size < 50 ? 9 : 10.5,
+            lineHeight: size < 50 ? 9.5 : 12
+          }
+        ]}>
           {label}
         </Text>
       ) : null}
@@ -88,5 +95,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     fontFamily: 'Manrope_700Bold',
     textAlign: 'center',
+    width: '90%',
   },
 });

@@ -99,11 +99,13 @@ export function dayLabel(days: number, lang: 'en' | 'hi'): string {
 export function shortDayLabel(days: number, lang: 'en' | 'hi'): string {
   if (days < 0) {
     const n = Math.abs(days);
-    return lang === 'hi' ? `-${n}दि` : `-${n}d`;
+    if (lang === 'hi') return `${n} दिन\nदेर`;
+    return `${n} ${n === 1 ? 'Day' : 'Days'}\noverdue`;
   }
-  if (days === 0) return lang === 'hi' ? 'आज' : 'Tdy';
-  if (days === 1) return lang === 'hi' ? 'कल' : 'Tmrw';
-  return lang === 'hi' ? `${days}दि` : `${days}d`;
+  if (days === 0) return lang === 'hi' ? 'आज' : 'Today';
+  if (days === 1) return lang === 'hi' ? 'कल' : 'Tomorrow';
+  if (lang === 'hi') return `${days} दिन\nशेष`;
+  return `${days} ${days === 1 ? 'Day' : 'Days'}\nleft`;
 }
 
 export function daysPercent(days: number): number {

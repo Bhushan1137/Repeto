@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,7 +33,100 @@ import {
   inviteProfileFromUser,
 } from '@/domain/household';
 import { Colors, Gradients, Radius, Typography } from '@/constants/theme';
-import type { RepeatingTask } from '@/types';
+import type { RepeatingTask, CategoryKey } from '@/types';
+import { CATEGORY_MAP } from '@/constants/categories';
+import { daysUntilDue } from '@/domain/recurrence';
+
+function SharedTaskCard({
+  task,
+  language,
+  onPress,
+  user,
+}: {
+  task: RepeatingTask;
+  language: 'en' | 'hi';
+  onPress: () => void;
+  user: any;
+}) {
+  const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋' };
+  const days = daysUntilDue(task.nextDueDate);
+  const overdue = days < 0;
+
+  const catBg = 
+    task.category === 'bills' || task.category === 'finance' ? '#FFF3E0' : // light orange
+    task.category === 'home' ? '#E3F2FD' : // light blue
+    '#FCE7F3'; // light pink
+
+  const catColor = 
+    task.category === 'bills' || task.category === 'finance' ? '#E65100' :
+    task.category === 'home' ? '#0D47A1' :
+    '#880E4F';
+
+  const creatorName = task.creatorName === user?.name ? (language === 'hi' ? 'आप' : 'You') : task.creatorName || (language === 'hi' ? 'अन्य' : 'Other');
+  
+  const assigneeName = useMemo(() => {
+    if (!task.assignedTo) return language === 'hi' ? 'कोई नहीं' : 'Unassigned';
+    if (task.assignedTo === user?.id) return language === 'hi' ? 'आपको' : 'You';
+    const member = user?.householdMembers?.find((m: any) => m.userId === task.assignedTo || m.code === task.assignedTo);
+    return member ? member.name : (language === 'hi' ? 'अन्य' : 'Other');
+  }, [task.assignedTo, user, language]);
+
+  const statusStyle = useMemo(() => {
+    if (overdue) {
+      return { text: language === 'hi' ? 'विलंबित' : 'Overdue', color: '#B91C1C', bg: '#FEF2F2' };
+    }
+    if (days === 0) {
+      return { text: language === 'hi' ? 'आज देय' : 'Due Today', color: '#B45309', bg: '#FFFBEB' };
+    }
+    if (days === 1) {
+      return { text: language === 'hi' ? 'कल देय' : 'Due Tomorrow', color: '#15803D', bg: '#F0FDF4' };
+    }
+    return { text: language === 'hi' ? `${days} दिनों में` : `Due in ${days} days`, color: '#1E3A8A', bg: '#EFF6FF' };
+  }, [days, overdue, language]);
+
+  const formattedDate = useMemo(() => {
+    const d = new Date(task.nextDueDate);
+    const dateStr = d.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { day: 'numeric', month: 'short' });
+    const timeStr = task.reminderTime || '9:00 AM';
+    return `${dateStr}, ${timeStr}`;
+  }, [task.nextDueDate, task.reminderTime, language]);
+
+  return (
+    <Card style={styles.sharedCard} mode="elevated" onPress={onPress}>
+      <Card.Content style={styles.sharedCardContent}>
+        <View style={[styles.sharedCatIconWrap, { backgroundColor: catBg }]}>
+          <Text style={[styles.sharedCatIcon, { color: catColor }]}>{task.icon || cat.icon}</Text>
+        </View>
+
+        <View style={styles.sharedInfoCol}>
+          <Text style={styles.sharedTitle} numberOfLines={1}>{task.title}</Text>
+          <View style={styles.sharedSubRow}>
+            <Text style={styles.sharedSubText} numberOfLines={1}>
+              {language === 'hi' ? 'साझाकर्ता: ' : 'Shared by '}<Text style={styles.sharedSubBold}>{creatorName}</Text>
+            </Text>
+            <View style={styles.sharedAssigneeWrap}>
+              <AppIcon name="person-circle-outline" size={12} color={Colors.inkSoft} style={{ marginRight: 3 }} />
+              <Text style={styles.sharedSubText} numberOfLines={1}>
+                {language === 'hi' ? 'सौंपा: ' : 'Assigned to '}<Text style={styles.sharedSubBold}>{assigneeName}</Text>
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sharedRightCol}>
+          <View style={[styles.sharedStatusPill, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.sharedStatusText, { color: statusStyle.color }]}>{statusStyle.text}</Text>
+          </View>
+          <View style={styles.sharedDateRow}>
+            <AppIcon name="calendar-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 3 }} />
+            <Text style={styles.sharedDateText}>{formattedDate}</Text>
+          </View>
+        </View>
+        <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} style={{ marginLeft: 4 }} />
+      </Card.Content>
+    </Card>
+  );
+}
 
 export default function HouseholdScreen() {
   const router = useRouter();
@@ -45,6 +139,13 @@ export default function HouseholdScreen() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [filterMemberCode, setFilterMemberCode] = useState<string | null>(null);
+  const [activityVisible, setActivityVisible] = useState(false);
+
+  // Scroll ref + section layout tracking for "View all" navigation
+  const scrollRef = useRef<ScrollView>(null);
+  const sharedTasksY = useRef<number>(0);
+  const membersY = useRef<number>(0);
+  const activityY = useRef<number>(0);
 
   const selectedTask = useMemo(() => {
     return tasks.find((t) => t.id === selectedTaskId) || null;
@@ -275,54 +376,154 @@ export default function HouseholdScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenShell title={translate('hhTitle')} subtitle={translate('hhSub')}>
-        {user ? (
-          <Card style={styles.inviteCard} mode="elevated">
-            <Card.Content>
-              <Text style={styles.inviteLabel}>{translate('yourInviteCode')}</Text>
-              <View style={styles.codeRow}>
-                <Text style={styles.codeText}>{myCode}</Text>
-                <View style={styles.codeActions}>
-                  <TouchableRipple style={styles.shareIconBtn} onPress={() => setQrVisible(true)} borderless>
-                    <AppIcon name="qr-code-outline" size={18} color={Colors.indigo950} />
+      <ScreenShell
+        title={translate('hhTitle') + ' 🏠'}
+        subtitle={translate('hhSub')}
+        scrollRef={scrollRef}
+        headerExtra={
+          <View style={styles.hhSummaryContainer}>
+            {/* Column 1: Members */}
+            <View style={styles.hhSummaryCard}>
+              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapMembers]}>
+                <AppIcon name="people" size={16} color="#0D9488" />
+              </View>
+              <Text style={styles.hhSummaryCount}>{members.length}</Text>
+              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'सदस्य' : 'Members'}</Text>
+              <Pressable onPress={() => {
+                setFilterMemberCode(null);
+                setTimeout(() => scrollRef.current?.scrollTo({ y: membersY.current, animated: true }), 50);
+              }}>
+                <Text style={[styles.hhSummaryLink, styles.hhLinkMembers]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+              </Pressable>
+            </View>
+
+            {/* Column 2: Shared tasks */}
+            <View style={styles.hhSummaryCard}>
+              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapTasks]}>
+                <AppIcon name="documents-outline" size={16} color="#2563EB" />
+              </View>
+              <Text style={styles.hhSummaryCount}>{stats.shared.length}</Text>
+              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'साझा कार्य' : 'Shared tasks'}</Text>
+              <Pressable onPress={() => {
+                setFilterMemberCode(null);
+                setTimeout(() => scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true }), 50);
+              }}>
+                <Text style={[styles.hhSummaryLink, styles.hhLinkTasks]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+              </Pressable>
+            </View>
+
+            {/* Column 3: Completion rate */}
+            <View style={styles.hhSummaryCard}>
+              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapCompletion]}>
+                <AppIcon name="time-outline" size={16} color="#EA580C" />
+              </View>
+              <Text style={styles.hhSummaryCount}>{Math.round(ringPercent)}%</Text>
+              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'पूर्णता दर' : 'Completion'}</Text>
+              <Text style={styles.hhSummarySub}>{language === 'hi' ? 'इस महीने' : 'This month'}</Text>
+            </View>
+          </View>
+        }
+      >
+        <View
+          style={styles.sharedHeaderRow}
+          onLayout={(e) => { sharedTasksY.current = e.nativeEvent.layout.y; }}
+        >
+          <Text style={styles.hhSectionHeading}>{translate('sharedTasks')}</Text>
+          <TouchableOpacity onPress={() => {
+            setFilterMemberCode(null);
+            scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true });
+          }}>
+            <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {stats.shared.length === 0 ? (
+          <EmptyState
+            icon="🏠"
+            title={translate('householdEmptyTitle')}
+            subtitle={translate('householdEmptySub')}
+          />
+        ) : (
+          <>
+            {filteredSharedTasks.length === 0 ? (
+              <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
+            ) : (
+              filteredSharedTasks.map((task) => (
+                <SharedTaskCard
+                  key={task.id}
+                  task={task}
+                  language={language}
+                  onPress={() => setSelectedTaskId(task.id)}
+                  user={user}
+                />
+              ))
+            )}
+          </>
+        )}
+
+        {/* Mockup Invitation Section */}
+        {user && (
+          <Card style={styles.inviteContainerCard} mode="elevated">
+            <Card.Content style={styles.inviteCardContent}>
+              <View style={styles.inviteTopRow}>
+                <View style={styles.inviteAvatarRow}>
+                  <Text style={styles.inviteAvatarEmoji}>🧑‍👩‍👧‍👦</Text>
+                </View>
+                <View style={styles.inviteTextCol}>
+                  <Text style={styles.inviteCardTitle}>
+                    {language === 'hi' ? 'परिवार के सदस्यों को जोड़ें' : 'Invite members to household'}
+                  </Text>
+                  <Text style={styles.inviteCardSub}>
+                    {language === 'hi'
+                      ? 'कोड या व्हाट्सएप का उपयोग करके परिवार को शामिल करें।'
+                      : 'Share the invite code or link to join with your family.'}
+                  </Text>
+                </View>
+                <View style={styles.inviteActionButtons}>
+                  <TouchableRipple style={styles.inviteActionBtn} onPress={() => setQrVisible(true)} borderless>
+                    <AppIcon name="qr-code-outline" size={16} color={Colors.indigo950} />
                   </TouchableRipple>
-                  <TouchableRipple style={styles.shareIconBtn} onPress={shareAny} borderless>
-                    <AppIcon name="share-outline" size={18} color={Colors.indigo950} />
+                  <TouchableRipple style={styles.inviteActionBtn} onPress={shareAny} borderless>
+                    <AppIcon name="share-outline" size={16} color={Colors.indigo950} />
                   </TouchableRipple>
                 </View>
               </View>
-              <Text style={styles.inviteHint}>{translate('inviteCodeHint')}</Text>
-              
-              <View style={styles.shareRow}>
-                <Button
-                  title={translate('shareWhatsapp')}
-                  onPress={shareWhatsApp}
-                  style={styles.shareBtn}
-                  variant="ghost"
-                />
-                <Button
-                  title={translate('shareText')}
-                  onPress={shareSms}
-                  style={styles.shareBtn}
-                  variant="ghost"
-                />
+
+              <View style={styles.inviteBottomRow}>
+                <Pressable
+                  style={styles.inviteCodeBox}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(myCode);
+                    showToast(language === 'hi' ? 'कोड कॉपी किया गया!' : 'Code copied!');
+                  }}
+                >
+                  <Text style={styles.inviteCodeText}>{myCode}</Text>
+                  <AppIcon name="documents-outline" size={14} color={Colors.inkSoft} />
+                </Pressable>
+
+                <TouchableOpacity style={styles.inviteWhatsAppBtn} onPress={shareWhatsApp}>
+                  <AppIcon name="chatbox-ellipses-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.inviteWhatsAppText}>
+                    {language === 'hi' ? 'व्हाट्सएप आमंत्रित' : 'Invite via WhatsApp'}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.joinLabel}>{translate('addMemberByCode')}</Text>
-              <View style={styles.joinRow}>
+              {/* Code manual join field */}
+              <View style={styles.manualJoinRow}>
                 <PaperInput
                   mode="outlined"
                   value={codeInput}
                   onChangeText={setCodeInput}
                   autoCapitalize="characters"
-                  placeholder="CODE123"
+                  placeholder={language === 'hi' ? 'कोड दर्ज करें...' : 'Enter invite code...'}
                   outlineColor={Colors.ivoryLine}
                   activeOutlineColor={Colors.marigoldDeep}
-                  style={styles.codeInput}
+                  style={styles.manualJoinInput}
                   textColor={Colors.ink}
                   right={
                     <PaperInput.Icon
-                      icon={() => <AppIcon name="camera-outline" size={20} color={Colors.indigo950} />}
+                      icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
                       onPress={async () => {
                         if (!permission || !permission.granted) {
                           const res = await requestPermission();
@@ -342,71 +543,19 @@ export default function HouseholdScreen() {
                   }}
                 />
                 <Button
-                  title={translate('addContact')}
+                  title={language === 'hi' ? 'जोड़ें' : 'Join'}
                   loading={addingCode}
                   onPress={() => addByCode()}
-                  style={styles.joinBtn}
+                  style={styles.manualJoinBtn}
                 />
               </View>
             </Card.Content>
           </Card>
-        ) : null}
-
-        <View style={styles.sharedHeaderRow}>
-          <SectionHeader label={translate('sharedTasks')} count={filteredSharedTasks.length} />
-          <TouchableRipple
-            style={styles.customAddBtn}
-            onPress={() => router.push('/(tabs)/add?household=true')}
-            borderless
-          >
-            <View style={styles.customAddInner}>
-              <AppIcon name="people" size={14} color={Colors.indigo950} />
-              <Text style={styles.customAddText}>
-                {language === 'hi' ? 'नया साझा कार्य' : 'Create Shared Task'}
-              </Text>
-            </View>
-          </TouchableRipple>
-        </View>
-
-        {stats.shared.length === 0 ? (
-          <EmptyState
-            icon="🏠"
-            title={translate('householdEmptyTitle')}
-            subtitle={translate('householdEmptySub')}
-          />
-        ) : (
-          <>
-            {stats.total > 0 && (
-              <Card style={styles.summaryCard} mode="elevated">
-                <LinearGradient colors={[...Gradients.hero]} style={styles.summary}>
-                  <ProgressRing percent={ringPercent} color={Colors.marigold} size={64} stroke={6} />
-                  <View>
-                    <Text style={styles.summaryBig}>
-                      {stats.onTime}/{stats.total}
-                    </Text>
-                    <Text style={styles.summaryLbl}>{translate('householdOnTime')}</Text>
-                  </View>
-                </LinearGradient>
-              </Card>
-            )}
-
-            {filteredSharedTasks.length === 0 ? (
-              <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
-            ) : (
-              filteredSharedTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  language={language}
-                  onPress={() => setSelectedTaskId(task.id)}
-                  onCompletePress={() => completeTask(task.id)}
-                />
-              ))
-            )}
-          </>
         )}
 
-        <SectionHeader label={translate('members')} count={members.length} />
+        <View onLayout={(e) => { membersY.current = e.nativeEvent.layout.y; }}>
+          <SectionHeader label={translate('members')} count={members.length} />
+        </View>
         <Card style={styles.memberCard} mode="elevated">
           <Card.Content style={styles.memberCardContent}>
             {members.map((m, idx) => {
@@ -455,16 +604,15 @@ export default function HouseholdScreen() {
                       )}
                     </View>
                     {!m.isYou && m.code ? (
-                      <TouchableRipple
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          removeMember(m.code);
-                        }}
-                        style={styles.removeBtn}
-                        borderless
-                      >
-                        <AppIcon name="close" size={16} color={Colors.indigo950} />
-                      </TouchableRipple>
+                      <View onStartShouldSetResponder={() => true}>
+                        <TouchableRipple
+                          onPress={() => removeMember(m.code)}
+                          style={styles.removeBtn}
+                          borderless
+                        >
+                          <AppIcon name="close" size={16} color={Colors.indigo950} />
+                        </TouchableRipple>
+                      </View>
                     ) : null}
                   </View>
                 </TouchableRipple>
@@ -473,7 +621,16 @@ export default function HouseholdScreen() {
           </Card.Content>
         </Card>
 
-        <SectionHeader label={language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'} />
+        <View
+          style={styles.sharedHeaderRow}
+          onLayout={(e) => { activityY.current = e.nativeEvent.layout.y; }}
+        >
+          <Text style={styles.hhSectionHeading}>{language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}</Text>
+          <TouchableOpacity onPress={() => setActivityVisible(true)}>
+            <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <ActivityFeed
           tasks={tasks}
           members={user?.householdMembers ?? []}
@@ -482,6 +639,35 @@ export default function HouseholdScreen() {
           language={language}
         />
       </ScreenShell>
+
+      {/* Recent Activity Modal */}
+      <Modal
+        visible={activityVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActivityVisible(false)}
+      >
+        <Pressable style={styles.activityBackdrop} onPress={() => setActivityVisible(false)} />
+        <View style={styles.activitySheet}>
+          <View style={styles.activityHeader}>
+            <Text style={styles.activityTitle}>
+              {language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}
+            </Text>
+            <Pressable onPress={() => setActivityVisible(false)} hitSlop={12} style={styles.activityCloseBtn}>
+              <AppIcon name="close" size={20} color={Colors.ink} />
+            </Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+            <ActivityFeed
+              tasks={tasks}
+              members={user?.householdMembers ?? []}
+              currentUserId={user?.id}
+              currentUserName={user?.name ?? 'You'}
+              language={language}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
 
       <TaskDetailSheet
         task={selectedTask}
@@ -648,20 +834,272 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   joinBtn: { minWidth: 82, marginVertical: 0 },
-  summaryCard: {
-    borderRadius: Radius.lg,
-    overflow: 'hidden',
-    marginBottom: 14,
+  // 1. Stats Grid Styles
+  hhSummaryContainer: {
+    flexDirection: 'row',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    padding: 16,
+    gap: 12,
+    marginBottom: 16,
     elevation: 2,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
   },
-  summary: {
-    padding: 22,
+  hhSummaryCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hhSummaryIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  hhIconWrapMembers: { backgroundColor: 'rgba(13, 148, 136, 0.12)' },
+  hhIconWrapTasks: { backgroundColor: 'rgba(37, 99, 235, 0.12)' },
+  hhIconWrapCompletion: { backgroundColor: 'rgba(234, 88, 12, 0.12)' },
+  hhSummaryCount: {
+    fontSize: 20,
+    fontFamily: 'Fraunces_700Bold',
+    color: Colors.indigo950,
+    marginBottom: 2,
+  },
+  hhSummaryLabel: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_600SemiBold',
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  hhSummarySub: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_500Medium',
+    color: '#EA580C',
+  },
+  hhSummaryLink: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_800ExtraBold',
+    textDecorationLine: 'underline',
+  },
+  hhLinkMembers: { color: '#0D9488' },
+  hhLinkTasks: { color: '#2563EB' },
+
+  // 2. Headings & View All Links
+  hhSectionHeading: {
+    fontSize: 18,
+    fontFamily: 'Fraunces_700Bold',
+    color: Colors.indigo950,
+  },
+  hhViewAllLink: {
+    fontSize: 12.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.marigoldDeep,
+  },
+
+  // 3. SharedTaskCard Styles
+  sharedCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    elevation: 1,
+  },
+  sharedCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    padding: 12,
   },
-  summaryBig: { fontFamily: 'Fraunces_700Bold', fontSize: 28, color: Colors.onDark },
-  summaryLbl: { ...Typography.caption, color: Colors.onDarkMuted, marginTop: 2 },
+  sharedCatIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sharedCatIcon: {
+    fontSize: 20,
+  },
+  sharedInfoCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  sharedTitle: {
+    fontSize: 14.5,
+    fontFamily: 'Manrope_800ExtraBold',
+    color: Colors.indigo950,
+    marginBottom: 2,
+  },
+  sharedSubRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sharedSubText: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.inkSoft,
+  },
+  sharedSubBold: {
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.indigo950,
+  },
+  sharedAssigneeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sharedRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginRight: 6,
+    gap: 4,
+  },
+  sharedStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  sharedStatusText: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_800ExtraBold',
+  },
+  sharedDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sharedDateText: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_600SemiBold',
+    color: Colors.inkFaint,
+  },
+
+  // 4. Invite Card Styles
+  inviteContainerCard: {
+    backgroundColor: '#FFFDF5',
+    borderColor: '#E8A33D20',
+    borderWidth: 1.2,
+    borderRadius: Radius.md,
+    marginVertical: 14,
+    elevation: 1,
+  },
+  inviteCardContent: {
+    padding: 14,
+  },
+  inviteTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inviteAvatarRow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(232, 163, 61, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  inviteAvatarEmoji: {
+    fontSize: 22,
+  },
+  inviteTextCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  inviteCardTitle: {
+    fontSize: 14.5,
+    fontFamily: 'Manrope_800ExtraBold',
+    color: Colors.indigo950,
+    marginBottom: 2,
+  },
+  inviteCardSub: {
+    fontSize: 11,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.inkSoft,
+    lineHeight: 15,
+  },
+  inviteActionButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  inviteActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteBottomRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  inviteCodeBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.white,
+    borderWidth: 1.2,
+    borderColor: Colors.ivoryLine,
+    borderRadius: Radius.xs,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  inviteCodeText: {
+    fontSize: 14.5,
+    fontFamily: 'Fraunces_700Bold',
+    color: Colors.indigo950,
+    letterSpacing: 0.5,
+  },
+  inviteWhatsAppBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.marigoldDeep,
+    borderRadius: Radius.xs,
+    paddingHorizontal: 16,
+    height: 40,
+    elevation: 1,
+  },
+  inviteWhatsAppText: {
+    fontSize: 12.5,
+    fontFamily: 'Manrope_800ExtraBold',
+    color: Colors.white,
+  },
+  manualJoinRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
+    paddingTop: 12,
+  },
+  manualJoinInput: {
+    flex: 1,
+    fontSize: 13,
+    height: 38,
+    backgroundColor: Colors.white,
+  },
+  manualJoinBtn: {
+    minWidth: 70,
+    height: 38,
+    marginVertical: 0,
+    borderRadius: Radius.xs,
+  },
+
+  // 5. Member Card Styles
   memberCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.md,
@@ -713,7 +1151,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   emptySub: { ...Typography.bodySm, color: Colors.inkSoft, textAlign: 'center', paddingVertical: 16, lineHeight: 20 },
-
   memberRowRippleActive: {
     backgroundColor: 'rgba(232,163,61,0.06)',
   },
@@ -738,28 +1175,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 18,
     marginBottom: 4,
-  },
-  customAddBtn: {
-    backgroundColor: Colors.marigold,
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-    elevation: 2,
-    shadowColor: Colors.marigold,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  customAddInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 6,
-  },
-  customAddText: {
-    fontFamily: 'Manrope_800ExtraBold',
-    fontSize: 11,
-    color: Colors.indigo950,
   },
 
   // Scanner Styles
@@ -793,5 +1208,44 @@ const styles = StyleSheet.create({
   },
   scannerCloseBtn: {
     minWidth: 150,
+  },
+
+  // Recent Activity Modal Styles
+  activityBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  activitySheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '75%',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+    padding: 20,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.ivoryLine,
+    paddingBottom: 12,
+  },
+  activityTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.indigo950,
+  },
+  activityCloseBtn: {
+    padding: 4,
   },
 });

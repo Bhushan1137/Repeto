@@ -19,6 +19,7 @@ interface TaskFilterBarProps {
   filter: FilterState;
   onChange: (next: FilterState) => void;
   language: 'en' | 'hi';
+  hideSearchAndGroups?: boolean;
 }
 
 const GROUP_CHIPS: { key: TaskGroup | 'all'; labelEn: string; labelHi: string }[] = [
@@ -29,7 +30,7 @@ const GROUP_CHIPS: { key: TaskGroup | 'all'; labelEn: string; labelHi: string }[
   { key: 'month',   labelEn: 'Month',   labelHi: 'महीना' },
 ];
 
-export function TaskFilterBar({ filter, onChange, language }: TaskFilterBarProps) {
+export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups = false }: TaskFilterBarProps) {
   const isFiltered =
     filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all';
 
@@ -41,51 +42,56 @@ export function TaskFilterBar({ filter, onChange, language }: TaskFilterBarProps
   return (
     <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOutUp.duration(180)}>
       {/* Search input */}
-      <View style={styles.searchRow}>
-        <AppIcon name="search-outline" size={18} color={Colors.inkFaint} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={language === 'hi' ? 'खोजें...' : 'Search tasks...'}
-          placeholderTextColor={Colors.inkFaint}
-          value={filter.query}
-          onChangeText={(q) => onChange({ ...filter, query: q })}
-          returnKeyType="search"
-          autoCorrect={false}
-        />
-        {filter.query.length > 0 && (
-          <Pressable onPress={() => onChange({ ...filter, query: '' })} hitSlop={8}>
-            <AppIcon name="close-circle-outline" size={16} color={Colors.inkFaint} />
-          </Pressable>
-        )}
-      </View>
+      {!hideSearchAndGroups && (
+        <View style={styles.searchRow}>
+          <AppIcon name="search-outline" size={18} color={Colors.inkFaint} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={language === 'hi' ? 'खोजें...' : 'Search tasks...'}
+            placeholderTextColor={Colors.inkFaint}
+            value={filter.query}
+            onChangeText={(q) => onChange({ ...filter, query: q })}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {filter.query.length > 0 && (
+            <Pressable onPress={() => onChange({ ...filter, query: '' })} hitSlop={8}>
+              <AppIcon name="close-circle-outline" size={16} color={Colors.inkFaint} />
+            </Pressable>
+          )}
+        </View>
+      )}
 
       {/* Due group chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-      >
-        {GROUP_CHIPS.map((chip) => {
-          const active = filter.group === chip.key;
-          return (
-            <Pressable
-              key={chip.key}
-              style={[styles.chip, active && styles.chipActive]}
-              onPress={() => onChange({ ...filter, group: chip.key })}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {language === 'hi' ? chip.labelHi : chip.labelEn}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {!hideSearchAndGroups && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          {GROUP_CHIPS.map((chip) => {
+            const active = filter.group === chip.key;
+            return (
+              <Pressable
+                key={chip.key}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => onChange({ ...filter, group: chip.key })}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  {language === 'hi' ? chip.labelHi : chip.labelEn}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Category chips */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
+        style={hideSearchAndGroups ? { marginTop: 4, marginBottom: 8 } : undefined}
       >
         <Pressable
           style={[styles.chip, filter.category === 'all' && styles.chipActive]}
@@ -115,7 +121,7 @@ export function TaskFilterBar({ filter, onChange, language }: TaskFilterBarProps
       </ScrollView>
 
       {/* Clear all filter hint */}
-      {isFiltered && (
+      {isFiltered && !hideSearchAndGroups && (
         <Pressable style={styles.clearRow} onPress={clearAll}>
           <Text style={styles.clearText}>
             {language === 'hi' ? 'फ़िल्टर साफ़ करें' : 'Clear filters'}
