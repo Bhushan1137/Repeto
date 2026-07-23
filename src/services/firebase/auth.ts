@@ -6,6 +6,8 @@ import {
   getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail as firebaseSendPasswordReset,
   type User,
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -102,6 +104,27 @@ export async function signInWithGoogleNative(): Promise<User> {
   return signInWithGoogleAndroid();
 }
 
+// ---------------------------------------------------------------------------
+// Email/Password sign-in — existing users only (no sign-up).
+// New users must register via Google sign-in.
+// ---------------------------------------------------------------------------
+export async function signInWithEmailPassword(
+  email: string,
+  password: string
+): Promise<User> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return result.user;
+}
+
+/** Send a password-reset email so existing Google users can set an email/password credential. */
+export async function sendPasswordResetEmail(email: string): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  await firebaseSendPasswordReset(auth, email);
+}
+
 export async function signOutFirebase(): Promise<void> {
   if (Platform.OS !== 'web') {
     try {
@@ -123,6 +146,17 @@ export function getAuthErrorMessage(code: string): string {
       return 'Google Sign-In is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.';
     case 'auth/network-request-failed':
       return 'Network error. Check your connection and try again.';
+    case 'auth/user-not-found':
+      return 'No account found with this email. Please sign in with Google first.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect password. Use "Forgot password?" to reset it.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
     case 'redirect_pending':
       return 'Redirecting to Google…';
     default:

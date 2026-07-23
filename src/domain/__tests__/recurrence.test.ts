@@ -5,7 +5,16 @@ import {
   daysUntilDue,
   getTaskGroup,
 } from '@/domain/recurrence';
-import { canAddTask, capTasksForPlan, createTaskFromPreset, FREE_TASK_LIMIT } from '@/domain/task';
+import {
+  canAddTask,
+  capTasksForPlan,
+  createTaskFromPreset,
+  createTaskFromFormValues,
+  completeTaskInstance,
+  skipTaskInstance,
+  updateTaskDetails,
+  FREE_TASK_LIMIT,
+} from '@/domain/task';
 import type { UserProfile } from '@/types';
 
 const freeUser: UserProfile = {
@@ -89,14 +98,14 @@ describe('getTaskGroup', () => {
 });
 
 describe('free tier limits', () => {
-  it('blocks at 10 tasks', () => {
-    expect(canAddTask(freeUser, FREE_TASK_LIMIT)).toBe(false);
-    expect(canAddTask(freeUser, FREE_TASK_LIMIT - 1)).toBe(true);
+  it('does not block tasks (unlimited)', () => {
+    expect(canAddTask(freeUser, FREE_TASK_LIMIT)).toBe(true);
+    expect(canAddTask(freeUser, FREE_TASK_LIMIT + 10)).toBe(true);
   });
 
-  it('caps onboarding presets', () => {
+  it('does not cap onboarding presets (unlimited)', () => {
     const items = Array.from({ length: 14 }, (_, i) => i);
-    expect(capTasksForPlan(freeUser, items)).toHaveLength(FREE_TASK_LIMIT);
+    expect(capTasksForPlan(freeUser, items)).toHaveLength(14);
   });
 });
 
@@ -106,5 +115,61 @@ describe('createTaskFromPreset', () => {
     expect(task.history).toEqual([]);
     expect(task.recurrence.intervalUnit).toBe('months');
     expect(task.recurrence.interval).toBe(6);
+  });
+});
+
+describe('task actions and start date fixes', () => {
+  it('creates task starting from selected startDate', () => {
+    const startDate = '2026-08-10';
+    const task = createTaskFromFormValues({
+      title: 'Custom Start Task',
+      category: 'medicines',
+      recurrence: { type: 'monthly' },
+      freq: 'monthly',
+      finance: false,
+      startDate,
+    });
+    // For monthly, next due date is 1 month from start date (2026-09-10)
+    const nextDate = new Date(task.nextDueDate);
+    expect(nextDate.getFullYear()).toBe(2026);
+    expect(nextDate.getMonth()).toBe(8); // September (0-indexed)
+    expect(nextDate.getDate()).toBe(10);
+    expect(task.startDate).toBe(startDate);
+  });
+
+  it('advances nextDueDate relative to current nextDueDate on early completion', () => {
+    const futureDueDate = new Date();
+    futureDueDate.setDate(futureDueDate.getDate() + 15); // due in 15 days
+    const task = createTaskFromPreset('Early Done Task', 'medicines', 'Everyday');
+    task.nextDueDate = futureDueDate.toISOString();
+    task.recurrence = { type: 'daily' };
+
+    const completed = completeTaskInstance(task);
+    // Next due date should be 1 day after the current futureDueDate, not 1 day after today
+    const nextDate = new Date(completed.nextDueDate);
+    const expected = new Date(futureDueDate);
+    expected.setDate(expected.getDate() + 1);
+
+    expect(nextDate.getFullYear()).toBe(expected.getFullYear());
+    expect(nextDate.getMonth()).toBe(expected.getMonth());
+    expect(nextDate.getDate()).toBe(expected.getDate());
+  });
+
+  it('advances nextDueDate relative to current nextDueDate on early skip', () => {
+    const futureDueDate = new Date();
+    futureDueDate.setMonth(futureDueDate.getMonth() + 1); // due in 1 month
+    const task = createTaskFromPreset('Early Skip Task', 'medicines', 'Monthly');
+    task.nextDueDate = futureDueDate.toISOString();
+    task.recurrence = { type: 'monthly' };
+
+    const skipped = skipTaskInstance(task);
+    // Next due date should be 1 month after the current futureDueDate, not 1 month after today
+    const nextDate = new Date(skipped.nextDueDate);
+    const expected = new Date(futureDueDate);
+    expected.setMonth(expected.getMonth() + 1);
+
+    expect(nextDate.getFullYear()).toBe(expected.getFullYear());
+    expect(nextDate.getMonth()).toBe(expected.getMonth());
+    expect(nextDate.getDate()).toBe(expected.getDate());
   });
 });

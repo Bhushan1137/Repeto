@@ -489,19 +489,20 @@ export default function HouseholdScreen() {
                 </View>
               </View>
 
-              <View style={styles.inviteBottomRow}>
+              <View style={styles.inviteBottomRow} testID="household-invite-row">
                 <Pressable
                   style={styles.inviteCodeBox}
+                  testID="household-invite-copy-btn"
                   onPress={async () => {
                     await Clipboard.setStringAsync(myCode);
                     showToast(language === 'hi' ? 'कोड कॉपी किया गया!' : 'Code copied!');
                   }}
                 >
-                  <Text style={styles.inviteCodeText}>{myCode}</Text>
+                  <Text style={styles.inviteCodeText} testID="household-invite-code-text">{myCode}</Text>
                   <AppIcon name="documents-outline" size={14} color={Colors.inkSoft} />
                 </Pressable>
 
-                <TouchableOpacity style={styles.inviteWhatsAppBtn} onPress={shareWhatsApp}>
+                <TouchableOpacity style={styles.inviteWhatsAppBtn} onPress={shareWhatsApp} testID="household-invite-whatsapp-btn">
                   <AppIcon name="chatbox-ellipses-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
                   <Text style={styles.inviteWhatsAppText}>
                     {language === 'hi' ? 'व्हाट्सएप आमंत्रित' : 'Invite via WhatsApp'}
@@ -510,7 +511,7 @@ export default function HouseholdScreen() {
               </View>
 
               {/* Code manual join field */}
-              <View style={styles.manualJoinRow}>
+              <View style={styles.manualJoinRow} testID="household-manual-join-row">
                 <PaperInput
                   mode="outlined"
                   value={codeInput}
@@ -521,6 +522,7 @@ export default function HouseholdScreen() {
                   activeOutlineColor={Colors.marigoldDeep}
                   style={styles.manualJoinInput}
                   textColor={Colors.ink}
+                  testID="household-join-code-input"
                   right={
                     <PaperInput.Icon
                       icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
@@ -534,6 +536,7 @@ export default function HouseholdScreen() {
                         }
                         setScannerVisible(true);
                       }}
+                      testID="household-scanner-btn"
                     />
                   }
                   theme={{
@@ -547,6 +550,7 @@ export default function HouseholdScreen() {
                   loading={addingCode}
                   onPress={() => addByCode()}
                   style={styles.manualJoinBtn}
+                  testID="household-join-btn"
                 />
               </View>
             </Card.Content>

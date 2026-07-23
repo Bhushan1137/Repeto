@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { userRepository } from '@/data/repositories/userRepository';
 import type { AppNotification } from '@/types/notification';
@@ -16,6 +16,12 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  // Keep a mutable ref of notifications to prevent markAllAsRead from re-triggering effects
+  const notificationsRef = useRef<AppNotification[]>([]);
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -63,19 +69,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   );
 
   const markAllAsRead = useCallback(async () => {
-    if (!user?.id || notifications.length === 0) return;
+    if (!user?.id || notificationsRef.current.length === 0) return;
+
+    // Push to remote database in parallel for unread ones
+    const unread = notificationsRef.current.filter((n) => !n.read);
+    if (unread.length === 0) return;
 
     // Update locally
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
 
-    // Push to remote database in parallel
-    const unread = notifications.filter((n) => !n.read);
     await Promise.all(
       unread.map((n) =>
         userRepository.saveNotification(user.id, { ...n, read: true })
       )
     );
-  }, [user?.id, notifications]);
+  }, [user?.id]);
 
   const deleteNotification = useCallback(
     async (id: string) => {

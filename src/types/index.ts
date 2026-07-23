@@ -80,6 +80,7 @@ export interface RepeatingTask {
   amount?: number;
   finance: boolean;
   reminderTime?: string;
+  startDate?: string;
   sharedWith: SharedMember[];
   assignedTo?: string;
   history: TaskHistoryEntry[];

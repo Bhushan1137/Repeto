@@ -18,6 +18,7 @@ interface ProgressRingProps {
   stroke?: number;
   label?: string;
   labelColor?: string;
+  testID?: string;
 }
 
 export function ProgressRing({
@@ -27,6 +28,7 @@ export function ProgressRing({
   stroke = 4.5,
   label,
   labelColor = Colors.ink,
+  testID,
 }: ProgressRingProps) {
   const r = (size - stroke) / 2;
   const center = size / 2;
@@ -50,7 +52,7 @@ export function ProgressRing({
   });
 
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} testID={testID}>
       <Svg width={size} height={size}>
         <Circle
           cx={center}

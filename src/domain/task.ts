@@ -18,22 +18,22 @@ export const FREE_TASK_LIMIT = 10;
 export const FREE_SHARED_PARTICIPANT_LIMIT = 1;
 
 export function canAddTask(user: UserProfile | null, taskCount: number): boolean {
-  if (!user || user.plan !== 'free') return true;
-  return taskCount < FREE_TASK_LIMIT;
+  // Plan limits disabled for now (always allow)
+  return true;
 }
 
 export function canShareWith(
   user: UserProfile | null,
   shared: SharedMember[]
 ): boolean {
-  if (!user || user.plan !== 'free') return true;
-  return shared.length <= FREE_SHARED_PARTICIPANT_LIMIT;
+  // Share limits disabled for now (always allow)
+  return true;
 }
 
 /** Cap onboarding presets to free tier limit */
 export function capTasksForPlan<T>(user: UserProfile | null, items: T[]): T[] {
-  if (!user || user.plan !== 'free') return items;
-  return items.slice(0, FREE_TASK_LIMIT);
+  // Onboarding presets limit disabled for now (always return all items)
+  return items;
 }
 
 export function createTaskId(): string {
@@ -46,16 +46,18 @@ export function createTaskFromFormValues(
   creatorName?: string
 ): RepeatingTask {
   const now = new Date().toISOString();
+  const baseDate = values.startDate ? new Date(values.startDate) : new Date();
   return {
     id: createTaskId(),
     title: values.title.trim(),
     category: values.category,
     recurrence: values.recurrence,
     frequencyLabel: values.freq,
-    nextDueDate: computeNextDueDate(values.recurrence),
+    nextDueDate: computeNextDueDate(values.recurrence, baseDate),
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
+    startDate: values.startDate,
     sharedWith: shared,
     history: [],
     createdAt: now,
@@ -127,13 +129,16 @@ export function statusForCompletion(dueDateIso: string, completedAt: Date = new 
 
 export function completeTaskInstance(task: RepeatingTask, note?: string, completedBy?: string): RepeatingTask {
   const status = statusForCompletion(task.nextDueDate);
+  const base = new Date(task.nextDueDate);
+  const today = new Date();
+  const baseDate = base >= today ? base : today;
   return {
     ...task,
     history: [
       ...task.history.slice(-4),
       { month: getMonthLabel(), status, completedAt: new Date().toISOString(), note, completedBy },
     ],
-    nextDueDate: computeNextDueDate(task.recurrence, new Date()),
+    nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
     snoozedUntil: undefined,
     updatedAt: new Date().toISOString(),
@@ -195,10 +200,13 @@ export function snoozeTaskInstance(task: RepeatingTask, days = 2, userId?: strin
 
 export function skipTaskInstance(task: RepeatingTask, userId?: string): RepeatingTask {
   const now = new Date().toISOString();
+  const base = new Date(task.nextDueDate);
+  const today = new Date();
+  const baseDate = base >= today ? base : today;
   return {
     ...task,
     history: [...task.history.slice(-4), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
-    nextDueDate: computeNextDueDate(task.recurrence, new Date()),
+    nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
     updatedAt: now,
   };
@@ -216,11 +224,10 @@ function recurrenceChanged(a: RepeatingTask['recurrence'], b: TaskFormValues['re
 }
 
 export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): RepeatingTask {
-  // Only recalculate nextDueDate when the recurrence rule actually changes.
-  // If only title, category, amount etc. change, preserve the current due date
-  // so existing scheduling progress is not lost.
-  const nextDueDate = recurrenceChanged(task.recurrence, values.recurrence)
-    ? computeNextDueDate(values.recurrence)
+  // Recalculate nextDueDate when the recurrence rule or start date changes.
+  const startChanged = task.startDate !== values.startDate;
+  const nextDueDate = (recurrenceChanged(task.recurrence, values.recurrence) || startChanged)
+    ? computeNextDueDate(values.recurrence, values.startDate ? new Date(values.startDate) : new Date())
     : task.nextDueDate;
 
   return {
@@ -232,6 +239,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
+    startDate: values.startDate,
     icon: values.icon,
     nextDueDate,
     updatedAt: new Date().toISOString(),

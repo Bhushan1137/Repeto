@@ -13,6 +13,7 @@ interface ButtonProps {
   onPress?: () => void;
   style?: any;
   textStyle?: TextStyle;
+  testID?: string;
 }
 
 export function Button({

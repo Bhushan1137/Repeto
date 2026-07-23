@@ -6,6 +6,7 @@ export interface TimeFieldProps {
   value: string | null;
   onChange: (time: string) => void;
   hint?: string;
+  testID?: string;
 }
 
 export function parseTime(value: string | null): Date {

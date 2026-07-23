@@ -37,6 +37,8 @@ export type AppIconName =
   | 'chevron-forward'
   | 'chevron-up-outline'
   | 'camera-outline'
+  | 'mail-outline'
+  | 'logo-google'
   | 'warning-outline';
 
 interface AppIconProps {

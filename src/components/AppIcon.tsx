@@ -40,6 +40,8 @@ export type AppIconName =
   | 'warning-outline'
   | 'send-outline'
   | 'chatbox-ellipses-outline'
+  | 'mail-outline'
+  | 'logo-google'
   | 'lock-closed-outline';
 
 interface AppIconProps {

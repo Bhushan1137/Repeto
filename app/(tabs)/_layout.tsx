@@ -34,8 +34,8 @@ function TabIcon({ tab, focused }: { tab: TabKey; focused: boolean }) {
 
 function AddTabButton({ onOpen, ...props }: PressableProps & { onOpen: () => void; children?: React.ReactNode }) {
   return (
-    <Pressable onPress={onOpen} style={styles.addSlot}>
-      <View style={styles.fabOuter}>
+    <Pressable onPress={onOpen} style={styles.addSlot} testID="add-task-fab">
+      <View style={styles.fabOuter} testID="add-task-fab-outer">
         <LinearGradient colors={[...Gradients.marigold]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fab}>
           <AppIcon name="add" size={30} color={Colors.indigo950} />
         </LinearGradient>

@@ -76,10 +76,11 @@ export default function ProfileScreen() {
         },
       ]}
       keyboardShouldPersistTaps="handled"
+      testID="profile-screen-scroll"
     >
       <OnboardingProgress step={2} />
-      <Text style={styles.title}>{translate('profileTitle')}</Text>
-      <Text style={styles.sub}>{translate('profileSub')}</Text>
+      <Text style={styles.title} testID="profile-title">{translate('profileTitle')}</Text>
+      <Text style={styles.sub} testID="profile-subtitle">{translate('profileSub')}</Text>
 
       <FormField
         label={translate('fullName')}
@@ -88,6 +89,7 @@ export default function ProfileScreen() {
         placeholder={translate('fullNamePlaceholder')}
         autoCapitalize="words"
         error={errors.name}
+        testID="profile-name-input"
       />
 
       <FormField
@@ -96,6 +98,7 @@ export default function ProfileScreen() {
         editable={false}
         error={undefined}
         hint={translate('emailFromGoogle')}
+        testID="profile-email-input"
       />
 
       <FormField
@@ -107,9 +110,16 @@ export default function ProfileScreen() {
         maxLength={10}
         error={errors.phone}
         hint={translate('phoneOptionalHint')}
+        testID="profile-phone-input"
       />
 
-      <Button title={translate('continueBtn')} style={styles.cta} loading={loading} onPress={handleContinue} />
+      <Button
+        title={translate('continueBtn')}
+        style={styles.cta}
+        loading={loading}
+        onPress={handleContinue}
+        testID="profile-continue-btn"
+      />
     </ScrollView>
   );
 }

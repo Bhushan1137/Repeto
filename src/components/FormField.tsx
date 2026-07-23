@@ -16,6 +16,7 @@ interface FormFieldProps {
   maxLength?: number;
   secureTextEntry?: boolean;
   style?: any;
+  testID?: string;
 }
 
 export function FormField({
@@ -24,10 +25,11 @@ export function FormField({
   hint,
   style,
   editable = true,
+  testID,
   ...props
 }: FormFieldProps) {
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={testID}>
       <PaperInput
         mode="outlined"
         label={label}

@@ -42,19 +42,20 @@ export default function CategoriesScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}
+      testID="categories-screen-scroll"
     >
       <OnboardingProgress step={3} />
       
-      <Text style={styles.title}>{translate('whatRepeats')}</Text>
+      <Text style={styles.title} testID="categories-title">{translate('whatRepeats')}</Text>
       
-      <View style={styles.infoRow}>
+      <View style={styles.infoRow} testID="categories-info-row">
         <AppIcon name="checkmark-circle-outline" size={16} color={Colors.tealDeep} />
-        <Text style={styles.infoText}>{translate('youCanChangeAnytime')}</Text>
+        <Text style={styles.infoText} testID="categories-info-text">{translate('youCanChangeAnytime')}</Text>
       </View>
 
-      <Text style={styles.sub}>{translate('whatRepeatsSub')}</Text>
+      <Text style={styles.sub} testID="categories-subtitle">{translate('whatRepeatsSub')}</Text>
 
-      <View style={styles.grid}>
+      <View style={styles.grid} testID="categories-grid">
         {CATEGORIES.map((cat) => {
           const active = categories.includes(cat.key);
           const label = language === 'hi' ? cat.labelHi : cat.labelEn;
@@ -65,15 +66,17 @@ export default function CategoriesScreen() {
               key={cat.key}
               style={[styles.catCard, { width: cardWidth }, active && styles.catCardActive]}
               mode="elevated"
+              testID={`categories-card-${cat.key}`}
             >
               <TouchableRipple
                 onPress={() => toggleCategory(cat.key as CategoryKey)}
                 style={styles.cardRipple}
+                testID={`categories-chip-${cat.key}`}
                 borderless
               >
-                <View style={styles.cardContent}>
+                <View style={styles.cardContent} testID={`categories-card-content-${cat.key}`}>
                   {/* Selection Indicator */}
-                  <View style={[styles.indicator, active && styles.indicatorActive]}>
+                  <View style={[styles.indicator, active && styles.indicatorActive]} testID={`categories-indicator-${cat.key}`}>
                     {active ? (
                       <Text style={styles.indicatorCheck}>✓</Text>
                     ) : (
@@ -81,7 +84,7 @@ export default function CategoriesScreen() {
                     )}
                   </View>
 
-                  <View style={styles.iconWrap}>
+                  <View style={styles.iconWrap} testID={`categories-icon-wrap-${cat.key}`}>
                     <Text style={styles.icon}>{cat.icon}</Text>
                   </View>
                   <Text style={styles.catLabel} numberOfLines={1}>{label}</Text>
@@ -97,7 +100,7 @@ export default function CategoriesScreen() {
         })}
       </View>
 
-      <View style={styles.ctaRow}>
+      <View style={styles.ctaRow} testID="categories-cta-row">
         <Button
           title={translate('skipForNow')}
           variant="ghost"
@@ -106,18 +109,20 @@ export default function CategoriesScreen() {
             buildSuggestions();
             router.push('/(onboarding)/suggestions');
           }}
+          testID="categories-skip-btn"
         />
         <Button
           title={language === 'hi' ? 'जारी रखें →' : 'Continue →'}
           style={[styles.cta, categories.length === 0 ? styles.disabled : undefined]}
           disabled={categories.length === 0}
           onPress={handleContinue}
+          testID="categories-continue-btn"
         />
       </View>
 
-      <View style={styles.privacyFooter}>
+      <View style={styles.privacyFooter} testID="categories-privacy-footer">
         <AppIcon name="lock-closed-outline" size={14} color={Colors.inkFaint} />
-        <Text style={styles.privacyText}>{translate('privacyNotice')}</Text>
+        <Text style={styles.privacyText} testID="categories-privacy-text">{translate('privacyNotice')}</Text>
       </View>
     </ScrollView>
   );

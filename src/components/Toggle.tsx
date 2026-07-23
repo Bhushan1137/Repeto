@@ -5,14 +5,16 @@ import { Colors } from '@/constants/theme';
 interface ToggleProps {
   value: boolean;
   onValueChange: (v: boolean) => void;
+  testID?: string;
 }
 
-export function Toggle({ value, onValueChange }: ToggleProps) {
+export function Toggle({ value, onValueChange, testID }: ToggleProps) {
   return (
     <Switch
       value={value}
       onValueChange={onValueChange}
       color={Colors.teal}
+      testID={testID}
     />
   );
 }

@@ -7,6 +7,7 @@ export interface DateFieldProps {
   onChange: (isoDate: string) => void;
   hint?: string;
   minimumDate?: Date;
+  testID?: string;
 }
 
 export function parseDate(iso: string | null): Date {

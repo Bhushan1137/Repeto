@@ -23,6 +23,7 @@ interface SelectFieldProps<T extends string | number = string> {
   onChange: (value: T) => void;
   hint?: string;
   error?: string;
+  testID?: string;
 }
 
 export function SelectField<T extends string | number = string>({
@@ -32,13 +33,14 @@ export function SelectField<T extends string | number = string>({
   onChange,
   hint,
   error,
+  testID,
 }: SelectFieldProps<T>) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
 
   return (
-    <View style={styles.wrap}>
-      <Pressable onPress={() => setOpen(true)}>
+    <View style={styles.wrap} testID={testID}>
+      <Pressable onPress={() => setOpen(true)} testID={testID ? `${testID}-trigger` : undefined}>
         <View pointerEvents="none">
           <PaperInput
             mode="outlined"
@@ -82,6 +84,7 @@ export function SelectField<T extends string | number = string>({
                 <TouchableRipple
                   key={String(opt.value)}
                   style={[styles.option, active && styles.optionActive]}
+                  testID={testID ? `${testID}-option-${opt.value}` : undefined}
                   onPress={() => {
                     onChange(opt.value);
                     setOpen(false);

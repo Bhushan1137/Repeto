@@ -8,7 +8,7 @@ import {
 } from '@/components/dateFieldShared';
 import { Colors, Radius } from '@/constants/theme';
 
-export function DateField({ label, value, onChange, hint, minimumDate }: DateFieldProps) {
+export function DateField({ label, value, onChange, hint, minimumDate, testID }: DateFieldProps) {
   const [open, setOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [temp, setTemp] = useState(parseDate(value));
@@ -36,10 +36,11 @@ export function DateField({ label, value, onChange, hint, minimumDate }: DateFie
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={testID}>
       <Text style={styles.label}>{label}</Text>
       <Pressable
         style={styles.trigger}
+        testID={testID ? `${testID}-trigger` : undefined}
         onPress={() => {
           setTemp(parseDate(value));
           setOpen(true);

@@ -91,10 +91,10 @@ export default function ProfileScreen() {
             <Text style={styles.avatarText}>{initials(user.name)}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{user.name}</Text>
-            <Text style={styles.phone}>{displayPhone}</Text>
+            <Text style={styles.name} testID="settings-profile-name">{user.name}</Text>
+            <Text style={styles.phone} testID="settings-profile-phone">{displayPhone}</Text>
           </View>
-          <TouchableRipple style={styles.editBtn} onPress={handleOpenEdit} borderless>
+          <TouchableRipple style={styles.editBtn} onPress={handleOpenEdit} testID="settings-profile-edit-btn" borderless>
             <AppIcon name="create-outline" size={20} color={Colors.onDark} />
           </TouchableRipple>
         </LinearGradient>
@@ -108,6 +108,7 @@ export default function ProfileScreen() {
           { code: 'en', label: 'English', native: 'English' },
           { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
         ]}
+        testID="settings-language-picker"
       />
 
       <SectionHeader label={translate('notifications')} />
@@ -119,10 +120,11 @@ export default function ProfileScreen() {
           if (v) await requestNotificationPermission();
           updateUser({ pushOptIn: v });
         }}
+        testID="settings-push-toggle"
       />
 
       <SectionHeader label={translate('more')} />
-      <LinkRow label={translate('manageHousehold')} onPress={() => router.push('/(tabs)/household')} />
+      <LinkRow label={translate('manageHousehold')} onPress={() => router.push('/(tabs)/household')} testID="settings-household-link" />
       <LinkRow
         label={user.language === 'hi' ? 'कैलेंडर में एक्सपोर्ट करें' : 'Export tasks to Calendar'}
         onPress={async () => {
@@ -133,18 +135,22 @@ export default function ProfileScreen() {
             showToast(translate('saveError'));
           }
         }}
+        testID="settings-export-link"
       />
       <LinkRow
         label={translate('helpSupport')}
         onPress={() => router.push('/help-support')}
+        testID="settings-support-link"
       />
       <LinkRow
         label={translate('privacyPolicy')}
         onPress={() => router.push('/privacy')}
+        testID="settings-privacy-link"
       />
       <LinkRow
         label={translate('termsOfService')}
         onPress={() => router.push('/terms')}
+        testID="settings-terms-link"
       />
       <LinkRow
         label={translate('logOut')}
@@ -173,6 +179,7 @@ export default function ProfileScreen() {
             );
           }
         }}
+        testID="settings-logout-link"
       />
 
       {/* Edit Profile Bottom Sheet Modal */}
@@ -195,6 +202,7 @@ export default function ProfileScreen() {
                 onChangeText={setEditName}
                 placeholder={translate('fullNamePlaceholder')}
                 error={errors.name}
+                testID="settings-edit-name-input"
               />
 
               <FormField
@@ -204,12 +212,13 @@ export default function ProfileScreen() {
                 placeholder="98765 43210"
                 keyboardType="phone-pad"
                 error={errors.phone}
+                testID="settings-edit-phone-input"
               />
 
               {/* Read-only Email Field with Lock Icon */}
               <Text style={styles.readOnlyLabel}>{translate('email')}</Text>
-              <View style={styles.readOnlyField}>
-                <Text style={styles.readOnlyValue}>{user.email}</Text>
+              <View style={styles.readOnlyField} testID="settings-edit-email-container">
+                <Text style={styles.readOnlyValue} testID="settings-edit-email-value">{user.email}</Text>
                 <AppIcon name="lock-closed-outline" size={16} color={Colors.inkFaint} />
               </View>
               <Text style={styles.readOnlyHint}>{translate('emailFromGoogle')}</Text>
@@ -220,6 +229,7 @@ export default function ProfileScreen() {
                 loading={saving}
                 disabled={saving}
                 style={{ marginTop: 24 }}
+                testID="settings-edit-save-btn"
               />
               <Button
                 title={translate('backBtn')}
@@ -227,6 +237,7 @@ export default function ProfileScreen() {
                 disabled={saving}
                 style={{ marginTop: 10, marginBottom: 20 }}
                 onPress={() => setShowEditSheet(false)}
+                testID="settings-edit-back-btn"
               />
             </ScrollView>
           </Card>
@@ -236,10 +247,10 @@ export default function ProfileScreen() {
   );
 }
 
-function LinkRow({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+function LinkRow({ label, onPress, danger, testID }: { label: string; onPress: () => void; danger?: boolean; testID?: string }) {
   return (
-    <Card style={styles.linkCard} mode="elevated">
-      <TouchableRipple onPress={onPress} style={styles.linkRipple} borderless>
+    <Card style={styles.linkCard} mode="elevated" testID={testID}>
+      <TouchableRipple onPress={onPress} style={styles.linkRipple} testID={testID ? `${testID}-ripple` : undefined} borderless>
         <View style={styles.linkInner}>
           <Text style={[styles.linkLabel, danger && styles.danger]}>{label}</Text>
           <Text style={styles.linkArrow}>›</Text>

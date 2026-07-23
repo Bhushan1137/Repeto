@@ -10,17 +10,18 @@ interface SettingRowProps {
   value: boolean;
   onValueChange: (v: boolean) => void;
   flat?: boolean;
+  testID?: string;
 }
 
-export function SettingRow({ label, sub, value, onValueChange, flat = false }: SettingRowProps) {
+export function SettingRow({ label, sub, value, onValueChange, flat = false, testID }: SettingRowProps) {
   return (
-    <Card style={[styles.card, flat && styles.cardFlat]} mode={flat ? 'contained' : 'elevated'}>
+    <Card style={[styles.card, flat && styles.cardFlat]} mode={flat ? 'contained' : 'elevated'} testID={testID}>
       <Card.Content style={styles.cardContent}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={styles.label}>{label}</Text>
           {sub ? <Text style={styles.sub}>{sub}</Text> : null}
         </View>
-        <Toggle value={value} onValueChange={onValueChange} />
+        <Toggle value={value} onValueChange={onValueChange} testID={testID ? `${testID}-toggle` : undefined} />
       </Card.Content>
     </Card>
   );
@@ -30,9 +31,10 @@ interface LanguagePickerProps {
   options: Array<{ code: string; label: string; native: string }>;
   selected: string;
   onSelect: (code: string) => void;
+  testID?: string;
 }
 
-export function LanguagePicker({ options, selected, onSelect }: LanguagePickerProps) {
+export function LanguagePicker({ options, selected, onSelect, testID }: LanguagePickerProps) {
   return (
     <>
       {options.map((opt) => {
@@ -42,10 +44,12 @@ export function LanguagePicker({ options, selected, onSelect }: LanguagePickerPr
             key={opt.code}
             style={[styles.langCard, active && styles.langCardActive]}
             mode="elevated"
+            testID={testID ? `${testID}-card-${opt.code}` : undefined}
           >
             <TouchableRipple
               onPress={() => onSelect(opt.code)}
               style={styles.ripple}
+              testID={testID ? `${testID}-btn-${opt.code}` : undefined}
               borderless
             >
               <View style={styles.langInner}>

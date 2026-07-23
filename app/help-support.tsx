@@ -246,6 +246,7 @@ export default function HelpSupportScreen() {
               value={subject}
               onChangeText={setSubject}
               maxLength={100}
+              testID="support-subject-input"
             />
             <Text style={styles.counterText}>{subject.length}/100</Text>
 
@@ -259,6 +260,7 @@ export default function HelpSupportScreen() {
               multiline
               numberOfLines={4}
               maxLength={1000}
+              testID="support-message-input"
             />
             <Text style={styles.counterText}>{message.length}/1000</Text>
 
@@ -272,6 +274,7 @@ export default function HelpSupportScreen() {
                   <Pressable
                     key={p}
                     onPress={() => setPriority(p)}
+                    testID={`support-priority-pill-${p}`}
                     style={[
                       styles.priorityPill,
                       active && styles.priorityPillActive,
@@ -296,6 +299,7 @@ export default function HelpSupportScreen() {
               onPress={handleSubmitTicket}
               loading={submitting}
               style={styles.submitBtn}
+              testID="support-submit-btn"
             />
           </Card.Content>
         </Card>

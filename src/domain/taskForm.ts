@@ -163,7 +163,7 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     amountText: task.amount ? String(task.amount) : '',
     finance: task.finance,
     reminderTime: task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? null,
-    startDate: null,
+    startDate: task.startDate ?? null,
     assignedTo: task.assignedTo ?? null,
     icon: task.icon ?? null,
   };
@@ -184,8 +184,8 @@ export function applyCategoryChange(state: TaskFormState, category: CategoryKey)
     category,
     ...nextRec,
     finance: config.showFinance ? state.finance || config.showAmount : false,
-    reminderTime: config.showReminderTime ? (state.reminderTime ?? config.defaultReminderTime ?? null) : null,
-    startDate: config.showStartDate ? state.startDate : null,
+    reminderTime: state.reminderTime ?? config.defaultReminderTime ?? null,
+    startDate: state.startDate,
   };
 }
 
@@ -202,8 +202,8 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     freq: frequencyLabelFromRule(recurrence, lang),
     amount,
     finance: config.showFinance && (state.finance || !!amount),
-    reminderTime: config.showReminderTime && state.reminderTime ? state.reminderTime : undefined,
-    startDate: config.showStartDate && state.startDate ? state.startDate : undefined,
+    reminderTime: state.reminderTime ? state.reminderTime : undefined,
+    startDate: state.startDate ? state.startDate : undefined,
     assignedTo: state.assignedTo || undefined,
     icon: state.icon || undefined,
   };

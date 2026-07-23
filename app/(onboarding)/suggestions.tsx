@@ -35,7 +35,7 @@ export default function SuggestionsScreen() {
   }).filter((group) => group.items.length > 0);
 
   return (
-    <View style={styles.screen}>
+    <View style={styles.screen} testID="suggestions-screen-root">
       <ScrollView
         contentContainerStyle={[
           styles.container,
@@ -45,19 +45,20 @@ export default function SuggestionsScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        testID="suggestions-screen-scroll"
       >
         <OnboardingProgress step={4} />
-        <Text style={styles.title}>{translate('suggestedForYou')}</Text>
-        <Text style={styles.sub}>{translate('tasksWillBeAdded', { count: acceptedCount })}</Text>
-        <Text style={styles.hint}>{translate('tapToEditPreset')}</Text>
+        <Text style={styles.title} testID="suggestions-title">{translate('suggestedForYou')}</Text>
+        <Text style={styles.sub} testID="suggestions-subtitle">{translate('tasksWillBeAdded', { count: acceptedCount })}</Text>
+        <Text style={styles.hint} testID="suggestions-hint">{translate('tapToEditPreset')}</Text>
 
         {groupedSuggestions.map((group) => {
           const cat = CATEGORY_MAP[group.categoryKey];
           const catLabel = language === 'hi' ? cat.labelHi : cat.labelEn;
 
           return (
-            <View key={group.categoryKey} style={styles.sectionBlock}>
-              <Text style={styles.sectionHeader}>{catLabel}</Text>
+            <View key={group.categoryKey} style={styles.sectionBlock} testID={`suggestions-section-${group.categoryKey}`}>
+              <Text style={styles.sectionHeader} testID={`suggestions-section-header-${group.categoryKey}`}>{catLabel}</Text>
               
               {group.items.map(({ s, idx }) => {
                 const title = language === 'hi' ? s.titleHi : s.title;
@@ -67,28 +68,31 @@ export default function SuggestionsScreen() {
                     key={`preset-${idx}`}
                     style={[styles.rowCard, !s.accepted && styles.rowSkipped]}
                     mode="elevated"
+                    testID={`suggestions-card-${idx}`}
                   >
                     <TouchableRipple
                       onPress={() => setEditIndex(idx)}
                       style={styles.cardRipple}
+                      testID={`suggestions-card-ripple-${idx}`}
                       borderless
                     >
-                      <View style={styles.rowContent}>
-                        <View style={styles.rowIconWrap}>
+                      <View style={styles.rowContent} testID={`suggestions-row-content-${idx}`}>
+                        <View style={styles.rowIconWrap} testID={`suggestions-icon-wrap-${idx}`}>
                           <Text style={styles.rowIcon}>{cat.icon}</Text>
                         </View>
-                        <View style={styles.rowInfo}>
-                          <Text style={[styles.rowTitle, !s.accepted && styles.skipped]}>{title}</Text>
-                          <Text style={styles.rowFreq}>
+                        <View style={styles.rowInfo} testID={`suggestions-row-info-${idx}`}>
+                          <Text style={[styles.rowTitle, !s.accepted && styles.skipped]} testID={`suggestions-row-title-${idx}`}>{title}</Text>
+                          <Text style={styles.rowFreq} testID={`suggestions-row-freq-${idx}`}>
                             {freq}
                             {s.amount ? ` · ₹${s.amount.toLocaleString('en-IN')}` : ''}
                           </Text>
-                          <Text style={styles.editHint}>{translate('editPreset')}</Text>
+                          <Text style={styles.editHint} testID={`suggestions-row-edit-hint-${idx}`}>{translate('editPreset')}</Text>
                         </View>
-                        <View onStartShouldSetResponder={() => true}>
+                        <View onStartShouldSetResponder={() => true} testID={`suggestions-toggle-wrapper-${idx}`}>
                           <TouchableRipple
                             style={[styles.toggleBtn, s.accepted ? styles.toggleOn : styles.toggleOff]}
                             onPress={() => toggleSuggestion(idx)}
+                            testID={`suggestions-toggle-btn-${idx}`}
                             borderless
                           >
                             <Text style={styles.toggleText}>{s.accepted ? '✓' : '✕'}</Text>
@@ -103,18 +107,20 @@ export default function SuggestionsScreen() {
           );
         })}
 
-        <View style={styles.ctaRow}>
+        <View style={styles.ctaRow} testID="suggestions-cta-row">
           <Button
             title={translate('skipSuggestions')}
             variant="ghost"
             style={styles.skipBtn}
             onPress={() => router.push('/(onboarding)/finish')}
+            testID="suggestions-skip-btn"
           />
           <Button
             title={translate('continueBtn')}
             style={styles.ctaBtn}
             disabled={acceptedCount === 0}
             onPress={() => router.push('/(onboarding)/finish')}
+            testID="suggestions-continue-btn"
           />
         </View>
       </ScrollView>

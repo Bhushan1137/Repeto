@@ -30,9 +30,10 @@ export default function LanguageScreen() {
         },
       ]}
       showsVerticalScrollIndicator={false}
+      testID="language-screen-scroll"
     >
       <OnboardingProgress step={1} />
-      <View style={styles.hero}>
+      <View style={styles.hero} testID="language-hero-container">
         <ProgressRing percent={100} color={Colors.marigold} size={72} stroke={6} />
         <Text style={styles.heroTitle}>{translate('obWelcomeTitle')}</Text>
         <Text style={styles.heroSub}>
@@ -52,6 +53,7 @@ export default function LanguageScreen() {
           { code: 'en', label: 'English', native: 'English' },
           { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
         ]}
+        testID="language-picker"
       />
 
       <Button
@@ -61,6 +63,7 @@ export default function LanguageScreen() {
           await setAuthLanguage(language);
           router.replace('/(onboarding)/profile');
         }}
+        testID="language-continue-btn"
       />
     </ScrollView>
   );

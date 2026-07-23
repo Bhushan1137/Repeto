@@ -140,12 +140,13 @@ export function TaskFormFields({
         onChangeText={(title) => onChange({ title })}
         placeholder={translate(config.titlePlaceholder)}
         error={errors?.title}
+        testID="task-title-input"
       />
 
       <Text style={styles.sectionLabel}>{translate('parseCategory')}</Text>
       
       {/* Dropdown Card Trigger */}
-      <Card style={styles.dropdownCard} mode="elevated">
+      <Card style={styles.dropdownCard} mode="elevated" testID="task-category-trigger">
         <TouchableRipple onPress={() => setShowCategoryModal(true)} style={styles.dropdownRipple} borderless>
           <View style={styles.dropdownRow}>
             <View style={styles.dropdownLeft}>
@@ -170,6 +171,7 @@ export function TaskFormFields({
               <TouchableRipple
                 key={emoji}
                 onPress={() => onChange({ icon: emoji })}
+                testID={`task-emoji-btn-${emoji}`}
                 style={[styles.emojiBtn, isActive && styles.emojiBtnActive]}
                 borderless
               >
@@ -213,6 +215,7 @@ export function TaskFormFields({
                             onCategoryChange(cat.key);
                             setShowCategoryModal(false);
                           }}
+                          testID={`task-category-chip-${cat.key}`}
                           style={styles.catChipInner}
                           borderless
                         >
@@ -242,6 +245,7 @@ export function TaskFormFields({
             label={language === 'hi' ? 'तारीख' : 'Date'}
             value={state.startDate || new Date().toISOString().slice(0, 10)}
             onChange={(startDate) => onChange({ startDate })}
+            testID="task-date-picker"
           />
         </View>
         <View style={styles.timeCol}>
@@ -249,13 +253,14 @@ export function TaskFormFields({
             label={language === 'hi' ? 'समय' : 'Time'}
             value={state.reminderTime || '09:00'}
             onChange={(reminderTime) => onChange({ reminderTime })}
+            testID="task-time-picker"
           />
         </View>
       </View>
 
       {/* 3. Recurrence Selector clickable row */}
       <Text style={styles.sectionLabel}>{translate('howOften')}</Text>
-      <Card style={styles.recurrenceCard} mode="elevated">
+      <Card style={styles.recurrenceCard} mode="elevated" testID="task-recurrence-trigger">
         <TouchableRipple onPress={() => setShowRecurrenceModal(true)} style={styles.recurrenceRipple} borderless>
           <View style={styles.recurrenceRow}>
             <View style={styles.recurrenceLeft}>
@@ -427,6 +432,7 @@ export function TaskFormFields({
           keyboardType="number-pad"
           hint={translate('presetAmountOptional')}
           error={errors?.amount}
+          testID="task-amount-input"
         />
       ) : null}
 
@@ -437,12 +443,14 @@ export function TaskFormFields({
           value={state.finance}
           onValueChange={(finance) => onChange({ finance })}
           flat={true}
+          testID="task-finance-toggle"
         />
       ) : null}
 
       {user && sharedMembers && sharedMembers.length > 0 && (
         <SelectField
           label={language === 'hi' ? 'किसे सौंपें' : 'Assign to'}
+          testID="task-assign-select"
           value={state.assignedTo ?? ''}
           options={assignOptions}
           onChange={(assignedTo) => onChange({ assignedTo: assignedTo || null })}

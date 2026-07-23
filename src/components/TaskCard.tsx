@@ -18,6 +18,7 @@ interface TaskCardProps {
   onCompletePress?: () => void;
   selected?: boolean;
   onLongPress?: () => void;
+  testID?: string;
 }
 
 export function TaskCard({
@@ -27,6 +28,7 @@ export function TaskCard({
   onCompletePress,
   selected,
   onLongPress,
+  testID,
 }: TaskCardProps) {
   const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋', accent: 'marigold' };
   const days = daysUntilDue(task.nextDueDate);
@@ -79,23 +81,27 @@ export function TaskCard({
       : `In ${days} days - ${weekday}, ${formattedDate}`;
   }, [days, task.nextDueDate, task.reminderTime, language]);
 
+  const defaultId = testID ?? `task-card-${task.id}`;
+
   return (
     <Card
       style={[styles.card, selected && styles.cardSelected]}
       mode="elevated"
       onPress={onPress}
       onLongPress={onLongPress}
+      testID={defaultId}
     >
-      <Card.Content style={styles.cardContent}>
-        <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : catColor }]} />
+      <Card.Content style={styles.cardContent} testID={`${defaultId}-content`}>
+        <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : catColor }]} testID={`${defaultId}-accent-bar`} />
         
         {selected ? (
-          <View style={[styles.iconBadge, { backgroundColor: Colors.marigold }]}>
+          <View style={[styles.iconBadge, { backgroundColor: Colors.marigold }]} testID={`${defaultId}-selected-badge`}>
             <Text style={[styles.icon, { color: Colors.white }]}>✓</Text>
           </View>
         ) : onCompletePress ? (
           <TouchableRipple
             style={[styles.iconBadge, { backgroundColor: catBg }]}
+            testID={`${defaultId}-complete-btn`}
             onPress={(e) => {
               e.stopPropagation();
               onCompletePress();
@@ -107,40 +113,40 @@ export function TaskCard({
             </Text>
           </TouchableRipple>
         ) : (
-          <View style={[styles.iconBadge, { backgroundColor: catBg }]}>
+          <View style={[styles.iconBadge, { backgroundColor: catBg }]} testID={`${defaultId}-icon-badge`}>
             <Text style={styles.icon}>{task.icon || cat.icon}</Text>
           </View>
         )}
 
-        <View style={styles.info}>
-          <View style={styles.titleRow}>
+        <View style={styles.info} testID={`${defaultId}-info`}>
+          <View style={styles.titleRow} testID={`${defaultId}-title-row`}>
             {task.pinned && (
-              <Text style={styles.pinBadge}>📌</Text>
+              <Text style={styles.pinBadge} testID={`${defaultId}-pin-badge`}>📌</Text>
             )}
-            <Text style={styles.title} numberOfLines={1}>
+            <Text style={styles.title} numberOfLines={1} testID={`${defaultId}-title`}>
               {task.title}
             </Text>
             {task.escalationCount >= 2 && (
-              <Text style={styles.flameBadge}>🔥</Text>
+              <Text style={styles.flameBadge} testID={`${defaultId}-flame-badge`}>🔥</Text>
             )}
           </View>
           
-          <View style={styles.metaRow}>
-            <Text style={styles.freqText}>{task.frequencyLabel}</Text>
+          <View style={styles.metaRow} testID={`${defaultId}-meta-row`}>
+            <Text style={styles.freqText} testID={`${defaultId}-freq`}>{task.frequencyLabel}</Text>
             {task.amount ? (
-              <Text style={styles.amountText}> • ₹{task.amount.toLocaleString('en-IN')}</Text>
+              <Text style={styles.amountText} testID={`${defaultId}-amount`}> • ₹{task.amount.toLocaleString('en-IN')}</Text>
             ) : null}
           </View>
 
-          <View style={styles.reminderRow}>
+          <View style={styles.reminderRow} testID={`${defaultId}-reminder-row`}>
             <AppIcon name="notifications-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 4 }} />
-            <Text style={styles.reminderText} numberOfLines={1}>
+            <Text style={styles.reminderText} numberOfLines={1} testID={`${defaultId}-reminder`}>
               {reminderText}
             </Text>
           </View>
         </View>
 
-        <View style={styles.rightCol}>
+        <View style={styles.rightCol} testID={`${defaultId}-right-col`}>
           <ProgressRing
             percent={daysPercent(days)}
             color={overdue ? Colors.clay : days === 0 ? '#2563EB' : '#16A34A'}
@@ -148,6 +154,7 @@ export function TaskCard({
             stroke={4.5}
             label={shortDayLabel(days, language)}
             labelColor={overdue ? Colors.clayDeep : Colors.ink}
+            testID={`${defaultId}-progress-ring`}
           />
           <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
         </View>

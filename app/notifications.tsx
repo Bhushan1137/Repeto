@@ -74,27 +74,34 @@ export default function NotificationsScreen() {
                 }
               }}
               style={styles.goBackBtn}
+              testID="notifications-empty-back-btn"
             />
           }
         />
       ) : (
-        <View style={styles.listContainer}>
+        <View style={styles.listContainer} testID="notifications-list">
           {notifications.map((item) => {
             const styleOpts = getNotifIconAndColor(item.type);
             return (
-              <Card key={item.id} style={[styles.notifCard, !item.read && styles.unreadCard]} mode="elevated">
-                <Card.Content style={styles.cardContent}>
-                  <View style={[styles.iconCircle, { backgroundColor: styleOpts.bg }]}>
+              <Card
+                key={item.id}
+                style={[styles.notifCard, !item.read && styles.unreadCard]}
+                mode="elevated"
+                testID={`notification-card-${item.id}`}
+              >
+                <Card.Content style={styles.cardContent} testID={`notification-card-content-${item.id}`}>
+                  <View style={[styles.iconCircle, { backgroundColor: styleOpts.bg }]} testID={`notification-icon-wrap-${item.id}`}>
                     <AppIcon name={styleOpts.icon} size={20} color={styleOpts.color} />
                   </View>
-                  <View style={styles.textCol}>
-                    <Text style={styles.notifTitle}>{item.title}</Text>
-                    <Text style={styles.notifBody}>{item.body}</Text>
-                    <Text style={styles.timeText}>{formatRelativeTime(item.timestamp)}</Text>
+                  <View style={styles.textCol} testID={`notification-text-col-${item.id}`}>
+                    <Text style={styles.notifTitle} testID={`notification-title-${item.id}`}>{item.title}</Text>
+                    <Text style={styles.notifBody} testID={`notification-body-${item.id}`}>{item.body}</Text>
+                    <Text style={styles.timeText} testID={`notification-time-${item.id}`}>{formatRelativeTime(item.timestamp)}</Text>
                   </View>
                   <TouchableRipple
                     onPress={() => deleteNotification(item.id)}
                     style={styles.deleteBtn}
+                    testID={`notification-delete-btn-${item.id}`}
                     borderless
                   >
                     <AppIcon name="close" size={16} color={Colors.inkFaint} />

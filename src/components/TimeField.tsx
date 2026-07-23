@@ -9,7 +9,7 @@ import {
   type TimeFieldProps,
 } from '@/components/timeFieldShared';
 
-export function TimeField({ label, value, onChange, hint }: TimeFieldProps) {
+export function TimeField({ label, value, onChange, hint, testID }: TimeFieldProps) {
   const [open, setOpen] = useState(false);
   const [temp, setTemp] = useState(parseTime(value));
 
@@ -28,10 +28,11 @@ export function TimeField({ label, value, onChange, hint }: TimeFieldProps) {
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={testID}>
       <Text style={styles.label}>{label}</Text>
       <TouchableOpacity
         style={styles.trigger}
+        testID={testID ? `${testID}-trigger` : undefined}
         onPress={() => {
           setTemp(parseTime(value));
           setOpen(true);

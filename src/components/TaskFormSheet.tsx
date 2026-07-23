@@ -180,6 +180,7 @@ export function TaskFormSheet({
               loading={saving}
               disabled={saving}
               style={{ marginTop: 20 }}
+              testID="task-form-save-btn"
             />
             <Button
               title={translate('backBtn')}
@@ -187,6 +188,7 @@ export function TaskFormSheet({
               disabled={saving}
               style={{ marginTop: 10, marginBottom: 28 }}
               onPress={onClose}
+              testID="task-form-cancel-btn"
             />
           </ScrollView>
         </Card>
