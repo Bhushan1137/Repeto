@@ -1,8 +1,13 @@
-import type { UserProfile } from '@/types';
+import type { UserProfile, HouseholdContext } from '@/types';
 import { loadUser, saveUser, clearUserData } from '@/data/sources/localSource';
 import {
   saveUserRemote,
   loadUserRemote,
+  saveUserCodeRemote,
+  loadUserCodeRemote,
+  saveHouseholdRemote,
+  deleteHouseholdRemote,
+  loadHouseholdRemote,
   loadHouseholdInviteRemote,
   saveOtherUserRemote,
   saveNotificationRemote,
@@ -21,7 +26,17 @@ function remoteEnabled(): boolean {
 
 async function syncRemote(user: UserProfile): Promise<void> {
   try {
-    await saveUserRemote(normalizeHouseholdProfile(user));
+    const normalized = normalizeHouseholdProfile(user);
+    await saveUserRemote(normalized);
+    if (normalized.userCode && normalized.id) {
+      await saveUserCodeRemote({
+        userCode: normalized.userCode,
+        userId: normalized.id,
+        name: normalized.name || 'Repeato user',
+        color: normalized.householdMembers?.[0]?.color || '#E8A33D',
+        photoUrl: normalized.photoUrl,
+      });
+    }
   } catch (cause) {
     // Local save already succeeded — don't block the user for cloud sync issues
     console.warn('[Repeato] Profile cloud sync failed:', cause);
@@ -66,6 +81,46 @@ export const userRepository = {
       }
     }
     await clearUserData(userId);
+  },
+
+  async resolveUserCode(code: string) {
+    if (!remoteEnabled()) return null;
+    try {
+      return await loadUserCodeRemote(code);
+    } catch (cause) {
+      console.warn('[Repeato] User code lookup failed:', cause);
+      return null;
+    }
+  },
+
+  async saveHousehold(household: HouseholdContext): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await saveHouseholdRemote(household);
+      } catch (err) {
+        console.warn('[Repeato] saveHousehold failed:', err);
+      }
+    }
+  },
+
+  async deleteHousehold(householdId: string): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await deleteHouseholdRemote(householdId);
+      } catch (err) {
+        console.warn('[Repeato] deleteHousehold failed:', err);
+      }
+    }
+  },
+
+  async loadHousehold(householdId: string): Promise<HouseholdContext | null> {
+    if (!remoteEnabled()) return null;
+    try {
+      return await loadHouseholdRemote(householdId);
+    } catch (err) {
+      console.warn('[Repeato] loadHousehold failed:', err);
+      return null;
+    }
   },
 
   async resolveHouseholdInvite(code: string) {

@@ -23,7 +23,7 @@ import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { useAuth } from '@/providers/AuthProvider';
 import { canShareWith } from '@/domain/task';
 import { initials } from '@/domain/insights';
-import { toSharedMember } from '@/domain/household';
+import { toSharedMember, listHouseholds } from '@/domain/household';
 import { Button } from '@/components/Button';
 import {
   defaultFormState,
@@ -50,7 +50,7 @@ interface AddTaskSheetProps {
 
 export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
   const { addTask } = useTasks();
   const { showToast, message } = useToast();
   const { translate, language } = useTranslation();
@@ -179,6 +179,45 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
                   </TouchableRipple>
                 </Card>
               </View>
+
+              {/* Household Context Selector — Shown ONLY if user has multiple households and shared members exist */}
+              {shared.length > 0 && listHouseholds(user ?? ({} as any)).length > 1 && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.shareTitle, { fontSize: 12, color: Colors.inkSoft }]}>
+                    {language === 'hi' ? 'किस परिवार/घर में साझा करें?' : 'Target Household Context:'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                    {listHouseholds(user ?? ({} as any)).map((hh) => {
+                      const isSelected = (formState.householdId || activeHousehold?.id) === hh.id;
+                      return (
+                        <Pressable
+                          key={hh.id}
+                          onPress={() => patchForm({ householdId: hh.id })}
+                          style={[{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: Radius.full,
+                            backgroundColor: Colors.surfaceMuted,
+                            borderWidth: 1,
+                            borderColor: Colors.ivoryLine,
+                          }, isSelected && {
+                            backgroundColor: Colors.tealDeep,
+                            borderColor: Colors.tealDeep,
+                          }]}
+                        >
+                          <Text style={{ fontSize: 13 }}>{hh.icon || '🏠'}</Text>
+                          <Text style={[{ fontFamily: 'Manrope_600SemiBold', fontSize: 12, color: Colors.ink }, isSelected && { color: Colors.white, fontFamily: 'Manrope_700Bold' }]}>
+                            {hh.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
             </View>
 
             <Button

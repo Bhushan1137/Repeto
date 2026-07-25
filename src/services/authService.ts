@@ -85,3 +85,24 @@ export async function signInWithGoogle(language: Language): Promise<SignInResult
 export async function profileFromSignedInUser(fbUser: User, language: Language): Promise<UserProfile> {
   return buildProfile(fbUser, language);
 }
+
+export async function signInWithEmail(
+  email: string,
+  pass: string,
+  language: Language
+): Promise<SignInResult> {
+  try {
+    const { signInWithEmailPassword } = await import('@/services/firebase/auth');
+    const fbUser = await signInWithEmailPassword(email.trim(), pass);
+    const user = await buildProfile(fbUser, language);
+    return { ok: true, user };
+  } catch (err: unknown) {
+    const message =
+      err instanceof FirebaseError
+        ? getAuthErrorMessage(err.code)
+        : err instanceof Error
+          ? err.message
+          : 'Sign-in failed';
+    return { ok: false, error: 'failed', message };
+  }
+}

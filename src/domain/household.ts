@@ -1,4 +1,5 @@
-import type { HouseholdMemberProfile, SharedMember, UserProfile } from '@/types';
+import type { HouseholdContext, HouseholdMemberProfile, SharedMember, UserProfile } from '@/types';
+
 
 const COLORS = ['#3E7C6A', '#C1502E', '#E8A33D', '#363E71', '#2C5C4E'];
 
@@ -19,6 +20,11 @@ function hashString(value: string): number {
   return hash >>> 0;
 }
 
+export function generateUserCode(seed: string): string {
+  const n = hashString(seed || `${Date.now()}`);
+  return `RPT-${n.toString(36).toUpperCase().padStart(6, '0').slice(0, 6)}`;
+}
+
 export function generateHouseholdCode(seed: string): string {
   const n = hashString(seed || `${Date.now()}`);
   return `RPT-${n.toString(36).toUpperCase().padStart(6, '0').slice(0, 6)}`;
@@ -30,14 +36,16 @@ export function memberColor(seed: string): string {
 
 export function normalizeHouseholdProfile(
   user: UserProfile
-): UserProfile & { householdCode: string; householdMembers: HouseholdMemberProfile[]; householdMemberUids: string[] } {
-  const householdCode = user.householdCode || generateHouseholdCode(user.id || user.email);
+): UserProfile & { userCode: string; householdCode: string; householdMembers: HouseholdMemberProfile[]; householdMemberUids: string[] } {
+  const userCode = user.userCode || generateUserCode(user.id || user.email);
+  const householdCode = user.householdCode || userCode;
   const householdMembers = user.householdMembers ?? [];
   const householdMemberUids = householdMembers
     .map((m) => m.userId)
     .filter((id): id is string => !!id);
   return {
     ...user,
+    userCode,
     householdCode,
     householdMembers,
     householdMemberUids,
@@ -47,11 +55,11 @@ export function normalizeHouseholdProfile(
 export function inviteProfileFromUser(user: UserProfile): HouseholdInviteProfile {
   const normalized = normalizeHouseholdProfile(user);
   return {
-    code: normalized.householdCode,
+    code: normalized.userCode,
     userId: normalized.id,
     name: normalized.name || normalized.email || 'Repeato member',
     phone: normalized.phone,
-    color: memberColor(normalized.id || normalized.householdCode),
+    color: memberColor(normalized.id || normalized.userCode),
   };
 }
 
@@ -90,9 +98,11 @@ export function addHouseholdMember(
 ): UserProfile & { householdCode: string; householdMembers: HouseholdMemberProfile[] } {
   const normalized = normalizeHouseholdProfile(user);
   const code = normalizeInviteCode(member.code);
-  if (!code || code === normalized.householdCode) return normalized;
+  if (!code || code === normalized.userCode || (member.userId && member.userId === normalized.id)) return normalized;
 
-  const existing = normalized.householdMembers.some((m) => normalizeInviteCode(m.code) === code);
+  const existing = normalized.householdMembers.some(
+    (m) => normalizeInviteCode(m.code) === code || (member.userId && m.userId === member.userId)
+  );
   if (existing) return normalized;
 
   return {
@@ -125,5 +135,171 @@ export function toSharedMember(member: HouseholdMemberProfile): SharedMember {
 
 export function inviteMessage(user: UserProfile): string {
   const normalized = normalizeHouseholdProfile(user);
-  return `Join my Repeato household with code ${normalized.householdCode}. Open Repeato, go to Household, and enter this code.`;
+  return `My Repeato user code is ${normalized.userCode}. Scan or enter this code in Repeato to add me to your household.`;
+}
+
+// ─── Multi-Household Context Functions ────────────────────────────────────
+
+const HOUSEHOLD_ICONS = ['🏠', '🏢', '🏖️', '🏕️', '🏋️', '🎯', '🌿', '🏫', '🏡', '🌆'];
+const HOUSEHOLD_COLORS = ['#363E71', '#3E7C6A', '#C1502E', '#E8A33D', '#2C5C4E', '#7C3E6A'];
+export const MAX_HOUSEHOLDS = 5;
+export { HOUSEHOLD_ICONS, HOUSEHOLD_COLORS };
+
+function generateId(): string {
+  return `hh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Creates a new HouseholdContext for a user */
+export function createHouseholdContext(
+  name: string,
+  icon: string,
+  color: string,
+  user: UserProfile
+): HouseholdContext {
+  const id = generateId();
+  const userCode = user.userCode || generateUserCode(user.id || user.email);
+  const ownerMember: HouseholdMemberProfile = {
+    code: userCode,
+    name: user.name || 'Owner',
+    color: memberColor(user.id || userCode),
+    userId: user.id,
+    phone: user.phone,
+    addedAt: new Date().toISOString(),
+    status: 'active',
+  };
+
+  return {
+    id,
+    name: name.trim(),
+    icon,
+    ownerUid: user.id,
+    code: userCode,
+    members: [ownerMember],
+    memberUids: [user.id],
+    createdAt: new Date().toISOString(),
+    color,
+  };
+}
+
+/**
+ * Migrates the legacy single-household structure into the new multi-household array.
+ * Safe to call multiple times. New users start with 0 households (households: []).
+ */
+export function migrateLegacyHousehold(user: UserProfile): UserProfile {
+  const normalized = normalizeHouseholdProfile(user);
+
+  // Already migrated or explicitly initialized
+  if (normalized.households !== undefined) return normalized;
+
+  // Only create a legacy household if user had pre-existing legacy householdMembers
+  const existingMembers = (normalized.householdMembers ?? []).filter(
+    (m) => m.userId !== normalized.id && m.code !== normalized.userCode
+  );
+
+  if (existingMembers.length > 0) {
+    const homeContext = createHouseholdContext('Home', '🏠', HOUSEHOLD_COLORS[0], normalized);
+    const mergedMembers = [...homeContext.members, ...existingMembers];
+    const memberUids = Array.from(
+      new Set([normalized.id, ...mergedMembers.map((m) => m.userId).filter((id): id is string => !!id)])
+    );
+
+    const updatedHomeContext: HouseholdContext = {
+      ...homeContext,
+      ownerUid: normalized.id,
+      members: mergedMembers,
+      memberUids,
+    };
+
+    return {
+      ...normalized,
+      households: [updatedHomeContext],
+      activeHouseholdId: updatedHomeContext.id,
+    };
+  }
+
+  // Default for new users: 0 households
+  return {
+    ...normalized,
+    households: [],
+    activeHouseholdId: undefined,
+  };
+}
+
+/** Returns the currently active HouseholdContext, or null */
+export function getActiveHousehold(user: UserProfile): HouseholdContext | null {
+  const households = listHouseholds(user);
+  if (households.length === 0) return null;
+  if (user.activeHouseholdId) {
+    return households.find((h) => h.id === user.activeHouseholdId) ?? households[0];
+  }
+  return households[0];
+}
+
+/** Returns all HouseholdContexts for the user, deduplicated by unique ID */
+export function listHouseholds(user: UserProfile): HouseholdContext[] {
+  if (!user.households) return [];
+  const map = new Map<string, HouseholdContext>();
+  user.households.forEach((h) => {
+    if (h && h.id) map.set(h.id, h);
+  });
+  return Array.from(map.values());
+}
+
+/** Returns a UserProfile patch that switches the active household */
+export function setActiveHousehold(user: UserProfile, id: string): Partial<UserProfile> {
+  return { activeHouseholdId: id };
+}
+
+/**
+ * Adds a member to a specific household context.
+ * Returns a Partial<UserProfile> patch to be passed to updateUser().
+ */
+export function addMemberToHousehold(
+  user: UserProfile,
+  householdId: string,
+  member: HouseholdMemberProfile
+): Partial<UserProfile> {
+  const households = (user.households ?? []).map(h => {
+    if (h.id !== householdId) return h;
+    const code = normalizeInviteCode(member.code);
+    const userCode = user.userCode ? normalizeInviteCode(user.userCode) : '';
+    // Prevent adding yourself to your own household member list
+    if ((member.userId && member.userId === user.id) || (code && code === userCode)) return h;
+    const exists = h.members.some(
+      m => normalizeInviteCode(m.code) === code || (member.userId && m.userId === member.userId)
+    );
+    if (exists) return h;
+    return {
+      ...h,
+      members: [{ ...member, code }, ...h.members],
+      memberUids: member.userId && !h.memberUids.includes(member.userId)
+        ? [...h.memberUids, member.userId]
+        : h.memberUids,
+    };
+  });
+  return { households };
+}
+
+/**
+ * Removes a member from a specific household context.
+ * Returns a Partial<UserProfile> patch to be passed to updateUser().
+ */
+export function removeMemberFromHousehold(
+  user: UserProfile,
+  householdId: string,
+  memberCode: string
+): Partial<UserProfile> {
+  const target = normalizeInviteCode(memberCode);
+  const households = (user.households ?? []).map(h => {
+    if (h.id !== householdId) return h;
+    const removedMember = h.members.find(m => normalizeInviteCode(m.code) === target);
+    return {
+      ...h,
+      members: h.members.filter(m => normalizeInviteCode(m.code) !== target),
+      memberUids: removedMember?.userId
+        ? h.memberUids.filter(uid => uid !== removedMember.userId)
+        : h.memberUids,
+    };
+  });
+  return { households };
 }

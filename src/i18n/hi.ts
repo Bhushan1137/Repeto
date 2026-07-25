@@ -208,4 +208,38 @@ export const hi: Record<TranslationKey, string> = {
   stepChooseCategories: 'श्रेणियां चुनें',
   stepSetPreferences: 'प्रांतिकताएं सेट करें',
   stepFinish: 'सब तैयार है!',
+  // ── P1: Upcoming Strip ──
+  upcomingTitle: 'आने वाले कार्य',
+  upcomingEmpty: 'अगले 2 हफ्तों में कोई कार्य नहीं',
+  upcomingOverdue: 'विलंबित',
+  upcomingToday: 'आज',
+  upcomingTomorrow: 'कल',
+  // ── P2: Daily Health Card ──
+  healthGreat: 'इस महीने आप सही राह पर हैं',
+  healthOk: 'थोड़ा पिछड़ रहे हैं',
+  healthAttention: 'ध्यान देने की जरूरत है',
+  healthAllClear: 'सब ठीक है!',
+  // ── P3: Spend Forecast ──
+  spendForecastTitle: 'मासिक अनुमान',
+  spendYearlyEst: 'अनुमानित वार्षिक: {amount}',
+  // ── P4: Month Trend ──
+  trendUp: '↑ {month} से {delta}% बेहतर',
+  trendDown: '↓ {month} से {delta}% कम',
+  trendSame: 'पिछले महीने जैसा',
+  // ── P5: Slip CTA ──
+  viewSlipTasks: '{category} कार्य देखें →',
+  // ── P6: Streak reframe ──
+  streakRoll: 'जोश में हैं — {n} कार्य लगातार!',
+  streakGood: 'अच्छी लय — {n} लगातार',
+  streakKeep: 'जारी रखें — {n} पूरे',
+  streakWeekly: 'इस हफ्ते {n} कार्य पूरे',
+  streakStart: 'आज एक कार्य पूरा करके शुरुआत करें',
+  // ── Feature 2: Multi-Household Contexts ──
+  switchHousehold: 'घर बदलें',
+  createHousehold: 'नया घर बनाएं',
+  householdName: 'घर का नाम',
+  householdIcon: 'आइकॉन चुनें',
+  householdCreated: 'घर बना दिया!',
+  householdLimitReached: 'अधिक घर जोड़ने के लिए अपग्रेड करें',
+  householdNameExists: 'इस नाम का घर पहले से मौजूद है',
 };

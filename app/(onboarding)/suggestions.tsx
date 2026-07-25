@@ -41,7 +41,7 @@ export default function SuggestionsScreen() {
           styles.container,
           {
             paddingTop: Math.max(insets.top, 16) + 16,
-            paddingBottom: Math.max(insets.bottom, 16) + 16,
+            paddingBottom: 100,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -106,24 +106,31 @@ export default function SuggestionsScreen() {
             </View>
           );
         })}
-
-        <View style={styles.ctaRow} testID="suggestions-cta-row">
-          <Button
-            title={translate('skipSuggestions')}
-            variant="ghost"
-            style={styles.skipBtn}
-            onPress={() => router.push('/(onboarding)/finish')}
-            testID="suggestions-skip-btn"
-          />
-          <Button
-            title={translate('continueBtn')}
-            style={styles.ctaBtn}
-            disabled={acceptedCount === 0}
-            onPress={() => router.push('/(onboarding)/finish')}
-            testID="suggestions-continue-btn"
-          />
-        </View>
       </ScrollView>
+
+      {/* Sticky Bottom Footer for Continue & Skip CTA Buttons */}
+      <View
+        style={[
+          styles.stickyFooter,
+          { paddingBottom: Math.max(insets.bottom, 16) },
+        ]}
+        testID="suggestions-cta-row"
+      >
+        <Button
+          title={translate('skipSuggestions')}
+          variant="ghost"
+          style={styles.skipBtn}
+          onPress={() => router.push('/(onboarding)/finish')}
+          testID="suggestions-skip-btn"
+        />
+        <Button
+          title={translate('continueBtn')}
+          style={styles.ctaBtn}
+          disabled={acceptedCount === 0}
+          onPress={() => router.push('/(onboarding)/finish')}
+          testID="suggestions-continue-btn"
+        />
+      </View>
 
       <TaskFormSheet
         visible={editIndex !== null}
@@ -191,12 +198,21 @@ const styles = StyleSheet.create({
   toggleOn: { backgroundColor: Colors.teal, borderColor: Colors.teal },
   toggleOff: { backgroundColor: Colors.clay, borderColor: Colors.clay },
   toggleText: { color: Colors.white, fontSize: 13, textAlign: 'center' },
-  ctaRow: {
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 22,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    backgroundColor: Colors.surfaceMuted,
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
     gap: 12,
+    elevation: 8,
   },
   skipBtn: {
     flex: 1,

@@ -41,8 +41,19 @@ export type AppIconName =
   | 'send-outline'
   | 'chatbox-ellipses-outline'
   | 'mail-outline'
+  | 'mail-open-outline'
+  | 'eye-off-outline'
+  | 'eye-outline'
   | 'logo-google'
-  | 'lock-closed-outline';
+  | 'lock-closed-outline'
+  | 'person-outline'
+  | 'information-circle-outline'
+  | 'card-outline'
+  | 'checkmark'
+  | 'settings-outline'
+  | 'person-remove-outline'
+  | 'exit-outline'
+  | 'log-out-outline';
 
 interface AppIconProps {
   name: AppIconName;

@@ -206,6 +206,41 @@ export const en = {
   stepChooseCategories: 'Choose Categories',
   stepSetPreferences: 'Set Preferences',
   stepFinish: "You're All Set!",
+  // ── P1: Upcoming Strip ──
+  upcomingTitle: 'Coming Up',
+  upcomingEmpty: 'Nothing due in the next 2 weeks',
+  upcomingOverdue: 'Overdue',
+  upcomingToday: 'Today',
+  upcomingTomorrow: 'Tomorrow',
+  // ── P2: Daily Health Card ──
+  healthGreat: "You're on track this month",
+  healthOk: 'Slipping a little',
+  healthAttention: 'Needs attention',
+  healthAllClear: 'All caught up!',
+  // ── P3: Spend Forecast ──
+  spendForecastTitle: 'Monthly Forecast',
+  spendYearlyEst: 'Estimated yearly: {amount}',
+  // ── P4: Month Trend ──
+  trendUp: '↑ {delta}% better than {month}',
+  trendDown: '↓ {delta}% lower than {month}',
+  trendSame: 'Similar to last month',
+  // ── P5: Slip CTA ──
+  viewSlipTasks: 'View {category} tasks →',
+  // ── P6: Streak reframe ──
+  streakRoll: 'On a roll — {n} tasks done in a row!',
+  streakGood: 'Good momentum — {n} in a row',
+  streakKeep: 'Keep it going — {n} done',
+  streakWeekly: '{n} tasks done this week',
+  streakStart: 'Complete a task today to build momentum',
+  // ── Feature 2: Multi-Household Contexts ──
+  switchHousehold: 'Switch household',
+  createHousehold: 'New household',
+  householdName: 'Household name',
+  householdIcon: 'Pick an icon',
+  householdCreated: 'Household created!',
+  householdLimitReached: 'Upgrade to add more households',
+  householdNameExists: 'A household with this name already exists',
 };
+
 
 export type TranslationKey = keyof typeof en;

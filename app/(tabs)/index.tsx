@@ -8,6 +8,7 @@ import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFilterBar } from '@/components/TaskFilterBar';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
+import { TodayFocusSection } from '@/components/TodayFocusSection';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -256,55 +257,66 @@ export default function HomeScreen() {
         subtitle={translate('subGreeting')}
         headerExtra={
           hasTasks ? (
-            <View style={styles.headerExtraRow}>
-              <HomeStatCard
-                iconName="calendar-outline"
-                iconBg="#DCFCE7"
-                iconColor="#0F766E"
-                label={translate('secToday')}
-                count={String(stats.today)}
-                countLabel={language === 'hi' ? 'कार्य' : (stats.today === 1 ? 'task' : 'tasks')}
-                linkColor="#0F766E"
-                borderColor="rgba(13, 148, 136, 0.15)"
-                active={filter.group === 'today'}
-                onPress={() => setFilter(prev => ({
-                  ...prev,
-                  group: prev.group === 'today' ? 'all' : 'today',
-                  category: 'all'
-                }))}
-              />
-              <HomeStatCard
-                iconName="time-outline"
-                iconBg="#FEE2E2"
-                iconColor="#C1502E"
-                label={translate('secOverdue')}
-                count={String(stats.overdue)}
-                countLabel={language === 'hi' ? 'कार्य' : (stats.overdue === 1 ? 'task' : 'tasks')}
-                linkColor="#C1502E"
-                borderColor="rgba(193, 80, 46, 0.15)"
-                active={filter.group === 'overdue'}
+            <View style={styles.dailyPulseRow}>
+              <Pressable
+                style={[
+                  styles.pulsePill,
+                  stats.overdue > 0 ? styles.pulsePillDanger : styles.pulsePillSuccess,
+                  filter.group === 'overdue' && styles.pulsePillActive,
+                ]}
                 onPress={() => setFilter(prev => ({
                   ...prev,
                   group: prev.group === 'overdue' ? 'all' : 'overdue',
                   category: 'all'
                 }))}
-              />
-              <HomeStatCard
-                iconName="calendar-sharp"
-                iconBg="#EFF6FF"
-                iconColor="#1D4ED8"
-                label={language === 'hi' ? 'आगामी' : 'Upcoming'}
-                count={String(upcomingCount)}
-                countLabel={language === 'hi' ? 'इस सप्ताह' : 'this week'}
-                linkColor="#1D4ED8"
-                borderColor="rgba(29, 78, 216, 0.15)"
-                active={filter.group === 'week'}
+              >
+                <AppIcon
+                  name="warning-outline"
+                  size={13}
+                  color={stats.overdue > 0 ? '#FF8A75' : '#4ADE80'}
+                />
+                <Text style={[styles.pulsePillText, { color: filter.group === 'overdue' ? Colors.ink : (stats.overdue > 0 ? '#FF8A75' : '#F3F4F6') }]}>
+                  {stats.overdue > 0
+                    ? `${stats.overdue} ${language === 'hi' ? 'विलंबित' : 'Overdue'}`
+                    : (language === 'hi' ? '0 विलंबित' : '0 Overdue')}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.pulsePill,
+                  styles.pulsePillPrimary,
+                  filter.group === 'today' && styles.pulsePillActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  group: prev.group === 'today' ? 'all' : 'today',
+                  category: 'all'
+                }))}
+              >
+                <AppIcon name="calendar-outline" size={13} color={filter.group === 'today' ? Colors.tealDeep : '#2DD4BF'} />
+                <Text style={[styles.pulsePillText, { color: filter.group === 'today' ? Colors.ink : '#F3F4F6' }]}>
+                  {`${stats.today} ${language === 'hi' ? 'आज' : 'Today'}`}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.pulsePill,
+                  styles.pulsePillInfo,
+                  filter.group === 'week' && styles.pulsePillActive,
+                ]}
                 onPress={() => setFilter(prev => ({
                   ...prev,
                   group: prev.group === 'week' ? 'all' : 'week',
                   category: 'all'
                 }))}
-              />
+              >
+                <AppIcon name="time-outline" size={13} color={filter.group === 'week' ? '#1D4ED8' : '#60A5FA'} />
+                <Text style={[styles.pulsePillText, { color: filter.group === 'week' ? Colors.ink : '#F3F4F6' }]}>
+                  {`${upcomingCount} ${language === 'hi' ? 'आगामी' : 'Upcoming'}`}
+                </Text>
+              </Pressable>
             </View>
           ) : null
         }
@@ -345,7 +357,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Filter chips bar */}
+        {/* Streamlined Category Filter chips bar */}
         {hasTasks && (
           <ScrollView
             horizontal
@@ -367,69 +379,6 @@ export default function HomeScreen() {
                 ]}
               >
                 {language === 'hi' ? 'सभी' : 'All'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.group === 'today' && filter.category === 'all' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                group: prev.group === 'today' ? 'all' : 'today',
-                category: 'all'
-              }))}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  filter.group === 'today' && filter.category === 'all' && styles.chipTextActive
-                ]}
-              >
-                {language === 'hi' ? 'आज' : 'Today'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.group === 'overdue' && filter.category === 'all' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                group: prev.group === 'overdue' ? 'all' : 'overdue',
-                category: 'all'
-              }))}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  filter.group === 'overdue' && filter.category === 'all' && styles.chipTextActive
-                ]}
-              >
-                {language === 'hi' ? 'विलंबित' : 'Overdue'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.group === 'week' && filter.category === 'all' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                group: prev.group === 'week' ? 'all' : 'week',
-                category: 'all'
-              }))}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  filter.group === 'week' && filter.category === 'all' && styles.chipTextActive
-                ]}
-              >
-                {language === 'hi' ? 'आगामी' : 'Upcoming'}
               </Text>
             </Pressable>
 
@@ -477,6 +426,54 @@ export default function HomeScreen() {
                   ]}
                 >
                   {language === 'hi' ? 'स्वास्थ्य' : 'Health'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.category === 'finance' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                category: prev.category === 'finance' ? 'all' : 'finance',
+                group: 'all'
+              }))}
+            >
+              <View style={styles.chipInner}>
+                <Text style={{ fontSize: 12, marginRight: 2 }}>💳</Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    filter.category === 'finance' && styles.chipTextActive
+                  ]}
+                >
+                  {language === 'hi' ? 'वित्त' : 'Finance'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.chipBtn,
+                filter.category === 'home' && styles.chipBtnActive
+              ]}
+              onPress={() => setFilter(prev => ({
+                ...prev,
+                category: prev.category === 'home' ? 'all' : 'home',
+                group: 'all'
+              }))}
+            >
+              <View style={styles.chipInner}>
+                <Text style={{ fontSize: 12, marginRight: 2 }}>🏠</Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    filter.category === 'home' && styles.chipTextActive
+                  ]}
+                >
+                  {language === 'hi' ? 'गृहकार्य' : 'Home'}
                 </Text>
               </View>
             </Pressable>
@@ -540,6 +537,19 @@ export default function HomeScreen() {
           />
         ) : (
           <>
+            {/* Today's Focus & Activity Section (Pending + Completed Today) */}
+            {!isFiltering && (
+              <TodayFocusSection
+                tasks={tasks}
+                language={language}
+                onSelectTask={(taskId) => setSelectedTaskId(taskId)}
+                onCompleteTask={(taskId) => completeTask(taskId)}
+                onToggleSelect={(taskId) => toggleSelect(taskId)}
+                selectedIds={selectedIds}
+                isSelecting={isSelecting}
+              />
+            )}
+
             {/* Pinned section */}
             {pinnedTasks.length > 0 && (
               <View>
@@ -832,6 +842,48 @@ const styles = StyleSheet.create({
   greetingContainer: {
     marginTop: 8,
     marginBottom: 6,
+  },
+  dailyPulseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  pulsePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+  },
+  pulsePillDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.22)',
+    borderColor: 'rgba(248, 113, 113, 0.45)',
+  },
+  pulsePillSuccess: {
+    backgroundColor: 'rgba(20, 184, 166, 0.22)',
+    borderColor: 'rgba(45, 212, 191, 0.4)',
+  },
+  pulsePillPrimary: {
+    backgroundColor: 'rgba(20, 184, 166, 0.22)',
+    borderColor: 'rgba(45, 212, 191, 0.4)',
+  },
+  pulsePillInfo: {
+    backgroundColor: 'rgba(59, 130, 246, 0.22)',
+    borderColor: 'rgba(96, 165, 250, 0.4)',
+  },
+  pulsePillActive: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.marigold,
+  },
+  pulsePillText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
   },
   greetingText: {
     fontFamily: 'Fraunces_700Bold',

@@ -4,7 +4,8 @@ import { Colors, Radius, Shadows } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
-import { signInWithEmailPassword, sendPasswordResetEmail } from '@/services/firebase/auth';
+import { signInWithEmail } from '@/services/authService';
+import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
@@ -41,7 +42,7 @@ const FEATURES = [
 export default function SignInScreen() {
   const router = useRouter();
   const { language } = useOnboarding();
-  const { signInWithGoogle, user, ready } = useAuth();
+  const { signInWithGoogle, user, ready, setUser } = useAuth();
   const { translate } = useTranslation(language);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -68,17 +69,17 @@ export default function SignInScreen() {
     setEmailError('');
     setResetSent(false);
     try {
-      await signInWithEmailPassword(emailVal.trim(), passwordVal);
+      const res = await signInWithEmail(emailVal.trim(), passwordVal, language as any);
+      if (res.ok && res.user) {
+        setUser(res.user);
+        router.replace('/(tabs)');
+      } else if (res.message) {
+        setEmailError(res.message);
+      }
     } catch (e: any) {
-      const code: string = e?.code ?? '';
-      if (code === 'auth/user-not-found') {
-        setEmailError('No account found. Please sign in with Google first.');
-      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setEmailError('Incorrect password. Tap "Forgot password?" to reset it.');
-      } else if (code === 'auth/invalid-email') {
-        setEmailError('Please enter a valid email address.');
-      } else if (code === 'auth/too-many-requests') {
-        setEmailError('Too many attempts. Please try again later.');
+      const code = String(e?.code || '');
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+        setEmailError('No account found. New users must sign up using Google Sign-In.');
       } else {
         setEmailError(e?.message ?? 'Sign-in failed. Please try again.');
       }
@@ -339,7 +340,7 @@ export default function SignInScreen() {
                   {/* Sign In button */}
                   <Pressable
                     testID="email-submit-btn"
-                    onPress={handleEmailSignIn}
+                    onPress={() => handleEmailSignIn()}
                     disabled={emailLoading}
                     style={({ pressed }) => [
                       styles.emailSignInBtn,
@@ -675,7 +676,7 @@ const styles = StyleSheet.create({
   emailInput: {
     flex: 1,
     fontSize: 14,
-    color: Colors.inkDark,
+    color: Colors.ink,
     fontFamily: 'Manrope_500Medium',
     outlineStyle: 'none',
   } as any,
@@ -697,7 +698,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     alignItems: 'center',
     marginTop: 2,
-    ...Shadows.card,
+    ...Shadows.sm,
   },
   emailSignInBtnText: {
     color: Colors.white,

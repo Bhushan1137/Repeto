@@ -30,7 +30,7 @@ import {
   cleanupTasksOnRemoval,
 } from '@/domain/task';
 import { cancelTaskReminder, scheduleTaskReminder } from '@/services/notifications';
-import { subscribeToTasks } from '@/services/firebase/taskListener';
+import { subscribeToUserTasksAndHouseholds } from '@/services/firebase/taskListener';
 import { computePreviousDueDate } from '@/domain/recurrence';
 import { removeHouseholdMember, normalizeHouseholdProfile } from '@/domain/household';
 
@@ -75,7 +75,7 @@ interface TaskContextValue {
 const TaskContext = createContext<TaskContextValue | null>(null);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
-  const { user, firebaseReady, updateUser } = useAuth();
+  const { user, activeHousehold, firebaseReady, updateUser } = useAuth();
   const { showToast } = useToast();
   const { translate } = useTranslation();
   const { addNotification } = useNotifications();
@@ -83,6 +83,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
   const userIdRef = useRef<string | null>(null);
+
+  // Stable key: only changes when the SET of household IDs changes (not on activeHouseholdId switch)
+  const householdIdsKey = useMemo(
+    () => (user?.households ?? []).map((h) => h.id).sort().join(','),
+    [user?.households]
+  );
 
   useEffect(() => {
     if (!user) {
@@ -96,39 +102,59 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     userIdRef.current = user.id;
     let unsubscribeRemote: (() => void) | null = null;
 
+    // 1. Immediately load local tasks so Home/Insights populate instantly without blocking
+    (async () => {
+      try {
+        const localTasks = await taskRepository.load(user.id);
+        if (!cancelled && userIdRef.current === user.id) {
+          setTasks(localTasks);
+          setHydrated(true);
+        }
+      } catch (err) {
+        console.warn('[Repeato] Failed to load local tasks:', err);
+      } finally {
+        if (!cancelled && !firebaseReady) setLoading(false);
+      }
+    })();
+
+    // 2. Subscribe to remote tasks when Firebase is ready
     if (firebaseReady) {
       setLoading(true);
-      unsubscribeRemote = subscribeToTasks(user.id, async (remoteTasks) => {
-        if (!cancelled && userIdRef.current === user.id) {
-          await taskRepository.saveAll(remoteTasks, user.id);
-          setTasks(remoteTasks);
-          setHydrated(true);
-          setLoading(false);
-        }
-      });
-      taskRepository.flushSyncQueue(user.id).catch(() => {});
-    } else {
-      (async () => {
-        setLoading(true);
-        try {
-          const loaded = await taskRepository.load(user.id);
+      const householdIds = (user.households ?? []).map((h) => h.id);
+      unsubscribeRemote = subscribeToUserTasksAndHouseholds(
+        user.id,
+        householdIds,
+        async (remoteTasks) => {
           if (!cancelled && userIdRef.current === user.id) {
-            setTasks(loaded);
+            await taskRepository.saveAll(remoteTasks, user.id);
+            setTasks(remoteTasks);
             setHydrated(true);
+            setLoading(false);
           }
-        } catch {
-          if (!cancelled) showToast(translate('loadError'));
-        } finally {
-          if (!cancelled) setLoading(false);
+        },
+        async (error) => {
+          console.warn('[Repeato] Task listener error, falling back to local tasks:', error);
+          if (!cancelled && userIdRef.current === user.id) {
+            try {
+              const loaded = await taskRepository.load(user.id);
+              setTasks(loaded);
+            } catch {
+              // Ignore fallback error
+            } finally {
+              setHydrated(true);
+              setLoading(false);
+            }
+          }
         }
-      })();
+      );
+      taskRepository.flushSyncQueue(user.id).catch(() => {});
     }
 
     return () => {
       cancelled = true;
       if (unsubscribeRemote) unsubscribeRemote();
     };
-  }, [user?.id, firebaseReady, showToast, translate]);
+  }, [user?.id, householdIdsKey, firebaseReady, showToast, translate]);
 
   const persistAll = useCallback(
     async (next: RepeatingTask[]) => {
@@ -141,17 +167,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const syncTask = useCallback(
     async (task: RepeatingTask, op: 'create' | 'update') => {
       if (!user?.id) return;
-      await taskRepository.saveOne(task, user.id, op);
       
-      // Propagate sync to shared members' lists in Firestore
-      for (const member of task.sharedWith) {
-        if (member.userId && member.userId !== user.id) {
-          try {
-            await taskRepository.saveOne(task, member.userId, op);
-          } catch (err) {
-            console.warn('[Repeato] Failed to sync shared task for member:', member.userId, err);
-          }
-        }
+      // Always save to user's master tasks collection
+      await taskRepository.saveOne(task, user.id, op);
+
+      // If task explicitly belongs to a household, also sync to household collection for shared members
+      if (task.householdId) {
+        await taskRepository.saveOneHousehold(task, task.householdId, user.id, op);
       }
 
       if (user.pushOptIn) {
@@ -176,7 +198,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       try {
-        const task = createTaskFromParsed(parsed, opts, user?.name);
+        const created = createTaskFromParsed(parsed, opts, user?.name);
+        const task = {
+          ...created,
+          householdId: opts.shared && opts.shared.length > 0 ? (activeHousehold?.id ?? null) : null,
+        };
         const next = [task, ...tasks];
         await persistAll(next);
         await syncTask(task, 'create');
@@ -303,7 +329,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       try {
-        const task = createTaskFromFormValues(values, shared, user?.name);
+        const created = createTaskFromFormValues(values, shared, user?.name);
+        const householdId = values.householdId !== undefined
+          ? values.householdId
+          : (shared && shared.length > 0 ? (activeHousehold?.id ?? null) : null);
+        const task = {
+          ...created,
+          householdId,
+        };
         const next = [task, ...tasks];
         await persistAll(next);
         await syncTask(task, 'create');
@@ -321,11 +354,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     async (taskId: string, values: TaskFormValues, shared?: SharedMember[]) => {
       await applyMutation(
         taskId,
-        (t) => ({ ...updateTaskDetails(t, values), sharedWith: shared ?? t.sharedWith }),
+        (t) => {
+          const updated = updateTaskDetails(t, values);
+          const householdId = values.householdId !== undefined
+            ? values.householdId
+            : (shared && shared.length > 0 ? (activeHousehold?.id ?? t.householdId) : t.householdId);
+          return {
+            ...updated,
+            sharedWith: shared ?? t.sharedWith,
+            householdId,
+          };
+        },
         'taskUpdated'
       );
     },
-    [applyMutation]
+    [applyMutation, activeHousehold?.id]
   );
 
   const deleteTask = useCallback(
@@ -564,12 +607,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         try {
           const remoteB = await userRepository.loadRemote(member.userId);
           if (remoteB) {
+            const activeHhId = activeHousehold?.id;
+            const updatedHouseholdsB = (remoteB.households ?? []).map((h) => {
+              if (activeHhId && h.id !== activeHhId) return h;
+              return {
+                ...h,
+                members: h.members.filter((m) => m.userId !== user.id && m.code !== user.userCode),
+                memberUids: (h.memberUids ?? []).filter((uid) => uid !== user.id),
+              };
+            }).filter((h) => h.members.length > 1 || h.ownerUid === member.userId);
+
             const updatedMembersB = (remoteB.householdMembers ?? []).filter(
               (m) => m.userId !== user.id && m.code !== user.householdCode
             );
             const updatedUidsB = (remoteB.householdMemberUids ?? []).filter((uid) => uid !== user.id);
             const updatedB = {
               ...remoteB,
+              households: updatedHouseholdsB,
               householdMembers: updatedMembersB,
               householdMemberUids: updatedUidsB,
               removedBy: user.name,

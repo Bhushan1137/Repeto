@@ -13,7 +13,9 @@ export interface TaskFormValues {
   reminderTime?: string;
   startDate?: string;
   assignedTo?: string;
+  householdId?: string;
   icon?: string;
+  note?: string;
 }
 
 export interface TaskFormState {
@@ -30,7 +32,9 @@ export interface TaskFormState {
   reminderTime: string | null;
   startDate: string | null;
   assignedTo: string | null;
+  householdId: string | null;
   icon: string | null;
+  note: string;
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -119,7 +123,9 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
     reminderTime: config.defaultReminderTime ?? null,
     startDate: null,
     assignedTo: null,
+    householdId: null,
     icon: null,
+    note: '',
   };
 }
 
@@ -134,7 +140,9 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     reminderTime: values.reminderTime ?? null,
     startDate: values.startDate ?? null,
     assignedTo: values.assignedTo ?? null,
+    householdId: values.householdId ?? null,
     icon: values.icon ?? null,
+    note: values.note ?? '',
   };
 }
 
@@ -150,7 +158,9 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? null,
     startDate: null,
     assignedTo: null,
+    householdId: null,
     icon: parsed.icon ?? null,
+    note: '',
   };
 }
 
@@ -165,7 +175,9 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     reminderTime: task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? null,
     startDate: task.startDate ?? null,
     assignedTo: task.assignedTo ?? null,
+    householdId: task.householdId ?? null,
     icon: task.icon ?? null,
+    note: '',
   };
 }
 
@@ -192,8 +204,7 @@ export function applyCategoryChange(state: TaskFormState, category: CategoryKey)
 export function formStateToValues(state: TaskFormState, lang: Language): TaskFormValues {
   const recurrence = buildRecurrenceRule(state);
   const amountDigits = state.amountText.replace(/\D/g, '');
-  const amount = amountDigits ? Number(amountDigits) : undefined;
-  const config = getCategoryFormConfig(state.category);
+  const amount = state.finance && amountDigits ? Number(amountDigits) : undefined;
 
   return {
     title: state.title.trim(),
@@ -201,11 +212,13 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     recurrence,
     freq: frequencyLabelFromRule(recurrence, lang),
     amount,
-    finance: config.showFinance && (state.finance || !!amount),
+    finance: state.finance,
     reminderTime: state.reminderTime ? state.reminderTime : undefined,
     startDate: state.startDate ? state.startDate : undefined,
     assignedTo: state.assignedTo || undefined,
+    householdId: state.householdId || undefined,
     icon: state.icon || undefined,
+    note: state.note.trim() || undefined,
   };
 }
 
@@ -242,12 +255,17 @@ export function validateFormState(
   translate: (key: TranslationKey) => string
 ): TaskFormErrors {
   const errors: TaskFormErrors = {};
-  const config = getCategoryFormConfig(state.category);
 
   if (state.title.trim().length < 2) errors.title = translate('presetTitleRequired');
-  if (config.showAmount && config.amountRequired && !state.amountText.replace(/\D/g, '')) {
-    errors.amount = translate('amountRequired');
+
+  // Amount is required if Finance is toggled ON
+  if (state.finance) {
+    const digits = state.amountText.replace(/\D/g, '');
+    if (!digits || Number(digits) <= 0) {
+      errors.amount = translate('amountRequired');
+    }
   }
+
   if (state.recurrenceType === 'interval' && state.interval < 1) {
     errors.recurrence = translate('intervalRequired');
   }

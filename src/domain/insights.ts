@@ -1,6 +1,6 @@
 import type { CategoryKey, CompletionStatus, HouseholdMemberProfile, RepeatingTask, TaskGroup } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
-import { daysUntilDue, getTaskGroup, isCurrentMonth } from '@/domain/recurrence';
+import { daysUntilDue, getTaskGroup, isCurrentMonth, getMonthLabel } from '@/domain/recurrence';
 
 export interface CategoryInsight {
   label: string;
@@ -15,6 +15,58 @@ export interface DailyActivity {
   dateStr: string;
 }
 
+// ─── P1: Upcoming Strip ────────────────────────────────────────────────────
+
+export interface UpcomingTaskItem {
+  id: string;
+  title: string;
+  icon?: string;
+  category: CategoryKey;
+  amount?: number;
+  finance: boolean;
+  isOverdue: boolean;
+}
+
+export interface UpcomingDaySlot {
+  /** ISO date string "YYYY-MM-DD" */
+  dateStr: string;
+  /** Localised label: "Mon 28", "Today", "Overdue" */
+  dayLabel: string;
+  isToday: boolean;
+  isOverdue: boolean;
+  tasks: UpcomingTaskItem[];
+}
+
+// ─── P3: Spend Forecast ────────────────────────────────────────────────────
+
+export interface SpendForecastCategory {
+  key: CategoryKey;
+  label: string;
+  icon: string;
+  amount: number;
+}
+
+export interface SpendForecast {
+  thisMonthTotal: number;
+  nextMonthTotal: number;
+  yearlyEstimate: number;
+  byCategory: SpendForecastCategory[];
+  financeTaskCount: number;
+  currency: '₹';
+}
+
+// ─── P4: Month Trend ───────────────────────────────────────────────────────
+
+export interface MonthTrend {
+  direction: 'up' | 'down' | 'same' | 'insufficient_data';
+  delta: number;
+  thisMonthPercent: number;
+  lastMonthPercent: number;
+  lastMonthLabel: string;
+}
+
+// ─── Existing InsightsResult (extended for P2 + P6) ──────────────────────
+
 export interface InsightsResult {
   overallPercent: number;
   bars: CategoryInsight[];
@@ -25,6 +77,12 @@ export interface InsightsResult {
   completionsCount: number;
   skippedCount: number;
   activeTasksCount: number;
+  /** P2: count of tasks currently overdue */
+  overdueCount: number;
+  /** P2: overall health bucket */
+  healthStatus: 'great' | 'ok' | 'attention';
+  /** P6: tasks completed in the last 7 days (on_time | late) */
+  weeklyCompletionCount: number;
 }
 
 export function calculateStreak(tasks: RepeatingTask[]): number {
@@ -121,6 +179,20 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
   const skippedCount = tasks.reduce((sum, t) => sum + t.history.filter(h => h.status === 'skipped').length, 0);
   const activeTasksCount = tasks.length;
 
+  // P2: overdue count
+  const overdueCount = tasks.filter(t => daysUntilDue(t.nextDueDate) < 0).length;
+
+  // P6: weekly completion count (last 7 days)
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const weeklyCompletionCount = tasks
+    .flatMap(t => t.history)
+    .filter(h =>
+      h.completedAt &&
+      new Date(h.completedAt) >= sevenDaysAgo &&
+      (h.status === 'on_time' || h.status === 'late')
+    ).length;
+
   if (total === 0) {
     return {
       overallPercent: 0,
@@ -132,11 +204,18 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
       completionsCount,
       skippedCount,
       activeTasksCount,
+      overdueCount,
+      healthStatus: overdueCount > 0 ? 'attention' : 'great',
+      weeklyCompletionCount,
     };
   }
 
   const onTime = completedEntries.filter((h) => h.status === 'on_time').length;
   const overallPercent = Math.round((onTime / total) * 100);
+
+  // P2: health status
+  const healthStatus: InsightsResult['healthStatus'] =
+    overallPercent >= 75 ? 'great' : overallPercent >= 50 ? 'ok' : 'attention';
 
   const byCategory: Record<string, { onTime: number; total: number }> = {};
   tasks.forEach((task) => {
@@ -173,8 +252,195 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
     completionsCount,
     skippedCount,
     activeTasksCount,
+    overdueCount,
+    healthStatus,
+    weeklyCompletionCount,
   };
 }
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function buildDayLabel(d: Date, isToday: boolean, lang: 'en' | 'hi'): string {
+  if (isToday) return lang === 'hi' ? 'आज' : 'Today';
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (toDateStr(d) === toDateStr(tomorrow)) return lang === 'hi' ? 'कल' : 'Tomorrow';
+  const dayNamesEn = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNamesHi = ['रवि', 'सोम', 'मंगल', 'बुध', 'गुरु', 'शुक्र', 'शनि'];
+  const dayName = lang === 'hi' ? dayNamesHi[d.getDay()] : dayNamesEn[d.getDay()];
+  return `${dayName} ${d.getDate()}`;
+}
+
+export function computeUpcomingStrip(
+  tasks: RepeatingTask[],
+  lang: 'en' | 'hi'
+): UpcomingDaySlot[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = toDateStr(today);
+
+  // Collect overdue tasks (days < 0)
+  const overdueTasks: UpcomingTaskItem[] = tasks
+    .filter(t => daysUntilDue(t.nextDueDate) < 0)
+    .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime())
+    .map(t => ({
+      id: t.id,
+      title: t.title,
+      icon: t.icon,
+      category: t.category,
+      amount: t.amount,
+      finance: t.finance,
+      isOverdue: true,
+    }));
+
+  // Build 15-day forward map: today + 14 future days
+  const dayMap = new Map<string, UpcomingTaskItem[]>();
+  for (let i = 0; i <= 14; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    dayMap.set(toDateStr(d), []);
+  }
+
+  // Place non-overdue tasks into their due-date slot
+  tasks
+    .filter(t => daysUntilDue(t.nextDueDate) >= 0)
+    .forEach(t => {
+      const ds = t.nextDueDate.slice(0, 10);
+      if (dayMap.has(ds)) {
+        dayMap.get(ds)!.push({
+          id: t.id,
+          title: t.title,
+          icon: t.icon,
+          category: t.category,
+          amount: t.amount,
+          finance: t.finance,
+          isOverdue: false,
+        });
+      }
+    });
+
+  const slots: UpcomingDaySlot[] = [];
+
+  // Overdue slot first
+  if (overdueTasks.length > 0) {
+    slots.push({
+      dateStr: '',
+      dayLabel: lang === 'hi' ? 'विलंबित' : 'Overdue',
+      isToday: false,
+      isOverdue: true,
+      tasks: overdueTasks,
+    });
+  }
+
+  // Day slots — always show today, skip empty future days
+  dayMap.forEach((slotTasks, ds) => {
+    const d = new Date(ds + 'T00:00:00');
+    const isToday = ds === todayStr;
+    if (!isToday && slotTasks.length === 0) return;
+    slots.push({
+      dateStr: ds,
+      dayLabel: buildDayLabel(d, isToday, lang),
+      isToday,
+      isOverdue: false,
+      tasks: slotTasks,
+    });
+  });
+
+  return slots;
+}
+
+export function computeSpendForecast(
+  tasks: RepeatingTask[],
+  lang: 'en' | 'hi'
+): SpendForecast {
+  const financeTasks = tasks.filter(t => !t.archived && (t.finance === true || (t.amount !== undefined && Number(t.amount) > 0)));
+
+  let thisMonthTotal = 0;
+  let nextMonthTotal = 0;
+  const byCategoryMap = new Map<CategoryKey, number>();
+
+  financeTasks.forEach(t => {
+    const amount = Number(t.amount) || 0;
+    if (!amount) return;
+
+    thisMonthTotal += amount;
+    nextMonthTotal += amount;
+    byCategoryMap.set(t.category, (byCategoryMap.get(t.category) ?? 0) + amount);
+  });
+
+  const byCategory: SpendForecastCategory[] = Array.from(byCategoryMap.entries())
+    .map(([key, amount]) => {
+      const cat = CATEGORY_MAP[key];
+      return { key, label: lang === 'hi' ? cat.labelHi : cat.labelEn, icon: cat.icon, amount };
+    })
+    .sort((a, b) => b.amount - a.amount);
+
+  const baseMonthly = thisMonthTotal || nextMonthTotal;
+
+  return {
+    thisMonthTotal,
+    nextMonthTotal,
+    yearlyEstimate: baseMonthly * 12,
+    byCategory,
+    financeTaskCount: financeTasks.length,
+    currency: '₹',
+  };
+}
+
+function getLastMonthLabel(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return getMonthLabel(d);
+}
+
+function getLastMonthName(lang: 'en' | 'hi'): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  const en = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const hi = ['जनवरी','फ़रवरी','मार्च','अप्रैल','मई','जून','जुलाई','अगस्त','सितंबर','अक्टूबर','नवंबर','दिसंबर'];
+  return lang === 'hi' ? hi[d.getMonth()] : en[d.getMonth()];
+}
+
+export function computeMonthTrend(
+  tasks: RepeatingTask[],
+  lang: 'en' | 'hi'
+): MonthTrend {
+  const currentLabel = getMonthLabel();
+  const lastLabel = getLastMonthLabel();
+
+  const filterByMonth = (label: string) =>
+    tasks.flatMap(t => t.history.filter(h => h.month === label && h.status !== 'skipped'));
+
+  const currentEntries = filterByMonth(currentLabel);
+  const lastEntries = filterByMonth(lastLabel);
+
+  if (currentEntries.length < 3 || lastEntries.length < 3) {
+    return {
+      direction: 'insufficient_data',
+      delta: 0,
+      thisMonthPercent: 0,
+      lastMonthPercent: 0,
+      lastMonthLabel: getLastMonthName(lang),
+    };
+  }
+
+  const pct = (entries: ReturnType<typeof filterByMonth>) =>
+    Math.round((entries.filter(h => h.status === 'on_time').length / entries.length) * 100);
+
+  const thisMonthPercent = pct(currentEntries);
+  const lastMonthPercent = pct(lastEntries);
+  const delta = Math.abs(thisMonthPercent - lastMonthPercent);
+  const direction: MonthTrend['direction'] =
+    delta < 2 ? 'same' : thisMonthPercent > lastMonthPercent ? 'up' : 'down';
+
+  return { direction, delta, thisMonthPercent, lastMonthPercent, lastMonthLabel: getLastMonthName(lang) };
+}
+
+// ─── Household helpers ────────────────────────────────────────
 
 export interface HouseholdMember {
   name: string;
@@ -214,7 +480,8 @@ export function deriveHouseholdMembers(
   tasks: RepeatingTask[],
   currentUserName: string,
   householdMembers: HouseholdMemberProfile[] = [],
-  currentUserId?: string
+  currentUserId?: string,
+  currentUserCode?: string
 ): HouseholdMember[] {
   const you: HouseholdMember = {
     name: currentUserName,
@@ -222,11 +489,19 @@ export function deriveHouseholdMembers(
     color: '#E8A33D',
     taskCount: tasks.length,
     isYou: true,
-    onTimePercent: calculateMemberOnTime(tasks, currentUserId, undefined, true),
+    onTimePercent: calculateMemberOnTime(tasks, currentUserId, currentUserCode, true),
   };
 
   const memberMap = new Map<string, HouseholdMember>();
   householdMembers.forEach((member) => {
+    // Exclude current user from additional member map (since 'you' represents current user)
+    if (
+      (currentUserId && member.userId === currentUserId) ||
+      (currentUserCode && member.code === currentUserCode) ||
+      (member.name && member.name.trim().toLowerCase() === currentUserName.trim().toLowerCase())
+    ) {
+      return;
+    }
     memberMap.set(member.code, {
       name: member.name,
       short: initials(member.name),
@@ -241,6 +516,12 @@ export function deriveHouseholdMembers(
 
   tasks.forEach((task) => {
     task.sharedWith.forEach((member) => {
+      if (
+        (currentUserId && member.userId === currentUserId) ||
+        (currentUserCode && member.code === currentUserCode)
+      ) {
+        return;
+      }
       const key = member.code ?? member.phone;
       const existing = memberMap.get(key);
       if (existing) {
@@ -272,19 +553,14 @@ export function deriveHouseholdMembers(
 export function getHouseholdStats(tasks: RepeatingTask[]) {
   const shared = tasks.filter((t) => t.sharedWith.length > 0);
 
-  // A shared task counts as "on time" when:
-  // - It is not currently overdue (next due date is today or future), AND
-  // - It has at least one completed (non-skipped) history entry where the latest is on_time.
-  // Tasks with no history yet that aren't overdue are treated as neutral (not counted either way).
   const onTime = shared.reduce((acc, t) => {
-    if (daysUntilDue(t.nextDueDate) < 0) return acc; // currently overdue — not on time
+    if (daysUntilDue(t.nextDueDate) < 0) return acc;
     const completed = t.history.filter((h) => h.status !== 'skipped' && h.completedAt);
-    if (completed.length === 0) return acc; // no completion history yet — neutral, skip
+    if (completed.length === 0) return acc;
     const latest = completed[completed.length - 1];
     return acc + (latest.status === 'on_time' ? 1 : 0);
   }, 0);
 
-  // Total counts only shared tasks that have at least one completion history entry
   const totalWithHistory = shared.filter(
     (t) => t.history.filter((h) => h.status !== 'skipped' && h.completedAt).length > 0
   ).length;

@@ -3,6 +3,7 @@ import { View, StyleSheet, Linking, Alert, Platform, Modal, Pressable, KeyboardA
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import QRCode from 'react-native-qrcode-svg';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
@@ -27,6 +28,7 @@ export default function ProfileScreen() {
   const { translate } = useTranslation();
 
   const [showEditSheet, setShowEditSheet] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
@@ -93,6 +95,17 @@ export default function ProfileScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.name} testID="settings-profile-name">{user.name}</Text>
             <Text style={styles.phone} testID="settings-profile-phone">{displayPhone}</Text>
+            {user.userCode && (
+              <Pressable
+                onPress={() => setShowQrModal(true)}
+                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}
+              >
+                <AppIcon name="qr-code-outline" size={14} color={Colors.marigold} />
+                <Text style={{ fontSize: 11, fontFamily: 'Manrope_700Bold', color: Colors.marigold }}>
+                  {user.language === 'hi' ? 'मेरा क्यूआर / कोड:' : 'My QR / Code:'} {user.userCode}
+                </Text>
+              </Pressable>
+            )}
           </View>
           <TouchableRipple style={styles.editBtn} onPress={handleOpenEdit} testID="settings-profile-edit-btn" borderless>
             <AppIcon name="create-outline" size={20} color={Colors.onDark} />
@@ -243,6 +256,37 @@ export default function ProfileScreen() {
           </Card>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Personal Member QR Code Modal */}
+      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+        <View style={styles.qrCenteredView}>
+          <Pressable style={styles.backdrop} onPress={() => setShowQrModal(false)} />
+          <Card style={styles.qrSheet} mode="elevated">
+            <Card.Content style={styles.qrContent}>
+              <Text style={styles.qrTitle}>
+                {user.language === 'hi' ? 'मेरा सदस्य क्यूआर कोड' : 'My Member QR Code'}
+              </Text>
+              <Text style={styles.qrSub}>
+                {user.language === 'hi'
+                  ? 'परिवार के एडमिन से कहें कि वे आपको घर में जोड़ने के लिए इस कोड को स्कैन करें।'
+                  : 'Show this QR code to a Household Admin to get added to their household.'}
+              </Text>
+              {user.userCode ? (
+                <QRCode
+                  value={user.userCode}
+                  size={180}
+                />
+              ) : null}
+              <Text style={styles.qrCodeText}>{user.userCode}</Text>
+              <Button
+                title={user.language === 'hi' ? 'बंद करें' : 'Close'}
+                onPress={() => setShowQrModal(false)}
+                style={{ width: '90%', marginTop: 8 }}
+              />
+            </Card.Content>
+          </Card>
+        </View>
+      </Modal>
     </ScreenShell>
   );
 }
@@ -392,5 +436,43 @@ const styles = StyleSheet.create({
     color: Colors.inkFaint,
     marginTop: 4,
     fontFamily: 'Manrope_500Medium',
+  },
+  qrCenteredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrSheet: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    width: 300,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  qrContent: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  qrTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 18,
+    color: Colors.ink,
+    textAlign: 'center',
+  },
+  qrSub: {
+    fontSize: 12,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  qrCodeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 20,
+    color: Colors.marigoldDeep,
+    letterSpacing: 2,
   },
 });

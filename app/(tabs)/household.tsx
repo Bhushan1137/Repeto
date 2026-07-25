@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, StyleSheet, Share, Linking, Platform, Image, Modal, Pressable, Alert, TouchableOpacity, ScrollView } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet, Platform, Modal, Pressable, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
-import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTasks } from '@/providers/TaskProvider';
 import { useAuth } from '@/providers/AuthProvider';
@@ -16,24 +12,27 @@ import { useHousehold } from '@/hooks/useInsights';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
-import { ProgressRing } from '@/components/ProgressRing';
 import { ScreenShell, SectionHeader, EmptyState } from '@/components/ScreenShell';
 import { Button } from '@/components/Button';
 import { AppIcon } from '@/components/AppIcon';
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { taskToFormValues } from '@/domain/preset';
 import { userRepository } from '@/data/repositories/userRepository';
+import { HouseholdContextSwitcher } from "@/components/HouseholdContextSwitcher";
+import { CreateHouseholdSheet } from "@/components/CreateHouseholdSheet";
+import { HouseholdSettingsSheet } from "@/components/HouseholdSettingsSheet";
 import {
   addHouseholdMember,
   householdMemberFromInvite,
-  inviteMessage,
   normalizeInviteCode,
   pendingMemberFromCode,
-  removeHouseholdMember,
-  inviteProfileFromUser,
+  addMemberToHousehold,
+  listHouseholds,
+  memberColor,
+  HOUSEHOLD_COLORS,
 } from '@/domain/household';
 import { Colors, Gradients, Radius, Typography } from '@/constants/theme';
-import type { RepeatingTask, CategoryKey } from '@/types';
+import type { RepeatingTask, CategoryKey, HouseholdMemberProfile, HouseholdContext } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { daysUntilDue } from '@/domain/recurrence';
 
@@ -128,20 +127,539 @@ function SharedTaskCard({
   );
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// HouseholdView — Renders everything scoped to ONE active household.
+// All stats/members/tasks are derived from props here, so they update
+// instantly whenever the user switches household pills.
+// ────────────────────────────────────────────────────────────────────────────
+interface HouseholdViewProps {
+  user: any;
+  activeHousehold: HouseholdContext;
+  households: HouseholdContext[];
+  householdScopedTasks: import('@/types').RepeatingTask[];
+  allTasks: import('@/types').RepeatingTask[];
+  language: 'en' | 'hi';
+  translate: (key: import('@/i18n').TranslationKey) => string;
+  showToast: (msg: string) => void;
+  addNotification: (type: any, title: string, body: string) => Promise<void>;
+  updateUser: (patch: Partial<import('@/types').UserProfile>) => Promise<void>;
+  createHousehold: (name: string, icon: string, color: string) => Promise<{ ok: boolean; error?: string }>;
+  switchHousehold: (id: string) => Promise<void>;
+  setCreateSheetVisible: (v: boolean) => void;
+  setSelectedTaskId: (id: string | null) => void;
+  setEditingTaskId: (id: string | null) => void;
+  setActivityVisible: (v: boolean) => void;
+  removeHouseholdMemberAndCleanup: (code: string, deleteTasks: boolean) => Promise<void>;
+  scrollRef: React.RefObject<ScrollView | null>;
+  sharedTasksY: React.MutableRefObject<number>;
+  membersY: React.MutableRefObject<number>;
+  activityY: React.MutableRefObject<number>;
+  onOpenSettings: () => void;
+}
+
+function HouseholdView({
+  user,
+  activeHousehold,
+  households,
+  householdScopedTasks,
+  allTasks,
+  language,
+  translate,
+  showToast,
+  addNotification,
+  updateUser,
+  createHousehold,
+  switchHousehold,
+  setCreateSheetVisible,
+  setSelectedTaskId,
+  setEditingTaskId,
+  setActivityVisible,
+  removeHouseholdMemberAndCleanup,
+  scrollRef,
+  sharedTasksY,
+  membersY,
+  activityY,
+  onOpenSettings,
+}: HouseholdViewProps) {
+  // All data computed HERE so it re-derives when activeHousehold changes
+  const { stats, members } = useHousehold(householdScopedTasks);
+  const ringPercent = stats.total > 0 ? (stats.onTime / stats.total) * 100 : 0;
+
+  const [filterMemberCode, setFilterMemberCode] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [addingCode, setAddingCode] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  // Reset filter when switching households
+  useEffect(() => {
+    setFilterMemberCode(null);
+    setCodeInput('');
+  }, [activeHousehold.id]);
+
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a, b) => b.onTimePercent - a.onTimePercent);
+  }, [members]);
+
+  const filteredSharedTasks = useMemo(() => {
+    let list = householdScopedTasks;
+    if (filterMemberCode) {
+      list = list.filter((t) => {
+        if (filterMemberCode === 'you') {
+          return !t.assignedTo || t.assignedTo === user?.id;
+        }
+        return (
+          t.sharedWith.some((m: any) => m.code === filterMemberCode || m.userId === filterMemberCode) ||
+          t.assignedTo === filterMemberCode
+        );
+      });
+    }
+    return list;
+  }, [householdScopedTasks, filterMemberCode, user?.id]);
+
+  const activeMembers = activeHousehold.members ?? [];
+
+  const addByCode = async (customCode?: string) => {
+    if (!user) return;
+    const code = normalizeInviteCode(customCode ?? codeInput);
+    if (!code || code.length < 7) {
+      showToast(translate('invalidInviteCode'));
+      return;
+    }
+    if (user.userCode && code === user.userCode) {
+      showToast(translate('cannotAddOwnCode'));
+      return;
+    }
+    if (activeMembers.some((m: HouseholdMemberProfile) => normalizeInviteCode(m.code) === code)) {
+      showToast(translate('memberAlreadyAdded'));
+      return;
+    }
+
+    setAddingCode(true);
+
+    const userCodeMatch = await userRepository.resolveUserCode(code);
+    let member: HouseholdMemberProfile;
+
+    if (userCodeMatch) {
+      member = {
+        code: userCodeMatch.userCode,
+        userId: userCodeMatch.userId,
+        name: userCodeMatch.name,
+        color: userCodeMatch.color,
+        addedAt: new Date().toISOString(),
+        status: 'active',
+      };
+    } else {
+      const invite = await userRepository.resolveHouseholdInvite(code);
+      member = invite ? householdMemberFromInvite(invite) : pendingMemberFromCode(code);
+    }
+
+    let updatedHh: HouseholdContext | undefined = undefined;
+
+    const updatedPatch = addMemberToHousehold(user, activeHousehold.id, member);
+    await updateUser(updatedPatch);
+    updatedHh = (updatedPatch.households ?? []).find(h => h.id === activeHousehold.id);
+    if (updatedHh) {
+      await userRepository.saveHousehold(updatedHh);
+    }
+
+    await addNotification(
+      'household',
+      language === 'hi' ? 'परिवार का सदस्य जुड़ गया' : 'Household Member Linked',
+      language === 'hi' ? `${member.name || code} को परिवार में जोड़ा गया।` : `Linked ${member.name || code} to your household.`
+    );
+
+    if (member.userId) {
+      try {
+        const peerNotif: AppNotification = {
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: 'household',
+          title: language === 'hi' ? 'नया परिवार सदस्य जोड़ा गया' : 'Added to Household',
+          body: language === 'hi'
+            ? `${user.name} ने आपको "${activeHousehold.name || 'Home'}" में जोड़ा।`
+            : `${user.name} added you to "${activeHousehold.name || 'Home'}".`,
+          timestamp: new Date().toISOString(),
+          read: false,
+        };
+        await userRepository.saveNotification(member.userId, peerNotif);
+
+        const remoteB = await userRepository.loadRemote(member.userId);
+        if (remoteB) {
+          const targetHh = updatedHh ?? activeHousehold;
+          const myMemberProfile: HouseholdMemberProfile = {
+            code: user.userCode || '',
+            name: user.name,
+            color: memberColor(user.id || user.email),
+            userId: user.id,
+            addedAt: new Date().toISOString(),
+            status: 'active',
+          };
+          const hhForB: HouseholdContext = {
+            ...targetHh,
+            members: targetHh.members.some((m: HouseholdMemberProfile) => m.userId === user.id || m.code === user.userCode)
+              ? targetHh.members
+              : [myMemberProfile, ...targetHh.members],
+            memberUids: Array.from(new Set([...(targetHh.memberUids ?? []), user.id, member.userId])),
+          };
+          const existingHhsB = remoteB.households ?? [];
+          const bHasHh = existingHhsB.some((h) => h.id === targetHh.id);
+          const updatedHouseholdsB = bHasHh
+            ? existingHhsB.map((h) => (h.id === targetHh.id ? hhForB : h))
+            : [...existingHhsB, hhForB];
+          await userRepository.saveOther(member.userId, {
+            ...remoteB,
+            households: updatedHouseholdsB,
+            activeHouseholdId: remoteB.activeHouseholdId || hhForB.id,
+          });
+        }
+      } catch (err) {
+        console.warn('[Repeato] Remote notification to added member failed:', err);
+      }
+    }
+
+    setAddingCode(false);
+    setCodeInput('');
+    showToast(userCodeMatch
+      ? (language === 'hi' ? 'सदस्य को घर में जोड़ा गया' : 'Member added to household!')
+      : translate('memberAddedPending'));
+  };
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    setScannerVisible(false);
+    if (data) {
+      setCodeInput(data);
+      await addByCode(data);
+    }
+  };
+
+  const removeMember = async (code?: string) => {
+    if (!user || !code) return;
+    const member = activeMembers.find((m: HouseholdMemberProfile) => m.code === code);
+    const memberName = member ? member.name : code;
+
+    if (Platform.OS === 'web') {
+      const confirmRemove = window.confirm(
+        language === 'hi'
+          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
+          : `Are you sure you want to remove ${memberName} from your household?`
+      );
+      if (!confirmRemove) return;
+      const deleteTasks = window.confirm(
+        language === 'hi'
+          ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
+          : 'Do you want to delete all shared tasks associated with this member from both devices?'
+      );
+      await removeHouseholdMemberAndCleanup(code, deleteTasks);
+    } else {
+      Alert.alert(
+        language === 'hi' ? 'सदस्य को हटाएं?' : 'Remove Member?',
+        language === 'hi'
+          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
+          : `Are you sure you want to remove ${memberName} from your household?`,
+        [
+          { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+          {
+            text: language === 'hi' ? 'हटाएं' : 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                language === 'hi' ? 'साझा कार्य हटाएं?' : 'Remove Shared Tasks?',
+                language === 'hi'
+                  ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
+                  : 'Do you want to delete all shared tasks associated with this member from both devices?',
+                [
+                  { text: language === 'hi' ? 'कार्य रखें' : 'Keep Tasks', onPress: () => removeHouseholdMemberAndCleanup(code, false) },
+                  { text: language === 'hi' ? 'कार्य हटाएं' : 'Remove Tasks', style: 'destructive', onPress: () => removeHouseholdMemberAndCleanup(code, true) },
+                ]
+              );
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  return (
+    <>
+      {/* ── Household Context Switcher Pills ── */}
+      <HouseholdContextSwitcher
+        households={households}
+        activeHouseholdId={activeHousehold.id}
+        onSwitch={switchHousehold}
+        onCreateNew={() => setCreateSheetVisible(true)}
+        language={language}
+      />
+
+      {/* ── Summary Row (scoped to THIS household) ── */}
+      <View style={styles.hhSummaryContainer}>
+        {/* Members */}
+        <Pressable style={styles.hhSummaryCard} onPress={() => {
+          setFilterMemberCode(null);
+          setTimeout(() => scrollRef.current?.scrollTo({ y: membersY.current, animated: true }), 50);
+        }}>
+          <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapMembers]}>
+            <AppIcon name="people" size={16} color="#0D9488" />
+          </View>
+          <Text style={styles.hhSummaryCount}>{members.length}</Text>
+          <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'सदस्य' : 'Members'}</Text>
+          <Text style={[styles.hhSummaryLink, styles.hhLinkMembers]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+        </Pressable>
+
+        {/* Household tasks */}
+        <Pressable style={styles.hhSummaryCard} onPress={() => {
+          setFilterMemberCode(null);
+          setTimeout(() => scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true }), 50);
+        }}>
+          <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapTasks]}>
+            <AppIcon name="documents-outline" size={16} color="#2563EB" />
+          </View>
+          <Text style={styles.hhSummaryCount}>{householdScopedTasks.length}</Text>
+          <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'घर के कार्य' : 'Household tasks'}</Text>
+          <Text style={[styles.hhSummaryLink, styles.hhLinkTasks]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+        </Pressable>
+
+        {/* Completion */}
+        <View style={styles.hhSummaryCard}>
+          <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapCompletion]}>
+            <AppIcon name="time-outline" size={16} color="#EA580C" />
+          </View>
+          <Text style={styles.hhSummaryCount}>{Math.round(ringPercent)}%</Text>
+          <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'पूर्णता दर' : 'Completion'}</Text>
+          <Text style={styles.hhSummarySub}>{language === 'hi' ? 'इस महीने' : 'This month'}</Text>
+        </View>
+      </View>
+
+      {/* ── Tasks Section ── */}
+      <View
+        style={styles.sharedHeaderRow}
+        onLayout={(e) => { sharedTasksY.current = e.nativeEvent.layout.y; }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.hhSectionHeading}>
+            {`${activeHousehold.name} ${language === 'hi' ? 'के कार्य' : 'Tasks'}`}
+          </Text>
+          <TouchableOpacity onPress={onOpenSettings} hitSlop={8} style={{ padding: 4 }}>
+            <AppIcon name="settings-outline" size={18} color={Colors.inkSoft} />
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity onPress={() => {
+          setFilterMemberCode(null);
+          scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true });
+        }}>
+          <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {householdScopedTasks.length === 0 ? (
+        <EmptyState
+          icon="🏠"
+          title={language === 'hi' ? `${activeHousehold.name} में कोई कार्य नहीं` : `No tasks in ${activeHousehold.name} yet`}
+          subtitle={language === 'hi' ? 'इस घर में जोड़े गए कार्य सभी सदस्यों को यहाँ दिखाई देंगे।' : 'Tasks added to this household will appear here for all members.'}
+        />
+      ) : (
+        <>
+          {filteredSharedTasks.length === 0 ? (
+            <Text style={styles.emptySub}>{language === 'hi' ? 'कोई कार्य नहीं मिला' : 'No tasks match current filter'}</Text>
+          ) : (
+            filteredSharedTasks.map((task) => (
+              <SharedTaskCard
+                key={task.id}
+                task={task}
+                language={language}
+                onPress={() => setSelectedTaskId(task.id)}
+                user={user}
+              />
+            ))
+          )}
+        </>
+      )}
+
+      {/* ── Add Member Card ── */}
+      {user && (
+        <Card style={styles.inviteContainerCard} mode="elevated">
+          <Card.Content style={styles.inviteCardContent}>
+            <View style={styles.inviteTopRow}>
+              <View style={styles.inviteAvatarRow}>
+                <AppIcon name="person-circle-outline" size={22} color={Colors.marigoldDeep} />
+              </View>
+              <View style={styles.inviteTextCol}>
+                <Text style={styles.inviteCardTitle}>
+                  {language === 'hi' ? 'सदस्य को जोड़ें' : 'Add member to household'}
+                </Text>
+                <Text style={styles.inviteCardSub}>
+                  {language === 'hi'
+                    ? 'सदस्य का यूज़र कोड दर्ज करें या उनका क्यूआर कोड स्कैन करें।'
+                    : "Scan or enter member's personal user code."}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.manualJoinRow} testID="household-manual-join-row">
+              <PaperInput
+                mode="outlined"
+                value={codeInput}
+                onChangeText={setCodeInput}
+                autoCapitalize="characters"
+                placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
+                outlineColor={Colors.ivoryLine}
+                activeOutlineColor={Colors.marigoldDeep}
+                style={styles.manualJoinInput}
+                textColor={Colors.ink}
+                testID="household-join-code-input"
+                right={
+                  <PaperInput.Icon
+                    icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
+                    onPress={async () => {
+                      if (!permission || !permission.granted) {
+                        const res = await requestPermission();
+                        if (!res.granted) {
+                          showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
+                          return;
+                        }
+                      }
+                      setScannerVisible(true);
+                    }}
+                    testID="household-scanner-btn"
+                  />
+                }
+                theme={{ colors: { background: Colors.white } }}
+              />
+              <Button
+                title={language === 'hi' ? 'जोड़ें' : 'Add'}
+                loading={addingCode}
+                onPress={() => addByCode()}
+                style={styles.manualJoinBtn}
+                testID="household-join-btn"
+              />
+            </View>
+          </Card.Content>
+        </Card>
+      )}
+
+      {/* ── Members Section ── */}
+      <View onLayout={(e) => { membersY.current = e.nativeEvent.layout.y; }}>
+        <SectionHeader label={translate('members')} count={members.length} />
+      </View>
+      <Card style={styles.memberCard} mode="elevated">
+        <Card.Content style={styles.memberCardContent}>
+          {members.map((m, idx) => {
+            const key = m.isYou ? 'you' : (m.code || m.userId || m.name);
+            const isSelected = filterMemberCode === key;
+            const rank = sortedMembers.findIndex((sm) => (sm.isYou && m.isYou) || (sm.code && sm.code === m.code)) + 1;
+            const rankLabel = rank === 1 ? '👑 #1' : `#${rank}`;
+
+            return (
+              <TouchableRipple
+                key={key}
+                onPress={() => setFilterMemberCode((prev) => (prev === key ? null : key))}
+                style={[styles.memberRowRipple, isSelected && styles.memberRowRippleActive]}
+                borderless
+              >
+                <View style={[styles.memberRow, idx === members.length - 1 && styles.lastRow]}>
+                  <View style={[styles.memberAvatar, { backgroundColor: m.color }, isSelected && styles.memberAvatarSelected]}>
+                    <Text style={styles.memberAvatarText}>{m.short}</Text>
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.memberName}>
+                        {m.isYou ? `${translate('you')} (${m.name.split(' ')[0]})` : m.name}
+                      </Text>
+                      {m.status !== 'pending' && (
+                        <View style={styles.rankBadge}>
+                          <Text style={styles.rankBadgeText}>{rankLabel}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.memberMetaRow}>
+                      <Text style={styles.memberStat}>
+                        {m.status === 'pending' ? translate('pendingMember') : `${m.taskCount} ${translate('tasks')}`}
+                      </Text>
+                      {m.status !== 'pending' && (
+                        <>
+                          <Text style={styles.memberBullet}>·</Text>
+                          <Text style={styles.memberOnTimeText}>{m.onTimePercent}% {translate('memberOnTime')}</Text>
+                        </>
+                      )}
+                    </View>
+                    {m.status !== 'pending' && (
+                      <View style={styles.progressLineBg}>
+                        <View style={[styles.progressLineFill, { width: `${m.onTimePercent}%` }]} />
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </TouchableRipple>
+            );
+          })}
+        </Card.Content>
+      </Card>
+
+      {/* ── Recent Activity ── */}
+      <View
+        style={styles.sharedHeaderRow}
+        onLayout={(e) => { activityY.current = e.nativeEvent.layout.y; }}
+      >
+        <Text style={styles.hhSectionHeading}>{language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}</Text>
+        <TouchableOpacity onPress={() => setActivityVisible(true)}>
+          <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ActivityFeed
+        tasks={householdScopedTasks}
+        members={activeMembers}
+        currentUserId={user?.id}
+        currentUserName={user?.name ?? 'You'}
+        language={language}
+      />
+
+      {/* QR Scanner Modal (inside HouseholdView so it has access to addByCode) */}
+      <Modal visible={scannerVisible} transparent={false} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scanTarget} />
+            <Text style={styles.scannerInstructions}>
+              {language === 'hi' ? 'आमंत्रण कोड स्कैन करने के लिए क्यूआर कोड को फ्रेम में रखें' : 'Align QR code inside the frame to scan'}
+            </Text>
+            <Button
+              title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
+              onPress={() => setScannerVisible(false)}
+              style={styles.scannerCloseBtn}
+            />
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// HouseholdScreen — Top-level shell: manages modals, auth state, task actions.
+// ────────────────────────────────────────────────────────────────────────────
 export default function HouseholdScreen() {
-  const router = useRouter();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, activeHousehold, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold } = useAuth();
   const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks } = useTasks();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
   const { addNotification } = useNotifications();
-  const { stats, members } = useHousehold(tasks);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [filterMemberCode, setFilterMemberCode] = useState<string | null>(null);
   const [activityVisible, setActivityVisible] = useState(false);
+  const [createSheetVisible, setCreateSheetVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
-  // Scroll ref + section layout tracking for "View all" navigation
+  const households = listHouseholds(user ?? ({} as any));
+
+  // Scope tasks to the active household
+  const householdScopedTasks = useMemo(() => {
+    if (!activeHousehold) return [];
+    return tasks.filter((t) => t.householdId === activeHousehold.id);
+  }, [tasks, activeHousehold?.id]);
+
   const scrollRef = useRef<ScrollView>(null);
   const sharedTasksY = useRef<number>(0);
   const membersY = useRef<number>(0);
@@ -150,6 +668,8 @@ export default function HouseholdScreen() {
   const selectedTask = useMemo(() => {
     return tasks.find((t) => t.id === selectedTaskId) || null;
   }, [tasks, selectedTaskId]);
+
+  const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
 
   useEffect(() => {
     if (user?.removedBy) {
@@ -170,209 +690,22 @@ export default function HouseholdScreen() {
           language === 'hi'
             ? `आपको ${removedBy} द्वारा परिवार से हटा दिया गया है। सभी साझा कार्य अनशेयर या हटा दिए गए हैं।`
             : `You were removed from the household by ${removedBy}. All shared tasks are unshared or removed.`,
-          [
-            {
-              text: 'OK',
-              onPress: async () => {
-                await updateUser({ removedBy: undefined });
-                await unshareAllLocalTasks();
-              },
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await updateUser({ removedBy: undefined });
+              await unshareAllLocalTasks();
             },
-          ]
+          }]
         );
       }
     }
   }, [user?.removedBy, language, unshareAllLocalTasks, updateUser]);
 
-  const [codeInput, setCodeInput] = useState('');
-  const [addingCode, setAddingCode] = useState(false);
-  const [qrVisible, setQrVisible] = useState(false);
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
-
-  const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
-  const ringPercent = stats.total > 0 ? (stats.onTime / stats.total) * 100 : 0;
-  const myCode = user?.householdCode ?? '';
-
-  const message = user ? inviteMessage(user) : '';
-
   const handleAction = async (action: () => Promise<void>) => {
     await action();
     setSelectedTaskId(null);
   };
-
-  const shareAny = async () => {
-    if (!message) return;
-    await Share.share({ message });
-  };
-
-  const shareWhatsApp = async () => {
-    if (!message) return;
-    const encoded = encodeURIComponent(message);
-    const url = Platform.OS === 'web' ? `https://wa.me/?text=${encoded}` : `whatsapp://send?text=${encoded}`;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      await shareAny();
-    }
-  };
-
-  const shareSms = async () => {
-    if (!message) return;
-    const encoded = encodeURIComponent(message);
-    const url = `sms:${Platform.OS === 'ios' ? '&' : '?'}body=${encoded}`;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      await shareAny();
-    }
-  };
-
-  const addByCode = async (customCode?: string) => {
-    if (!user) return;
-    const code = normalizeInviteCode(customCode ?? codeInput);
-    if (!code || code.length < 7) {
-      showToast(translate('invalidInviteCode'));
-      return;
-    }
-    if (code === user.householdCode) {
-      showToast(translate('cannotAddOwnCode'));
-      return;
-    }
-    if ((user.householdMembers ?? []).some((m) => normalizeInviteCode(m.code) === code)) {
-      showToast(translate('memberAlreadyAdded'));
-      return;
-    }
-
-    setAddingCode(true);
-    const invite = await userRepository.resolveHouseholdInvite(code);
-    const member = invite ? householdMemberFromInvite(invite) : pendingMemberFromCode(code);
-    
-    // 1. Add other user to my profile
-    await updateUser(addHouseholdMember(user, member));
-
-    // Add local notification
-    await addNotification(
-      'household',
-      language === 'hi' ? 'परिवार का सदस्य जुड़ गया' : 'Household Member Linked',
-      language === 'hi' ? `${member.name || code} को परिवार में जोड़ा गया।` : `Linked ${member.name || code} to your household.`
-    );
-
-    // 2. Add myself to other user's profile if registered
-    if (invite && invite.userId) {
-      try {
-        const remoteB = await userRepository.loadRemote(invite.userId);
-        if (remoteB) {
-          const myInvite = inviteProfileFromUser(user);
-          const meAsMember = householdMemberFromInvite(myInvite);
-          const updatedB = addHouseholdMember(remoteB, meAsMember);
-          await userRepository.saveOther(invite.userId, updatedB);
-
-          // Add remote notification for User B
-          const peerNotif: AppNotification = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            type: 'household',
-            title: language === 'hi' ? 'नया परिवार सदस्य जुड़ा' : 'Household Member Joined',
-            body: language === 'hi' ? `${user.name} आपके परिवार में शामिल हो गए हैं।` : `${user.name} joined your household.`,
-            timestamp: new Date().toISOString(),
-            read: false,
-          };
-          await userRepository.saveNotification(invite.userId, peerNotif);
-        }
-      } catch (err) {
-        console.warn('[Repeato] Bidirectional household linking failed:', err);
-      }
-    }
-
-    setAddingCode(false);
-    setCodeInput('');
-    showToast(invite ? translate('memberAdded') : translate('memberAddedPending'));
-  };
-
-  const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    setScannerVisible(false);
-    if (data) {
-      setCodeInput(data);
-      await addByCode(data);
-    }
-  };
-
-  const removeMember = async (code?: string) => {
-    if (!user || !code) return;
-    const member = (user.householdMembers ?? []).find((m) => m.code === code);
-    const memberName = member ? member.name : code;
-
-    if (Platform.OS === 'web') {
-      const confirmRemove = window.confirm(
-        language === 'hi'
-          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
-          : `Are you sure you want to remove ${memberName} from your household?`
-      );
-      if (!confirmRemove) return;
-
-      const deleteTasks = window.confirm(
-        language === 'hi'
-          ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
-          : 'Do you want to delete all shared tasks associated with this member from both devices?'
-      );
-
-      await removeHouseholdMemberAndCleanup(code, deleteTasks);
-    } else {
-      Alert.alert(
-        language === 'hi' ? 'सदस्य को हटाएं?' : 'Remove Member?',
-        language === 'hi'
-          ? `क्या आप वाकई ${memberName} को अपने परिवार से हटाना चाहते हैं?`
-          : `Are you sure you want to remove ${memberName} from your household?`,
-        [
-          { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
-          {
-            text: language === 'hi' ? 'हटाएं' : 'Remove',
-            style: 'destructive',
-            onPress: () => {
-              Alert.alert(
-                language === 'hi' ? 'साझा कार्य हटाएं?' : 'Remove Shared Tasks?',
-                language === 'hi'
-                  ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
-                  : 'Do you want to delete all shared tasks associated with this member from both devices?',
-                [
-                  {
-                    text: language === 'hi' ? 'कार्य रखें' : 'Keep Tasks',
-                    onPress: () => removeHouseholdMemberAndCleanup(code, false),
-                  },
-                  {
-                    text: language === 'hi' ? 'कार्य हटाएं' : 'Remove Tasks',
-                    style: 'destructive',
-                    onPress: () => removeHouseholdMemberAndCleanup(code, true),
-                  },
-                ]
-              );
-            },
-          },
-        ]
-      );
-    }
-  };
-
-  // Sort members for the leaderboard
-  const sortedMembers = useMemo(() => {
-    return [...members].sort((a, b) => b.onTimePercent - a.onTimePercent);
-  }, [members]);
-
-  const filteredSharedTasks = useMemo(() => {
-    let list = stats.shared;
-    if (filterMemberCode) {
-      list = list.filter((t) => {
-        if (filterMemberCode === 'you') {
-          return !t.assignedTo || t.assignedTo === user?.id;
-        }
-        return (
-          t.sharedWith.some((m) => m.code === filterMemberCode || m.userId === filterMemberCode) ||
-          t.assignedTo === filterMemberCode
-        );
-      });
-    }
-    return list;
-  }, [stats.shared, filterMemberCode, user?.id]);
 
   return (
     <View style={styles.root}>
@@ -380,269 +713,79 @@ export default function HouseholdScreen() {
         title={translate('hhTitle') + ' 🏠'}
         subtitle={translate('hhSub')}
         scrollRef={scrollRef}
-        headerExtra={
-          <View style={styles.hhSummaryContainer}>
-            {/* Column 1: Members */}
-            <View style={styles.hhSummaryCard}>
-              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapMembers]}>
-                <AppIcon name="people" size={16} color="#0D9488" />
-              </View>
-              <Text style={styles.hhSummaryCount}>{members.length}</Text>
-              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'सदस्य' : 'Members'}</Text>
-              <Pressable onPress={() => {
-                setFilterMemberCode(null);
-                setTimeout(() => scrollRef.current?.scrollTo({ y: membersY.current, animated: true }), 50);
-              }}>
-                <Text style={[styles.hhSummaryLink, styles.hhLinkMembers]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
-              </Pressable>
-            </View>
-
-            {/* Column 2: Shared tasks */}
-            <View style={styles.hhSummaryCard}>
-              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapTasks]}>
-                <AppIcon name="documents-outline" size={16} color="#2563EB" />
-              </View>
-              <Text style={styles.hhSummaryCount}>{stats.shared.length}</Text>
-              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'साझा कार्य' : 'Shared tasks'}</Text>
-              <Pressable onPress={() => {
-                setFilterMemberCode(null);
-                setTimeout(() => scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true }), 50);
-              }}>
-                <Text style={[styles.hhSummaryLink, styles.hhLinkTasks]}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
-              </Pressable>
-            </View>
-
-            {/* Column 3: Completion rate */}
-            <View style={styles.hhSummaryCard}>
-              <View style={[styles.hhSummaryIconWrap, styles.hhIconWrapCompletion]}>
-                <AppIcon name="time-outline" size={16} color="#EA580C" />
-              </View>
-              <Text style={styles.hhSummaryCount}>{Math.round(ringPercent)}%</Text>
-              <Text style={styles.hhSummaryLabel}>{language === 'hi' ? 'पूर्णता दर' : 'Completion'}</Text>
-              <Text style={styles.hhSummarySub}>{language === 'hi' ? 'इस महीने' : 'This month'}</Text>
-            </View>
-          </View>
-        }
       >
-        <View
-          style={styles.sharedHeaderRow}
-          onLayout={(e) => { sharedTasksY.current = e.nativeEvent.layout.y; }}
-        >
-          <Text style={styles.hhSectionHeading}>{translate('sharedTasks')}</Text>
-          <TouchableOpacity onPress={() => {
-            setFilterMemberCode(null);
-            scrollRef.current?.scrollTo({ y: sharedTasksY.current, animated: true });
-          }}>
-            <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {stats.shared.length === 0 ? (
-          <EmptyState
-            icon="🏠"
-            title={translate('householdEmptyTitle')}
-            subtitle={translate('householdEmptySub')}
+        {households.length === 0 ? (
+          // ── Zero-Household State ──
+          <ZeroHouseholdCard
+            language={language}
+            showToast={showToast}
+            translate={translate}
+            setCreateSheetVisible={setCreateSheetVisible}
+            user={user}
           />
         ) : (
-          <>
-            {filteredSharedTasks.length === 0 ? (
-              <Text style={styles.emptySub}>{translate('noSharedTasks')}</Text>
-            ) : (
-              filteredSharedTasks.map((task) => (
-                <SharedTaskCard
-                  key={task.id}
-                  task={task}
-                  language={language}
-                  onPress={() => setSelectedTaskId(task.id)}
-                  user={user}
-                />
-              ))
-            )}
-          </>
+          // ── Active Household View (all content scoped here) ──
+          <HouseholdView
+            user={user}
+            activeHousehold={activeHousehold!}
+            households={households}
+            householdScopedTasks={householdScopedTasks}
+            allTasks={tasks}
+            language={language}
+            translate={translate}
+            showToast={showToast}
+            addNotification={addNotification}
+            updateUser={updateUser}
+            createHousehold={createHousehold}
+            switchHousehold={switchHousehold}
+            setCreateSheetVisible={setCreateSheetVisible}
+            setSelectedTaskId={setSelectedTaskId}
+            setEditingTaskId={setEditingTaskId}
+            setActivityVisible={setActivityVisible}
+            removeHouseholdMemberAndCleanup={removeHouseholdMemberAndCleanup}
+            scrollRef={scrollRef}
+            sharedTasksY={sharedTasksY}
+            membersY={membersY}
+            activityY={activityY}
+            onOpenSettings={() => setSettingsVisible(true)}
+          />
         )}
-
-        {/* Mockup Invitation Section */}
-        {user && (
-          <Card style={styles.inviteContainerCard} mode="elevated">
-            <Card.Content style={styles.inviteCardContent}>
-              <View style={styles.inviteTopRow}>
-                <View style={styles.inviteAvatarRow}>
-                  <Text style={styles.inviteAvatarEmoji}>🧑‍👩‍👧‍👦</Text>
-                </View>
-                <View style={styles.inviteTextCol}>
-                  <Text style={styles.inviteCardTitle}>
-                    {language === 'hi' ? 'परिवार के सदस्यों को जोड़ें' : 'Invite members to household'}
-                  </Text>
-                  <Text style={styles.inviteCardSub}>
-                    {language === 'hi'
-                      ? 'कोड या व्हाट्सएप का उपयोग करके परिवार को शामिल करें।'
-                      : 'Share the invite code or link to join with your family.'}
-                  </Text>
-                </View>
-                <View style={styles.inviteActionButtons}>
-                  <TouchableRipple style={styles.inviteActionBtn} onPress={() => setQrVisible(true)} borderless>
-                    <AppIcon name="qr-code-outline" size={16} color={Colors.indigo950} />
-                  </TouchableRipple>
-                  <TouchableRipple style={styles.inviteActionBtn} onPress={shareAny} borderless>
-                    <AppIcon name="share-outline" size={16} color={Colors.indigo950} />
-                  </TouchableRipple>
-                </View>
-              </View>
-
-              <View style={styles.inviteBottomRow} testID="household-invite-row">
-                <Pressable
-                  style={styles.inviteCodeBox}
-                  testID="household-invite-copy-btn"
-                  onPress={async () => {
-                    await Clipboard.setStringAsync(myCode);
-                    showToast(language === 'hi' ? 'कोड कॉपी किया गया!' : 'Code copied!');
-                  }}
-                >
-                  <Text style={styles.inviteCodeText} testID="household-invite-code-text">{myCode}</Text>
-                  <AppIcon name="documents-outline" size={14} color={Colors.inkSoft} />
-                </Pressable>
-
-                <TouchableOpacity style={styles.inviteWhatsAppBtn} onPress={shareWhatsApp} testID="household-invite-whatsapp-btn">
-                  <AppIcon name="chatbox-ellipses-outline" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.inviteWhatsAppText}>
-                    {language === 'hi' ? 'व्हाट्सएप आमंत्रित' : 'Invite via WhatsApp'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Code manual join field */}
-              <View style={styles.manualJoinRow} testID="household-manual-join-row">
-                <PaperInput
-                  mode="outlined"
-                  value={codeInput}
-                  onChangeText={setCodeInput}
-                  autoCapitalize="characters"
-                  placeholder={language === 'hi' ? 'कोड दर्ज करें...' : 'Enter invite code...'}
-                  outlineColor={Colors.ivoryLine}
-                  activeOutlineColor={Colors.marigoldDeep}
-                  style={styles.manualJoinInput}
-                  textColor={Colors.ink}
-                  testID="household-join-code-input"
-                  right={
-                    <PaperInput.Icon
-                      icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
-                      onPress={async () => {
-                        if (!permission || !permission.granted) {
-                          const res = await requestPermission();
-                          if (!res.granted) {
-                            showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
-                            return;
-                          }
-                        }
-                        setScannerVisible(true);
-                      }}
-                      testID="household-scanner-btn"
-                    />
-                  }
-                  theme={{
-                    colors: {
-                      background: Colors.white,
-                    },
-                  }}
-                />
-                <Button
-                  title={language === 'hi' ? 'जोड़ें' : 'Join'}
-                  loading={addingCode}
-                  onPress={() => addByCode()}
-                  style={styles.manualJoinBtn}
-                  testID="household-join-btn"
-                />
-              </View>
-            </Card.Content>
-          </Card>
-        )}
-
-        <View onLayout={(e) => { membersY.current = e.nativeEvent.layout.y; }}>
-          <SectionHeader label={translate('members')} count={members.length} />
-        </View>
-        <Card style={styles.memberCard} mode="elevated">
-          <Card.Content style={styles.memberCardContent}>
-            {members.map((m, idx) => {
-              const key = m.isYou ? 'you' : (m.code || m.userId || m.name);
-              const isSelected = filterMemberCode === key;
-              const rank = sortedMembers.findIndex((sm) => (sm.isYou && m.isYou) || (sm.code && sm.code === m.code)) + 1;
-              const rankLabel = rank === 1 ? '👑 #1' : `#${rank}`;
-
-              return (
-                <TouchableRipple
-                  key={key}
-                  onPress={() => setFilterMemberCode((prev) => (prev === key ? null : key))}
-                  style={[styles.memberRowRipple, isSelected && styles.memberRowRippleActive]}
-                  borderless
-                >
-                  <View style={[styles.memberRow, idx === members.length - 1 && styles.lastRow]}>
-                    <View style={[styles.memberAvatar, { backgroundColor: m.color }, isSelected && styles.memberAvatarSelected]}>
-                      <Text style={styles.memberAvatarText}>{m.short}</Text>
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.memberName}>
-                          {m.isYou ? `${translate('you')} (${m.name.split(' ')[0]})` : m.name}
-                        </Text>
-                        {m.status !== 'pending' && (
-                          <View style={styles.rankBadge}>
-                            <Text style={styles.rankBadgeText}>{rankLabel}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.memberMetaRow}>
-                        <Text style={styles.memberStat}>
-                          {m.status === 'pending' ? translate('pendingMember') : `${m.taskCount} ${translate('tasks')}`}
-                        </Text>
-                        {m.status !== 'pending' && (
-                          <>
-                            <Text style={styles.memberBullet}>·</Text>
-                            <Text style={styles.memberOnTimeText}>{m.onTimePercent}% {translate('memberOnTime')}</Text>
-                          </>
-                        )}
-                      </View>
-                      {m.status !== 'pending' && (
-                        <View style={styles.progressLineBg}>
-                          <View style={[styles.progressLineFill, { width: `${m.onTimePercent}%` }]} />
-                        </View>
-                      )}
-                    </View>
-                    {!m.isYou && m.code ? (
-                      <View onStartShouldSetResponder={() => true}>
-                        <TouchableRipple
-                          onPress={() => removeMember(m.code)}
-                          style={styles.removeBtn}
-                          borderless
-                        >
-                          <AppIcon name="close" size={16} color={Colors.indigo950} />
-                        </TouchableRipple>
-                      </View>
-                    ) : null}
-                  </View>
-                </TouchableRipple>
-              );
-            })}
-          </Card.Content>
-        </Card>
-
-        <View
-          style={styles.sharedHeaderRow}
-          onLayout={(e) => { activityY.current = e.nativeEvent.layout.y; }}
-        >
-          <Text style={styles.hhSectionHeading}>{language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}</Text>
-          <TouchableOpacity onPress={() => setActivityVisible(true)}>
-            <Text style={styles.hhViewAllLink}>{language === 'hi' ? 'सभी देखें' : 'View all'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ActivityFeed
-          tasks={tasks}
-          members={user?.householdMembers ?? []}
-          currentUserId={user?.id}
-          currentUserName={user?.name ?? 'You'}
-          language={language}
-        />
       </ScreenShell>
+
+      {/* ── Create Household Sheet ── */}
+      <CreateHouseholdSheet
+        visible={createSheetVisible}
+        onClose={() => setCreateSheetVisible(false)}
+        onCreate={async (name, icon, color) => {
+          const result = await createHousehold(name, icon, color);
+          if (result.ok) {
+            showToast(language === 'hi' ? 'घर बना दिया!' : 'Household created!');
+          } else if (result.error === 'name_exists') {
+            showToast(language === 'hi' ? 'इस नाम का घर पहले से मौजूद है' : 'Household with this name already exists');
+          } else if (result.error === 'limit_reached') {
+            showToast(language === 'hi' ? 'अधिक घर जोड़ने के लिए अपग्रेड करें' : 'Upgrade to add more households');
+          }
+          return result;
+        }}
+        existingCount={households.length}
+        language={language}
+      />
+
+      {/* ── Household Settings Sheet ── */}
+      {activeHousehold && (
+        <HouseholdSettingsSheet
+          visible={settingsVisible}
+          onClose={() => setSettingsVisible(false)}
+          activeHousehold={activeHousehold}
+          currentUserId={user?.id ?? ''}
+          currentUserName={user?.name ?? ''}
+          language={language}
+          onDeleteHousehold={deleteHousehold}
+          onLeaveHousehold={leaveHousehold}
+          onRemoveMember={removeMemberFromHousehold}
+          showToast={showToast}
+        />
+      )}
 
       {/* Recent Activity Modal */}
       <Modal
@@ -663,8 +806,8 @@ export default function HouseholdScreen() {
           </View>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             <ActivityFeed
-              tasks={tasks}
-              members={user?.householdMembers ?? []}
+              tasks={householdScopedTasks}
+              members={activeHousehold?.members ?? []}
               currentUserId={user?.id}
               currentUserName={user?.name ?? 'You'}
               language={language}
@@ -711,34 +854,221 @@ export default function HouseholdScreen() {
           setEditingTaskId(null);
         }}
       />
+    </View>
+  );
+}
 
-      <Modal visible={qrVisible} transparent animationType="fade" onRequestClose={() => setQrVisible(false)}>
-        <View style={styles.qrCenteredView}>
-          <Pressable style={styles.qrBackdrop} onPress={() => setQrVisible(false)} />
-          <Card style={styles.qrSheet} mode="elevated">
-            <Card.Content style={styles.qrContent}>
-              <Text style={styles.qrTitle}>{language === 'hi' ? 'स्कैन कर आमंत्रण भेजें' : 'Scan to join household'}</Text>
-              {myCode ? (
-                <QRCode
-                  value={myCode}
-                  size={180}
+// ────────────────────────────────────────────────────────────────────────────
+// ZeroHouseholdCard — Clean empty state when user has no households.
+// ────────────────────────────────────────────────────────────────────────────
+function ZeroHouseholdCard({
+  language,
+  showToast,
+  translate,
+  setCreateSheetVisible,
+  user,
+}: {
+  language: 'en' | 'hi';
+  showToast: (msg: string) => void;
+  translate: (key: import('@/i18n').TranslationKey) => string;
+  setCreateSheetVisible: (v: boolean) => void;
+  user: any;
+}) {
+  const [codeInput, setCodeInput] = useState('');
+  const [addingCode, setAddingCode] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const { updateUser, createHousehold, activeHousehold } = useAuth();
+  const { addNotification } = useNotifications();
+
+  const addByCode = async (customCode?: string) => {
+    if (!user) return;
+    const code = normalizeInviteCode(customCode ?? codeInput);
+    if (!code || code.length < 7) {
+      showToast(translate('invalidInviteCode'));
+      return;
+    }
+    if (user.userCode && code === user.userCode) {
+      showToast(translate('cannotAddOwnCode'));
+      return;
+    }
+
+    setAddingCode(true);
+
+    // First resolve who we're joining
+    const userCodeMatch = await userRepository.resolveUserCode(code);
+    let member: HouseholdMemberProfile;
+
+    if (userCodeMatch) {
+      member = {
+        code: userCodeMatch.userCode,
+        userId: userCodeMatch.userId,
+        name: userCodeMatch.name,
+        color: userCodeMatch.color,
+        addedAt: new Date().toISOString(),
+        status: 'active',
+      };
+    } else {
+      const invite = await userRepository.resolveHouseholdInvite(code);
+      member = invite ? householdMemberFromInvite(invite) : pendingMemberFromCode(code);
+    }
+
+    // Check if the target user already has a household we can join
+    let targetHhId: string | null = null;
+    if (member.userId) {
+      const remoteTarget = await userRepository.loadRemote(member.userId);
+      const targetHh = remoteTarget?.activeHouseholdId
+        ? (remoteTarget.households ?? []).find((h: HouseholdContext) => h.id === remoteTarget.activeHouseholdId)
+        : (remoteTarget?.households ?? [])[0];
+
+      if (targetHh) {
+        // Join their household directly
+        const myMember: HouseholdMemberProfile = {
+          code: user.userCode || '',
+          name: user.name,
+          color: memberColor(user.id || user.email),
+          userId: user.id,
+          addedAt: new Date().toISOString(),
+          status: 'active',
+        };
+        const hhForMe: HouseholdContext = {
+          ...targetHh,
+          members: targetHh.members.some((m: HouseholdMemberProfile) => m.userId === user.id)
+            ? targetHh.members
+            : [...targetHh.members, myMember],
+          memberUids: Array.from(new Set([...(targetHh.memberUids ?? []), user.id, member.userId])),
+        };
+
+        // Also update target user's household to include me
+        const updatedTargetMembers = targetHh.members.some((m: HouseholdMemberProfile) => m.userId === user.id)
+          ? targetHh.members
+          : [...targetHh.members, myMember];
+        const updatedTargetHh: HouseholdContext = {
+          ...targetHh,
+          members: updatedTargetMembers,
+          memberUids: Array.from(new Set([...(targetHh.memberUids ?? []), user.id])),
+        };
+
+        await updateUser({
+          households: [hhForMe],
+          activeHouseholdId: hhForMe.id,
+        });
+        await userRepository.saveHousehold(updatedTargetHh);
+
+        // Update target user's profile
+        if (remoteTarget) {
+          const updatedTargetHouseholds = (remoteTarget.households ?? []).map((h: HouseholdContext) =>
+            h.id === targetHh.id ? updatedTargetHh : h
+          );
+          await userRepository.saveOther(member.userId, {
+            ...remoteTarget,
+            households: updatedTargetHouseholds,
+          });
+        }
+
+        targetHhId = hhForMe.id;
+      }
+    }
+
+    if (!targetHhId) {
+      // Fallback: create a Home household and add as pending
+      const createRes = await createHousehold('Home', '🏠', HOUSEHOLD_COLORS[0]);
+      if (createRes.ok) {
+        showToast(userCodeMatch
+          ? (language === 'hi' ? 'सदस्य को घर में जोड़ा गया' : 'Member added to household!')
+          : translate('memberAddedPending'));
+      }
+    } else {
+      showToast(language === 'hi' ? 'घर में शामिल हो गए!' : 'Joined household!');
+    }
+
+    setAddingCode(false);
+    setCodeInput('');
+  };
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    setScannerVisible(false);
+    if (data) {
+      setCodeInput(data);
+      await addByCode(data);
+    }
+  };
+
+  return (
+    <>
+      <Card style={styles.noHouseholdCard} mode="elevated">
+        <Card.Content style={styles.noHouseholdContent}>
+          <View style={styles.noHouseholdIconWrap}>
+            <Text style={{ fontSize: 34 }}>🏠</Text>
+          </View>
+          <Text style={styles.noHouseholdTitle}>
+            {language === 'hi' ? 'कोई परिवार/घर नहीं जुड़ा' : 'No Household Created Yet'}
+          </Text>
+          <Text style={styles.noHouseholdSub}>
+            {language === 'hi'
+              ? 'अपने परिवार, रूममेट्स या कार्यालय के साथ मिलकर आवर्ती कार्यों को प्रबंधित करें। एक नया घर बनाएं या यूज़र कोड से जुड़ें।'
+              : 'Manage recurring tasks together with family or flatmates. Create a new household or join an existing one using a user code.'}
+          </Text>
+
+          <View style={styles.noHouseholdActionRow}>
+            <Button
+              title={language === 'hi' ? '+ नया घर बनाएं' : '+ Create Household'}
+              onPress={() => setCreateSheetVisible(true)}
+              style={styles.createHhBtn}
+            />
+          </View>
+
+          <View style={styles.joinHhDivider}>
+            <Text style={styles.joinHhDividerText}>{language === 'hi' ? 'या यूज़र कोड से जुड़ें' : 'OR JOIN WITH USER CODE'}</Text>
+          </View>
+
+          <View style={styles.manualJoinRow} testID="household-manual-join-row">
+            <PaperInput
+              mode="outlined"
+              value={codeInput}
+              onChangeText={setCodeInput}
+              autoCapitalize="characters"
+              placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
+              outlineColor={Colors.ivoryLine}
+              activeOutlineColor={Colors.marigoldDeep}
+              style={styles.manualJoinInput}
+              textColor={Colors.ink}
+              testID="household-join-code-input"
+              right={
+                <PaperInput.Icon
+                  icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
+                  onPress={async () => {
+                    if (!permission || !permission.granted) {
+                      const res = await requestPermission();
+                      if (!res.granted) {
+                        showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
+                        return;
+                      }
+                    }
+                    setScannerVisible(true);
+                  }}
+                  testID="household-scanner-btn"
                 />
-              ) : null}
-              <Text style={styles.qrCodeText}>{myCode}</Text>
-              <Button title={language === 'hi' ? 'बंद करें' : 'Close'} onPress={() => setQrVisible(false)} style={styles.qrCloseBtn} />
-            </Card.Content>
-          </Card>
-        </View>
-      </Modal>
+              }
+              theme={{ colors: { background: Colors.white } }}
+            />
+            <Button
+              title={language === 'hi' ? 'जोड़ें' : 'Join'}
+              loading={addingCode}
+              onPress={() => addByCode()}
+              style={styles.manualJoinBtn}
+              testID="household-join-btn"
+            />
+          </View>
+        </Card.Content>
+      </Card>
 
-      {/* QR Scanner Camera Modal */}
+      {/* QR Scanner for zero-household join */}
       <Modal visible={scannerVisible} transparent={false} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
         <View style={styles.scannerContainer}>
           <CameraView
             style={StyleSheet.absoluteFill}
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr'],
-            }}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={handleBarcodeScanned}
           />
           <View style={styles.scannerOverlay}>
@@ -754,9 +1084,12 @@ export default function HouseholdScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 }
+
+
+
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -1179,6 +1512,63 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 18,
     marginBottom: 4,
+  },
+
+  // Zero-Household Card Styles
+  noHouseholdCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginVertical: 14,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  noHouseholdContent: {
+    padding: 22,
+    alignItems: 'center',
+  },
+  noHouseholdIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  noHouseholdTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 19,
+    color: Colors.indigo950,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  noHouseholdSub: {
+    fontSize: 12.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
+  },
+  noHouseholdActionRow: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  createHhBtn: {
+    width: '100%',
+  },
+  joinHhDivider: {
+    width: '100%',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
+    paddingTop: 14,
+    marginBottom: 12,
+  },
+  joinHhDividerText: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkFaint,
+    letterSpacing: 0.8,
   },
 
   // Scanner Styles

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Language, UserProfile } from '@/types';
+import type { HouseholdContext, Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
 import { signInWithGoogle as authSignIn, profileFromFirebaseUser } from '@/services/authService';
 import { isFirebaseConfigured } from '@/services/firebase/config';
@@ -8,20 +8,33 @@ import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn } from '@/services/firebase/auth';
 import { profileFromSignedInUser } from '@/services/authService';
 import { loadUserRemote } from '@/services/firebase/firestore';
-import { normalizeHouseholdProfile } from '@/domain/household';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain } from '@/domain/household';
+import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
 
 interface AuthContextValue {
   ready: boolean;
   user: UserProfile | null;
+  setUser: (user: UserProfile | null) => void;
   language: Language;
   languageSelected: boolean;
   firebaseReady: boolean;
+  /** The currently active household context (multi-household support) */
+  activeHousehold: HouseholdContext | null;
   signInWithGoogle: (language: Language) => Promise<{ ok: boolean; user?: UserProfile; error?: string; message?: string }>;
   updateUser: (patch: Partial<UserProfile>) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Switches the active household by id */
+  switchHousehold: (id: string) => Promise<void>;
+  /** Creates a new household context and switches to it */
+  createHousehold: (name: string, icon: string, color: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Owner deletes the household — removes it from all members and Firestore */
+  deleteHousehold: (householdId: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Member leaves a household they belong to */
+  leaveHousehold: (householdId: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Owner removes a specific member from the household */
+  removeMemberFromHousehold: (householdId: string, memberCode: string, memberUserId?: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -80,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       let unsubscribeProfile: (() => void) | null = null;
+      let unsubscribeHouseholds: (() => void) | null = null;
 
       const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
         if (cancelled) return;
@@ -87,6 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (unsubscribeProfile) {
           unsubscribeProfile();
           unsubscribeProfile = null;
+        }
+        if (unsubscribeHouseholds) {
+          unsubscribeHouseholds();
+          unsubscribeHouseholds = null;
         }
 
         if (!firebaseUser) {
@@ -103,13 +121,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
               const base = remote ?? profileFromFirebaseUser(firebaseUser, language);
-              let profile: UserProfile = normalizeHouseholdProfile({
+              const normalized = normalizeHouseholdProfile({
                 ...base,
                 profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
               });
+              // Run migration from legacy single-household to multi-household (idempotent)
+              const migrationNeeded = !normalized.households || normalized.households.length === 0;
+              let profile: UserProfile = migrateLegacyHousehold(normalized);
 
               // Scan pending members and resolve them
-              let changed = false;
+              let changed = migrationNeeded; // force remote save if migration ran
               const updatedMembers = await Promise.all((profile.householdMembers ?? []).map(async (m) => {
                 if (m.status === 'pending') {
                   const resolved = await userRepository.resolveHouseholdInvite(m.code);
@@ -133,6 +154,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               } else {
                 await userRepository.saveLocal(profile);
               }
+
+              // Ensure all user household contexts exist in remote /households collection
+              if (profile.households && profile.households.length > 0) {
+                for (const hh of profile.households) {
+                  userRepository.saveHousehold(hh).catch(() => {});
+                }
+              }
+
               setUser(profile);
             } catch (err) {
               console.warn('[Repeato] Error loading snapshot profile data', err);
@@ -145,6 +174,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
             setReady(true);
           });
+
+          // Subscribe to top-level /households where user is a member for instant real-time sync across devices
+          const hhQuery = query(collection(db, 'households'), where('memberUids', 'array-contains', firebaseUser.uid));
+          unsubscribeHouseholds = onSnapshot(hhQuery, (snap) => {
+            if (cancelled) return;
+            const remoteHhs = snap.docs.map((d) => d.data() as HouseholdContext);
+            if (remoteHhs.length > 0) {
+              setUser((prevUser) => {
+                if (!prevUser) return null;
+                const existingHhs = prevUser.households ?? [];
+                const hhMap = new Map<string, HouseholdContext>();
+                existingHhs.forEach((h) => hhMap.set(h.id, h));
+                remoteHhs.forEach((h) => hhMap.set(h.id, h));
+                const mergedHhs = Array.from(hhMap.values());
+                const updated = {
+                  ...prevUser,
+                  households: mergedHhs,
+                  activeHouseholdId: prevUser.activeHouseholdId || mergedHhs[0]?.id,
+                };
+                userRepository.saveLocal(updated).catch(() => {});
+                return updated;
+              });
+            }
+          }, (err) => {
+            console.warn('[Repeato] Household query snapshot listener failed:', err);
+          });
         } else {
           setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
           setReady(true);
@@ -154,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return () => {
         if (unsubscribeAuth) unsubscribeAuth();
         if (unsubscribeProfile) unsubscribeProfile();
+        if (unsubscribeHouseholds) unsubscribeHouseholds();
       };
     }
 
@@ -219,19 +275,214 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, [user?.id]);
 
+  const activeHousehold = useMemo(() => {
+    if (!user) return null;
+    return getActiveHousehold(user);
+  }, [user]);
+
+  const switchHousehold = useCallback(async (id: string) => {
+    if (!user) return;
+    await persistUser({ ...user, activeHouseholdId: id });
+  }, [user, persistUser]);
+
+  const createHousehold = useCallback(async (name: string, icon: string, color: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!user) return { ok: false, error: 'Not signed in' };
+    const existing = user.households ?? [];
+    if (existing.length >= MAX_HOUSEHOLDS) {
+      return { ok: false, error: 'limit_reached' };
+    }
+    const nameNorm = name.trim().toLowerCase();
+    if (existing.some(h => h.name.trim().toLowerCase() === nameNorm)) {
+      return { ok: false, error: 'name_exists' };
+    }
+    if (name.trim().length < 2 || name.trim().length > 30) {
+      return { ok: false, error: 'invalid_name' };
+    }
+    const newHousehold = createHouseholdContext(name, icon, color, user);
+    await userRepository.saveHousehold(newHousehold);
+    await persistUser({
+      ...user,
+      households: [...existing, newHousehold],
+      activeHouseholdId: newHousehold.id,
+    });
+    return { ok: true };
+  }, [user, persistUser]);
+
+  // ── Owner: Delete Household ──────────────────────────────────────────────
+  const deleteHousehold = useCallback(async (householdId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!user) return { ok: false, error: 'not_signed_in' };
+    const hh = (user.households ?? []).find(h => h.id === householdId);
+    if (!hh) return { ok: false, error: 'not_found' };
+    if (hh.ownerUid !== user.id) return { ok: false, error: 'not_owner' };
+
+    // 1. Remove household from ALL members' profiles in Firestore
+    const otherMemberUids = (hh.memberUids ?? []).filter(uid => uid !== user.id);
+    await Promise.allSettled(
+      otherMemberUids.map(async (uid) => {
+        try {
+          const remote = await userRepository.loadRemote(uid);
+          if (remote) {
+            const updatedHouseholds = (remote.households ?? []).filter(h => h.id !== householdId);
+            const nextActiveId = updatedHouseholds[0]?.id ?? undefined;
+            await userRepository.saveOther(uid, {
+              ...remote,
+              households: updatedHouseholds,
+              activeHouseholdId: nextActiveId,
+              removedBy: user.name || 'Owner',
+            });
+          }
+        } catch (err) {
+          console.warn('[Repeato] Failed to update member on household delete:', err);
+        }
+      })
+    );
+
+    // 2. Delete Firestore /households/{id}
+    await userRepository.deleteHousehold(householdId);
+
+    // 3. Remove household from own profile
+    const remainingHouseholds = (user.households ?? []).filter(h => h.id !== householdId);
+    const nextActiveId = remainingHouseholds.length > 0
+      ? (user.activeHouseholdId !== householdId ? user.activeHouseholdId : remainingHouseholds[0].id)
+      : undefined;
+    await persistUser({
+      ...user,
+      households: remainingHouseholds,
+      activeHouseholdId: nextActiveId,
+    });
+    return { ok: true };
+  }, [user, persistUser]);
+
+  // ── Member: Leave Household ──────────────────────────────────────────────
+  const leaveHousehold = useCallback(async (householdId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!user) return { ok: false, error: 'not_signed_in' };
+    const hh = (user.households ?? []).find(h => h.id === householdId);
+    if (!hh) return { ok: false, error: 'not_found' };
+
+    // 1. Remove self from /households/{id} in Firestore
+    try {
+      const remoteHh = await userRepository.loadHousehold(householdId);
+      if (remoteHh) {
+        const updatedHh: HouseholdContext = {
+          ...remoteHh,
+          members: remoteHh.members.filter(m => m.userId !== user.id),
+          memberUids: (remoteHh.memberUids ?? []).filter(uid => uid !== user.id),
+        };
+        await userRepository.saveHousehold(updatedHh);
+      }
+    } catch (err) {
+      console.warn('[Repeato] Failed to update household on leave:', err);
+    }
+
+    // 2. Notify owner
+    if (hh.ownerUid && hh.ownerUid !== user.id) {
+      try {
+        await userRepository.saveNotification(hh.ownerUid, {
+          id: `${Date.now()}-leave`,
+          type: 'household',
+          title: 'Member Left Household',
+          body: `${user.name || 'A member'} left "${hh.name}".`,
+          timestamp: new Date().toISOString(),
+          read: false,
+        });
+      } catch (err) {
+        console.warn('[Repeato] Failed to notify owner on leave:', err);
+      }
+    }
+
+    // 3. Remove household from own profile
+    const remainingHouseholds = (user.households ?? []).filter(h => h.id !== householdId);
+    const nextActiveId = remainingHouseholds.length > 0
+      ? (user.activeHouseholdId !== householdId ? user.activeHouseholdId : remainingHouseholds[0].id)
+      : undefined;
+    await persistUser({
+      ...user,
+      households: remainingHouseholds,
+      activeHouseholdId: nextActiveId,
+    });
+    return { ok: true };
+  }, [user, persistUser]);
+
+  // ── Owner: Remove a Member ───────────────────────────────────────────────
+  const removeMemberFromHousehold = useCallback(
+    async (householdId: string, memberCode: string, memberUserId?: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!user) return { ok: false, error: 'not_signed_in' };
+      const hh = (user.households ?? []).find(h => h.id === householdId);
+      if (!hh) return { ok: false, error: 'not_found' };
+      if (hh.ownerUid !== user.id) return { ok: false, error: 'not_owner' };
+
+      // 1. Remove member from this user's household list
+      const patch = removeMemberFromHouseholdDomain(user, householdId, memberCode);
+      await persistUser({ ...user, ...patch });
+
+      // 2. Update /households/{id} in Firestore
+      try {
+        const remoteHh = await userRepository.loadHousehold(householdId);
+        if (remoteHh) {
+          const updatedHh: HouseholdContext = {
+            ...remoteHh,
+            members: remoteHh.members.filter(m => m.code !== memberCode),
+            memberUids: memberUserId
+              ? (remoteHh.memberUids ?? []).filter(uid => uid !== memberUserId)
+              : remoteHh.memberUids,
+          };
+          await userRepository.saveHousehold(updatedHh);
+        }
+      } catch (err) {
+        console.warn('[Repeato] Failed to update household on member remove:', err);
+      }
+
+      // 3. Remove household from the removed member's profile + notify them
+      if (memberUserId) {
+        try {
+          const remoteB = await userRepository.loadRemote(memberUserId);
+          if (remoteB) {
+            const updatedHouseholds = (remoteB.households ?? []).filter(h => h.id !== householdId);
+            const nextActiveId = updatedHouseholds[0]?.id ?? undefined;
+            await userRepository.saveOther(memberUserId, {
+              ...remoteB,
+              households: updatedHouseholds,
+              activeHouseholdId: nextActiveId,
+              removedBy: user.name || 'Owner',
+            });
+          }
+          await userRepository.saveNotification(memberUserId, {
+            id: `${Date.now()}-removed`,
+            type: 'household',
+            title: 'Removed from Household',
+            body: `${user.name || 'Owner'} removed you from "${hh.name}".`,
+            timestamp: new Date().toISOString(),
+            read: false,
+          });
+        } catch (err) {
+          console.warn('[Repeato] Failed to notify removed member:', err);
+        }
+      }
+      return { ok: true };
+    },
+    [user, persistUser]
+  );
+
   const value = useMemo(
     () => ({
       ready,
       user,
+      setUser,
       language,
       languageSelected,
       firebaseReady,
+      activeHousehold,
       signInWithGoogle,
       updateUser,
       setLanguage,
       signOut,
+      switchHousehold,
+      createHousehold,
+      deleteHousehold,
+      leaveHousehold,
+      removeMemberFromHousehold,
     }),
-    [ready, user, language, languageSelected, firebaseReady, signInWithGoogle, updateUser, setLanguage, signOut]
+    [ready, user, setUser, language, languageSelected, firebaseReady, activeHousehold, signInWithGoogle, updateUser, setLanguage, signOut, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

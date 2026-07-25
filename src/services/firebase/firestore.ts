@@ -82,6 +82,79 @@ export async function deleteTaskRemote(userId: string, taskId: string): Promise<
   await deleteDoc(doc(db, 'users', userId, 'tasks', taskId));
 }
 
+export async function saveUserCodeRemote(profile: { userCode: string; userId: string; name: string; color: string; photoUrl?: string }): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
+  const payload = forFirestore(profile as unknown as Record<string, unknown>);
+  await setDoc(doc(db, 'userCodes', profile.userCode.toUpperCase()), payload, { merge: true });
+}
+
+export async function loadUserCodeRemote(code: string): Promise<{ userCode: string; userId: string; name: string; color: string; photoUrl?: string } | null> {
+  const db = getFirestoreDb();
+  if (!db) return null;
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
+  const snap = await getDoc(doc(db, 'userCodes', code.toUpperCase()));
+  return snap.exists() ? (snap.data() as { userCode: string; userId: string; name: string; color: string; photoUrl?: string }) : null;
+}
+
+export async function saveHouseholdRemote(household: import('@/types').HouseholdContext): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  const uid = await waitForAuthUid();
+  if (!uid) return;
+
+  const ownerUid = household.ownerUid || uid;
+  const memberUids = Array.from(new Set([uid, ownerUid, ...(household.memberUids ?? [])]));
+  const payload = forFirestore({
+    ...household,
+    ownerUid,
+    memberUids,
+  } as unknown as Record<string, unknown>);
+
+  await setDoc(doc(db, 'households', household.id), payload, { merge: true });
+}
+
+export async function deleteHouseholdRemote(householdId: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  await waitForAuthUid();
+  await deleteDoc(doc(db, 'households', householdId));
+}
+
+export async function loadHouseholdRemote(householdId: string): Promise<import('@/types').HouseholdContext | null> {
+  const db = getFirestoreDb();
+  if (!db) return null;
+  await waitForAuthUid();
+  const snap = await getDoc(doc(db, 'households', householdId));
+  return snap.exists() ? (snap.data() as import('@/types').HouseholdContext) : null;
+}
+
+export async function saveHouseholdTaskRemote(householdId: string, task: RepeatingTask): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  await waitForAuthUid();
+  const payload = forFirestore({ ...task, householdId } as unknown as Record<string, unknown>);
+  await setDoc(doc(db, 'households', householdId, 'tasks', task.id), payload, { merge: true });
+}
+
+export async function loadHouseholdTasksRemote(householdId: string): Promise<RepeatingTask[]> {
+  const db = getFirestoreDb();
+  if (!db) return [];
+  await waitForAuthUid();
+  const snap = await getDocs(collection(db, 'households', householdId, 'tasks'));
+  return snap.docs.map((d) => d.data() as RepeatingTask);
+}
+
+export async function deleteHouseholdTaskRemote(householdId: string, taskId: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  await waitForAuthUid();
+  await deleteDoc(doc(db, 'households', householdId, 'tasks', taskId));
+}
+
 export async function saveHouseholdInviteRemote(user: UserProfile): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;

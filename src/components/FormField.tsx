@@ -15,6 +15,8 @@ interface FormFieldProps {
   keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad' | 'number-pad';
   maxLength?: number;
   secureTextEntry?: boolean;
+  multiline?: boolean;
+  numberOfLines?: number;
   style?: any;
   testID?: string;
 }

@@ -57,58 +57,106 @@ export function ScreenShell({
 
   // ─── Header Metrics ────────────────────────────────────────────────────────
   const hasExtra = !!headerExtra;
-  const COLLAPSE_DISTANCE = hasExtra ? 120 : 60;
+  const COLLAPSE_DISTANCE = hasExtra ? 130 : 70;
 
-  // ─── Scroll Animation State ────────────────────────────────────────────────
+  // ─── Scroll Animation Driver ────────────────────────────────────────────────
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // ─── Animations for Compact Sticky Header ─────────────────────────────────
+  // ─── Animations for Compact Sticky Header Bar ──────────────────────────────
+  // Translucent backdrop while scrolling, becomes solid once fully scrolled
   const compactBgOpacity = scrollY.interpolate({
-    inputRange: [0, COLLAPSE_DISTANCE],
-    outputRange: [0, 1],
+    inputRange: [0, COLLAPSE_DISTANCE * 0.35, COLLAPSE_DISTANCE * 0.85, COLLAPSE_DISTANCE * 1.3],
+    outputRange: [0, 0.35, 0.82, 0.96],
     extrapolate: 'clamp',
   });
 
+  const compactShadowOpacity = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.18],
+    extrapolate: 'clamp',
+  });
+
+  // Hairline border appears faintly while scrolling, fully solid when scrolled
   const separatorOpacity = scrollY.interpolate({
-    inputRange: [COLLAPSE_DISTANCE * 0.7, COLLAPSE_DISTANCE],
-    outputRange: [0, 1],
+    inputRange: [0, COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.35, 1],
     extrapolate: 'clamp',
   });
 
+  // Logo stays crisp and prominent (no aggressive shrinking)
   const logoScale = scrollY.interpolate({
     inputRange: [0, COLLAPSE_DISTANCE],
-    outputRange: [1, 0.88],
+    outputRange: [1, 0.96],
     extrapolate: 'clamp',
   });
 
   const logoTranslateX = scrollY.interpolate({
     inputRange: [0, COLLAPSE_DISTANCE],
-    outputRange: [0, -4],
+    outputRange: [0, 0],
     extrapolate: 'clamp',
   });
 
+  // Compact title stays translucent while scrolling, turns crisp 1.0 when fully scrolled
   const compactTitleOpacity = scrollY.interpolate({
-    inputRange: [COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 0.85],
-    outputRange: [0, 1],
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.75, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.55, 1],
     extrapolate: 'clamp',
   });
 
   const compactTitleTranslateY = scrollY.interpolate({
-    inputRange: [COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 0.85],
-    outputRange: [8, 0],
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.9],
+    outputRange: [10, 0],
     extrapolate: 'clamp',
   });
 
-  // ─── Animations for Expanded Content (Inside ScrollView) ─────────────────
+  const compactTitleScale = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.9],
+    outputRange: [0.95, 1],
+    extrapolate: 'clamp',
+  });
+
+  const bellScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE],
+    outputRange: [1, 0.94],
+    extrapolate: 'clamp',
+  });
+
+  // ─── Animations for Expanded Content (Parallax & Translucency) ───────────────
+  // Expanded header content stays partially visible (translucent) while scrolling down
   const expandedOpacity = scrollY.interpolate({
-    inputRange: [0, COLLAPSE_DISTANCE * 0.65],
-    outputRange: [1, 0],
+    inputRange: [0, COLLAPSE_DISTANCE * 0.5, COLLAPSE_DISTANCE * 1.1],
+    outputRange: [1, 0.45, 0],
+    extrapolate: 'clamp',
+  });
+
+  const expandedScale = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE, 0, COLLAPSE_DISTANCE],
+    outputRange: [1.08, 1, 0.92],
     extrapolate: 'clamp',
   });
 
   const expandedTranslateY = scrollY.interpolate({
-    inputRange: [0, COLLAPSE_DISTANCE],
-    outputRange: [0, -20],
+    inputRange: [-COLLAPSE_DISTANCE, 0, COLLAPSE_DISTANCE],
+    outputRange: [COLLAPSE_DISTANCE * 0.4, 0, -24],
+    extrapolate: 'clamp',
+  });
+
+  // Background Parallax for pull-to-refresh / overscroll
+  const bgScale = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE * 2, 0],
+    outputRange: [1.4, 1],
+    extrapolate: 'clamp',
+  });
+
+  const bgTranslateY = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE * 2, 0],
+    outputRange: [-COLLAPSE_DISTANCE * 0.8, 0],
+    extrapolate: 'clamp',
+  });
+
+  const accentGlowTranslateY = scrollY.interpolate({
+    inputRange: [-100, 0, COLLAPSE_DISTANCE * 2],
+    outputRange: [-30, 0, 40],
     extrapolate: 'clamp',
   });
 
@@ -117,61 +165,93 @@ export function ScreenShell({
       ? (title.includes(',') ? title.split(',').slice(1).join(',').trim() : title)
       : undefined;
 
-  // ─── Expanded Header component (renders inside ScrollView) ─────────────────
+  // ─── Expanded Header Component ───────────────────────────────────────────────
   const expandedHeaderInner = lightHeader ? null : (
-    <LinearGradient
-      colors={[...Gradients.hero]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[
-        styles.header,
-        {
-          paddingTop: insets.top + 60, // Space for compact sticky header
-          paddingBottom: Layout.contentOverlap + 14,
-        },
-      ]}
-    >
+    <Animated.View style={{ transform: [{ scale: bgScale }, { translateY: bgTranslateY }] }}>
       <LinearGradient
-        colors={[...Gradients.heroAccent]}
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.headerInner}>
-        {/* Expanded Title */}
-        <Animated.View style={{ opacity: expandedOpacity, transform: [{ translateY: expandedTranslateY }] }}>
-          {typeof title === 'string' ? (
-            <Text style={styles.title}>{title}</Text>
-          ) : (
-            title
-          )}
-        </Animated.View>
+        colors={[...Gradients.hero]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 64, // Extra breathing room below sticky bar
+            paddingBottom: Layout.contentOverlap + 16,
+          },
+        ]}
+      >
+        {/* Subtle accent gradient overlay */}
+        <LinearGradient
+          colors={[...Gradients.heroAccent]}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
 
-        {/* Subtitle */}
-        {subtitle ? (
-          <Animated.View style={{ opacity: expandedOpacity, transform: [{ translateY: expandedTranslateY }] }}>
-            <Text style={styles.sub}>{subtitle}</Text>
-          </Animated.View>
-        ) : null}
+        {/* Ambient Glowing Accent Orb */}
+        <Animated.View
+          style={[
+            styles.headerGlowOrb,
+            {
+              transform: [{ translateY: accentGlowTranslateY }],
+              opacity: expandedOpacity,
+            },
+          ]}
+          pointerEvents="none"
+        />
 
-        {/* Header Extra */}
-        {headerExtra ? (
-          <Animated.View style={{ opacity: expandedOpacity, transform: [{ translateY: expandedTranslateY }] }}>
-            {headerExtra}
+        <View style={styles.headerInner}>
+          {/* Expanded Title */}
+          <Animated.View
+            style={{
+              opacity: expandedOpacity,
+              transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+            }}
+          >
+            {typeof title === 'string' ? (
+              <Text style={styles.title}>{title}</Text>
+            ) : (
+              title
+            )}
           </Animated.View>
-        ) : null}
-      </View>
-    </LinearGradient>
+
+          {/* Subtitle */}
+          {subtitle ? (
+            <Animated.View
+              style={{
+                opacity: expandedOpacity,
+                transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+              }}
+            >
+              <Text style={styles.sub}>{subtitle}</Text>
+            </Animated.View>
+          ) : null}
+
+          {/* Header Extra */}
+          {headerExtra ? (
+            <Animated.View
+              style={{
+                opacity: expandedOpacity,
+                transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+              }}
+            >
+              {headerExtra}
+            </Animated.View>
+          ) : null}
+        </View>
+      </LinearGradient>
+    </Animated.View>
   );
 
-  // ─── Compact Sticky Header (renders absolutely on top of ScrollView) ───────
+  // ─── Compact Sticky Header (Overlays ScrollView at zIndex 100) ──────────────
   const compactStickyHeader = lightHeader ? null : (
     <Animated.View
       style={[
         styles.compactStickyHeader,
         {
-          paddingTop: insets.top + 12,
-          height: insets.top + 60,
+          paddingTop: insets.top + 8,
+          height: insets.top + 62,
+          shadowOpacity: compactShadowOpacity,
         },
       ]}
     >
@@ -184,7 +264,7 @@ export function ScreenShell({
           style={StyleSheet.absoluteFill}
         >
           <LinearGradient
-            colors={[...Gradients.heroAccent]}
+            colors={['rgba(232,163,61,0.20)', 'transparent']}
             start={{ x: 1, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -227,40 +307,47 @@ export function ScreenShell({
           />
         </View>
 
-        {/* Compact Title */}
+        {/* Compact Title (Pill Badge for refined visual balance) */}
         {compactTitleText ? (
           <Animated.View
             style={[
               styles.compactTitleWrapper,
               {
                 opacity: compactTitleOpacity,
-                transform: [{ translateY: compactTitleTranslateY }],
+                transform: [
+                  { translateY: compactTitleTranslateY },
+                  { scale: compactTitleScale },
+                ],
               },
             ]}
             pointerEvents="none"
           >
-            <Text style={styles.compactTitle} numberOfLines={1}>
-              {compactTitleText}
-            </Text>
+            <View style={styles.compactTitleBadge}>
+              <Text style={styles.compactTitle} numberOfLines={1}>
+                {compactTitleText}
+              </Text>
+            </View>
           </Animated.View>
         ) : null}
 
         {/* Bell notification button */}
-        <Pressable
-          style={styles.bellPressable}
-          onPress={() => router.push('/notifications')}
-          hitSlop={8}
-        >
-          <AppIcon name="notifications-outline" size={22} color={Colors.white} />
-          {unreadCount > 0 && (
-            <View style={styles.bellBadge}>
-              <Text style={styles.bellBadgeText}>{unreadCount}</Text>
-            </View>
-          )}
-        </Pressable>
+        <Animated.View style={{ transform: [{ scale: bellScale }] }}>
+          <Pressable
+            style={styles.bellPressable}
+            onPress={() => router.push('/notifications')}
+            hitSlop={8}
+          >
+            <AppIcon name="notifications-outline" size={21} color={Colors.white} />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </Animated.View>
       </View>
 
-      {/* Hairline border at bottom of collapsed header */}
+      {/* Hairline glowing border at bottom of collapsed header */}
       <Animated.View
         style={[styles.headerSeparator, { opacity: separatorOpacity }]}
         pointerEvents="none"
@@ -422,7 +509,7 @@ export function EmptyState({
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Enhanced Styles ───────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.surfaceMuted },
@@ -436,6 +523,10 @@ const styles = StyleSheet.create({
     zIndex: 100,
     justifyContent: 'center',
     paddingHorizontal: Layout.screenPadding,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 8,
   },
 
   // ── Gradient header (non-light) ──
@@ -444,14 +535,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+  headerGlowOrb: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(232, 163, 61, 0.14)',
+  },
   headerInner: {},
   headerSeparator: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 1,
-    backgroundColor: 'rgba(251,247,239,0.12)',
+    height: 1.5,
+    backgroundColor: 'rgba(232, 163, 61, 0.35)',
   },
 
   // ── Light header ──
@@ -469,19 +569,28 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   brandLogo: {
-    width: 106,
-    height: 38,
+    width: 122,
+    height: 42,
   },
   compactTitleWrapper: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
+  },
+  compactTitleBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 99,
+    maxWidth: 160,
   },
   compactTitle: {
     fontFamily: 'Manrope_700Bold',
-    fontSize: 14.5,
+    fontSize: 12.5,
     color: Colors.onDark,
-    letterSpacing: -0.1,
+    letterSpacing: 0.1,
     textAlign: 'center',
   },
   bellPressable: {
@@ -489,8 +598,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(251,247,239,0.16)',
-    backgroundColor: 'rgba(251,247,239,0.07)',
+    borderColor: 'rgba(251,247,239,0.2)',
+    backgroundColor: 'rgba(251,247,239,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -522,7 +631,7 @@ const styles = StyleSheet.create({
   sub: {
     ...Typography.bodySm,
     color: Colors.onDarkMuted,
-    maxWidth: 300,
+    maxWidth: 320,
     marginTop: 2,
     marginBottom: 10,
     lineHeight: 20,

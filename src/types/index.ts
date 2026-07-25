@@ -61,6 +61,27 @@ export interface HouseholdMemberProfile {
   status: 'active' | 'pending';
 }
 
+export interface UserCodeProfile {
+  userCode: string;
+  userId: string;
+  name: string;
+  color: string;
+  photoUrl?: string;
+}
+
+/** A single household context — users can have up to 5 */
+export interface HouseholdContext {
+  id: string;         // UUID, e.g. "home-a1b2c3"
+  name: string;       // User-assigned label, e.g. "Home" / "Office"
+  icon: string;       // Emoji, e.g. "🏠" | "🏢"
+  ownerUid: string;   // UID of the household creator/admin
+  code?: string;      // Legacy code field
+  members: HouseholdMemberProfile[];
+  memberUids: string[];
+  createdAt: string;
+  color: string;      // Accent hex for the context pill UI
+}
+
 export interface TaskHistoryEntry {
   month: string;
   status: CompletionStatus;
@@ -71,6 +92,7 @@ export interface TaskHistoryEntry {
 
 export interface RepeatingTask {
   id: string;
+  householdId?: string | null; // Belongs to a specific HouseholdContext (null for personal tasks)
   title: string;
   icon?: string;
   category: CategoryKey;
@@ -100,15 +122,23 @@ export interface UserProfile {
   email: string;
   phone?: string;
   photoUrl?: string;
+  userCode?: string;   // Permanent personal code e.g. "RPT-9X8Y7Z"
   language: Language;
   languageSelected?: boolean;
   pushOptIn: boolean;
   profileComplete: boolean;
   onboardingComplete: boolean;
   plan: 'free' | 'plus';
+  /** Legacy single-household — kept for backward compat */
   householdCode?: string;
+  /** Legacy member list — kept for backward compat */
   householdMembers?: HouseholdMemberProfile[];
+  /** Legacy uid list — kept for backward compat */
   householdMemberUids?: string[];
+  /** NEW: all household contexts (multi-household) */
+  households?: HouseholdContext[];
+  /** NEW: which household is currently active */
+  activeHouseholdId?: string;
   removedBy?: string;
   termsAcceptedAt?: string;
 }

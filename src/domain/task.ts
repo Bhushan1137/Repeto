@@ -49,6 +49,7 @@ export function createTaskFromFormValues(
   const baseDate = values.startDate ? new Date(values.startDate) : new Date();
   return {
     id: createTaskId(),
+    householdId: values.householdId ?? null,
     title: values.title.trim(),
     category: values.category,
     recurrence: values.recurrence,
@@ -80,6 +81,7 @@ export function createTaskFromPreset(
   const recurrence = parseFrequencyLabel(freq);
   return {
     id: createTaskId(),
+    householdId: null,
     title,
     icon,
     category,
@@ -104,6 +106,7 @@ export function createTaskFromParsed(
 ): RepeatingTask {
   return {
     id: createTaskId(),
+    householdId: opts.shared && opts.shared.length > 0 ? undefined : null,
     title: parsed.title,
     category: parsed.category,
     recurrence: parsed.recurrence,
@@ -135,7 +138,7 @@ export function completeTaskInstance(task: RepeatingTask, note?: string, complet
   return {
     ...task,
     history: [
-      ...task.history.slice(-4),
+      ...(task.history ?? []).slice(-12),
       { month: getMonthLabel(), status, completedAt: new Date().toISOString(), note, completedBy },
     ],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
@@ -189,7 +192,7 @@ export function snoozeTaskInstance(task: RepeatingTask, days = 2, userId?: strin
   return {
     ...task,
     history: [
-      ...task.history.slice(-4),
+      ...(task.history ?? []).slice(-12),
       { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${days} days` },
     ],
     nextDueDate: due.toISOString(),
@@ -205,7 +208,7 @@ export function skipTaskInstance(task: RepeatingTask, userId?: string): Repeatin
   const baseDate = base >= today ? base : today;
   return {
     ...task,
-    history: [...task.history.slice(-4), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
+    history: [...(task.history ?? []).slice(-12), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
     updatedAt: now,
@@ -240,6 +243,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
     startDate: values.startDate,
+    householdId: values.householdId !== undefined ? values.householdId : task.householdId,
     icon: values.icon,
     nextDueDate,
     updatedAt: new Date().toISOString(),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -25,6 +25,8 @@ import { initials } from '@/domain/insights';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Button } from '@/components/Button';
 import type { TranslationKey } from '@/i18n';
+import { useAuth } from '@/providers/AuthProvider';
+import { listHouseholds } from '@/domain/household';
 
 let DateTimePicker: any;
 if (Platform.OS !== 'web') {
@@ -35,10 +37,10 @@ interface TaskDetailSheetProps {
   task: RepeatingTask | null;
   visible: boolean;
   language: Language;
-  translate: (key: TranslationKey) => string;
+  translate: (key: TranslationKey, params?: Record<string, string | number>) => string;
   onClose: () => void;
   onComplete: (taskId: string, note?: string) => void;
-  onSnooze: (taskId: string, days: number) => void;
+  onSnooze: (taskId: string, days?: number) => void;
   onSkip: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onArchive?: (taskId: string) => void;
@@ -46,7 +48,7 @@ interface TaskDetailSheetProps {
   onDuplicate?: (taskId: string) => void;
   onEdit?: (taskId: string) => void;
   onSetDueDate?: (taskId: string, date: Date) => void;
-  onDeleteHistoryEntry?: (taskId: string, index: number) => void;
+  onDeleteHistoryEntry?: (taskId: string, entryIndex: number) => void;
 }
 
 export function TaskDetailSheet({
@@ -66,6 +68,7 @@ export function TaskDetailSheet({
   onSetDueDate,
   onDeleteHistoryEntry,
 }: TaskDetailSheetProps) {
+  const { user } = useAuth();
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -75,6 +78,12 @@ export function TaskDetailSheet({
 
   const { findMatch, logImpression, logClick } = useRecommendations();
   const match = task ? findMatch(task) : null;
+
+  const households = useMemo(() => listHouseholds(user ?? ({} as any)), [user]);
+  const hhContext = useMemo(() => {
+    if (!task || !task.householdId) return null;
+    return households.find(h => h.id === task.householdId) ?? null;
+  }, [task, households]);
 
   React.useEffect(() => {
     setImageError(false);
@@ -86,7 +95,7 @@ export function TaskDetailSheet({
     }
   }, [visible, match?.id]);
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
+  const handleNativeDateChange = (_event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate && onSetDueDate && task) {
       onSetDueDate(task.id, selectedDate);
@@ -115,6 +124,9 @@ export function TaskDetailSheet({
     snoozed: language === 'hi' ? 'सणूज़ किया गया' : 'Snoozed',
   };
 
+  const handleDateChange = handleNativeDateChange;
+  const historyToShow = showAllHistory ? task.history : task.history.slice(-5);
+
   const handleMarkDone = () => {
     if (!noteExpanded) {
       setNoteExpanded(true);
@@ -133,8 +145,6 @@ export function TaskDetailSheet({
     setNoteExpanded(false);
   };
 
-  const historyToShow = showAllHistory ? task.history : task.history.slice(-5);
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
@@ -150,10 +160,17 @@ export function TaskDetailSheet({
             label={dayLabel(days, language)}
           />
           <View style={styles.heroText}>
-            <View style={styles.catPill}>
-              <Text style={styles.catBadge}>
-                {cat.icon} {getCategoryLabel(task.category, language)}
-              </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <View style={styles.catPill}>
+                <Text style={styles.catBadge}>
+                  {cat.icon} {getCategoryLabel(task.category, language)}
+                </Text>
+              </View>
+              <View style={[styles.catPill, { backgroundColor: 'rgba(255, 255, 255, 0.25)' }]}>
+                <Text style={styles.catBadge}>
+                  {hhContext ? `${hhContext.icon || '🏠'} ${hhContext.name}` : '👤 Personal'}
+                </Text>
+              </View>
             </View>
             <Text style={styles.title} numberOfLines={2}>
               {task.title}
@@ -303,21 +320,20 @@ export function TaskDetailSheet({
                   onPress={() => setSnoozeOptionsVisible((v) => !v)}
                 />
                 <ActionChip
-                  icon="create-outline"
-                  label={translate('editTask')}
-                  onPress={() => {
-                    setSnoozeOptionsVisible(false);
-                    onEdit?.(task.id);
-                  }}
-                />
-                <ActionChip
                   icon="play-skip-forward-outline"
                   label={translate('skipOccurrence')}
                   onPress={() => {
                     setSnoozeOptionsVisible(false);
                     onSkip(task.id);
                   }}
-                  compact
+                />
+                <ActionChip
+                  icon="calendar-outline"
+                  label={language === 'hi' ? 'तारीख बदलें' : 'Change Date'}
+                  onPress={() => {
+                    setSnoozeOptionsVisible(false);
+                    setShowDatePicker(true);
+                  }}
                 />
               </View>
 
@@ -414,13 +430,16 @@ export function TaskDetailSheet({
 
             <TouchableRipple
               style={styles.extraActionBtn}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                setSnoozeOptionsVisible(false);
+                onEdit?.(task.id);
+              }}
               borderless
             >
               <View style={styles.extraActionInner}>
-                <AppIcon name="calendar-outline" size={16} color={Colors.inkSoft} />
+                <AppIcon name="create-outline" size={16} color={Colors.inkSoft} />
                 <Text style={styles.extraActionText}>
-                  {language === 'hi' ? 'तारीख' : 'Set Due'}
+                  {language === 'hi' ? 'संपादित करें' : 'Edit'}
                 </Text>
               </View>
             </TouchableRipple>
@@ -632,9 +651,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 26,
-    paddingBottom: 24,
+    paddingBottom: 22,
   },
   heroText: { flex: 1, paddingTop: 4 },
   closeBtn: {
@@ -657,7 +676,7 @@ const styles = StyleSheet.create({
   title: { ...Typography.displaySm, color: Colors.onDark, marginBottom: 4, lineHeight: 26 },
   freq: { ...Typography.bodySm, color: Colors.onDarkMuted },
   amount: { ...Typography.title, color: Colors.marigoldLight, marginTop: 6, fontSize: 15 },
-  body: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 16 },
+  body: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 16 },
 
   escalationChip: {
     flexDirection: 'row',
