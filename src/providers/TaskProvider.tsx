@@ -9,6 +9,8 @@ import { userRepository } from '@/data/repositories/userRepository';
 import type { AppNotification } from '@/types/notification';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useNetworkStatus } from '@/providers/NetworkProvider';
+
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
   canAddTask,
@@ -79,16 +81,33 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
   const { translate } = useTranslation();
   const { addNotification } = useNotifications();
+  const { isOnline } = useNetworkStatus();
   const [tasks, setTasks] = useState<RepeatingTask[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
   const userIdRef = useRef<string | null>(null);
+  const wasOfflineRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+    } else if (wasOfflineRef.current && isOnline && user?.id) {
+      wasOfflineRef.current = false;
+      taskRepository
+        .flushSyncQueue(user.id)
+        .then(() => {
+          showToast(translate('backOnlineToast'));
+        })
+        .catch(() => {});
+    }
+  }, [isOnline, user?.id, showToast, translate]);
 
   // Stable key: only changes when the SET of household IDs changes (not on activeHouseholdId switch)
   const householdIdsKey = useMemo(
     () => (user?.households ?? []).map((h) => h.id).sort().join(','),
     [user?.households]
   );
+
 
   useEffect(() => {
     if (!user) {

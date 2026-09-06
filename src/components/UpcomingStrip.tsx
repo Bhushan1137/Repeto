@@ -1,8 +1,8 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { View, ScrollView, Pressable, StyleSheet } from "react-native";
 import { Text, Card } from "react-native-paper";
 import type { UpcomingDaySlot, UpcomingTaskItem } from "@/domain/insights";
-import { Colors, Radius, Typography } from "@/constants/theme";
+import { Colors, Radius } from "@/constants/theme";
 import { getCategoryAccent } from "@/constants/categoryHelpers";
 import { AccentHex } from "@/constants/theme";
 

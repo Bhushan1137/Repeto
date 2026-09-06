@@ -17,21 +17,21 @@ import { daysUntilDue } from '@/domain/recurrence';
 export const FREE_TASK_LIMIT = 10;
 export const FREE_SHARED_PARTICIPANT_LIMIT = 1;
 
-export function canAddTask(user: UserProfile | null, taskCount: number): boolean {
+export function canAddTask(_user: UserProfile | null, _taskCount: number): boolean {
   // Plan limits disabled for now (always allow)
   return true;
 }
 
 export function canShareWith(
-  user: UserProfile | null,
-  shared: SharedMember[]
+  _user: UserProfile | null,
+  _shared: SharedMember[]
 ): boolean {
   // Share limits disabled for now (always allow)
   return true;
 }
 
 /** Cap onboarding presets to free tier limit */
-export function capTasksForPlan<T>(user: UserProfile | null, items: T[]): T[] {
+export function capTasksForPlan<T>(_user: UserProfile | null, items: T[]): T[] {
   // Onboarding presets limit disabled for now (always return all items)
   return items;
 }

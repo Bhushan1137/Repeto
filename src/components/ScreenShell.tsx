@@ -9,7 +9,6 @@ import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
-  Image,
   Modal,
   Pressable,
   ScrollView,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { Text, Card } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useTasks } from '@/providers/TaskProvider';
@@ -12,7 +12,7 @@ import { UpcomingStrip } from '@/components/UpcomingStrip';
 import { SpendForecastCard } from '@/components/SpendForecastCard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '@/components/AppIcon';
-import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
+import { AccentHex, Colors, Radius } from '@/constants/theme';
 import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { TaskReportModal } from '@/components/TaskReportModal';

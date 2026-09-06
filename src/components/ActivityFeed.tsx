@@ -4,7 +4,6 @@ import { Text, Card } from 'react-native-paper';
 import type { RepeatingTask, HouseholdMemberProfile } from '@/types';
 import { AppIcon } from '@/components/AppIcon';
 import { buildActivityFeed } from '@/domain/activityFeed';
-import { initials } from '@/domain/insights';
 import { Colors, Radius, Typography } from '@/constants/theme';
 
 interface ActivityFeedProps {

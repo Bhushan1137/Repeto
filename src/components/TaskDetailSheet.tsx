@@ -30,6 +30,7 @@ import { listHouseholds } from '@/domain/household';
 
 let DateTimePicker: any;
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   DateTimePicker = require('@react-native-community/datetimepicker').default;
 }
 

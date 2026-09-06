@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { CATEGORY_MAP } from '@/constants/categories';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
@@ -124,7 +124,11 @@ export default function SuggestionsScreen() {
           testID="suggestions-skip-btn"
         />
         <Button
-          title={translate('continueBtn')}
+          title={
+            language === 'hi'
+              ? `${acceptedCount} कार्य शेड्यूल करें →`
+              : `Add ${acceptedCount} Tasks →`
+          }
           style={styles.ctaBtn}
           disabled={acceptedCount === 0}
           onPress={() => router.push('/(onboarding)/finish')}

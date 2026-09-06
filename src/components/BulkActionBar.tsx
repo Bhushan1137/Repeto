@@ -4,7 +4,6 @@ import { Text } from 'react-native-paper';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';
-import { Button } from '@/components/Button';
 
 interface BulkActionBarProps {
   selectedCount: number;

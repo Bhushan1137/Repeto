@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -7,19 +7,14 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity,
 } from 'react-native';
-import { Text, Card, TextInput as PaperInput, TouchableRipple } from 'react-native-paper';
+import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { TaskFormFields } from '@/components/TaskFormFields';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
-import { FormField } from '@/components/FormField';
-import { AppIcon } from '@/components/AppIcon';
-import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
-import { CATEGORIES, CATEGORY_GROUPS, CATEGORY_MAP } from '@/constants/categories';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
 import { canShareWith } from '@/domain/task';
 import { initials } from '@/domain/insights';
@@ -28,17 +23,10 @@ import { Button } from '@/components/Button';
 import {
   defaultFormState,
   applyCategoryChange,
-  formStateFromParsed,
   formStateToValues,
   validateFormState,
-  buildRecurrenceRule,
-  weekdayLabel,
-  weekdayLabel as getWeekdayLabel,
-  nthLabel,
-  intervalPresets,
   type TaskFormState,
 } from '@/domain/taskForm';
-import { frequencyLabelFromRule, ordinalSuffix } from '@/domain/recurrence';
 import type { SharedMember } from '@/types';
 
 import { Toast } from '@/components/Toast';

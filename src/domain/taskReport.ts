@@ -1,4 +1,4 @@
-﻿import type { CategoryKey, RepeatingTask } from '@/types';
+import type { CategoryKey, RepeatingTask } from '@/types';
 import { daysUntilDue } from '@/domain/recurrence';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ export function computeTaskReport(tasks: RepeatingTask[]): TaskReportRow[] {
 
 const STATUS_FILTERS: TaskStatusFilter[] = ['all', 'overdue', 'on_track', 'slipping', 'no_history', 'shared', 'finance'];
 
-function isStatusFilter(f: TaskStatusFilter): f is 'all' | 'overdue' | 'on_track' | 'slipping' | 'no_history' | 'shared' | 'finance' {
+export function isStatusFilter(f: TaskStatusFilter): f is 'all' | 'overdue' | 'on_track' | 'slipping' | 'no_history' | 'shared' | 'finance' {
   return STATUS_FILTERS.includes(f);
 }
 

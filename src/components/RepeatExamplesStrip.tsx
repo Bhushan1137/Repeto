@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Card } from 'react-native-paper';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import type { Language, RecurrenceType } from '@/types';
 
 interface ExampleItem {
@@ -67,7 +67,7 @@ export function RepeatExamplesStrip({ language, onSelect }: RepeatExamplesStripP
       icon: '⚙️',
       config: { recurrenceType: 'interval', interval: 45, intervalUnit: 'days', reminderTime: '08:00' },
     },
-  ], [language]);
+  ], []);
 
   return (
     <View style={styles.container}>

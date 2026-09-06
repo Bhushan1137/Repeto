@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Gradients, Radius, Shadows, Typography } from '@/constants/theme';
+import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
 
 export function Toast({ message }: { message: string | null }) {
   if (!message) return null;

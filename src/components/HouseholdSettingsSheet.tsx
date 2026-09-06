@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Modal, Pressable, Alert, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { AppIcon } from '@/components/AppIcon';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import type { HouseholdContext, HouseholdMemberProfile } from '@/types';
 
 interface HouseholdSettingsSheetProps {
@@ -23,7 +23,7 @@ export function HouseholdSettingsSheet({
   onClose,
   activeHousehold,
   currentUserId,
-  currentUserName,
+  currentUserName: _currentUserName,
   language,
   onDeleteHousehold,
   onLeaveHousehold,

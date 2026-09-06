@@ -68,10 +68,10 @@ export const taskRepository = {
       try {
         await saveHouseholdTaskRemote(householdId, task);
       } catch {
-        await enqueueSync(userId, { type: op, task });
+        await enqueueSync(userId, { type: op, task, householdId });
       }
     } else {
-      await enqueueSync(userId, { type: op, task });
+      await enqueueSync(userId, { type: op, task, householdId });
     }
   },
 
@@ -92,10 +92,10 @@ export const taskRepository = {
       try {
         await deleteHouseholdTaskRemote(householdId, taskId);
       } catch {
-        await enqueueSync(userId, { type: 'delete', taskId });
+        await enqueueSync(userId, { type: 'delete', taskId, householdId });
       }
     } else {
-      await enqueueSync(userId, { type: 'delete', taskId });
+      await enqueueSync(userId, { type: 'delete', taskId, householdId });
     }
   },
 
@@ -119,10 +119,15 @@ export const taskRepository = {
     for (const op of ops) {
       try {
         if (op.type === 'delete' && op.taskId) {
-          await deleteTaskRemote(userId, op.taskId);
+          if (op.householdId) {
+            await deleteHouseholdTaskRemote(op.householdId, op.taskId);
+          } else {
+            await deleteTaskRemote(userId, op.taskId);
+          }
         } else if (op.task) {
-          if (op.task.householdId) {
-            await saveHouseholdTaskRemote(op.task.householdId, op.task);
+          const targetHhId = op.householdId || op.task.householdId;
+          if (targetHhId) {
+            await saveHouseholdTaskRemote(targetHhId, op.task);
           } else {
             await saveTaskRemote(userId, op.task);
           }

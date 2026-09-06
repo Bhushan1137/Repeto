@@ -2,14 +2,14 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read/write profile if authenticated
+    // Users can read/write profile if owner or confirmed household member
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (
+      allow read: if request.auth != null && (
         request.auth.uid == userId ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['householdMembers', 'householdMemberUids', 'households', 'activeHouseholdId', 'userCode', 'householdCode', 'removedBy'])
+        request.auth.uid in resource.data.get('householdMemberUids', [])
       );
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && request.auth.uid == userId;
 
       // Tasks subcollection — allowed if owner or household member

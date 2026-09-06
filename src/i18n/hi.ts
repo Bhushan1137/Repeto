@@ -242,4 +242,10 @@ export const hi: Record<TranslationKey, string> = {
   householdCreated: 'घर बना दिया!',
   householdLimitReached: 'अधिक घर जोड़ने के लिए अपग्रेड करें',
   householdNameExists: 'इस नाम का घर पहले से मौजूद है',
+  // ── Feature 3: Offline & Network Handling ──
+  offlineBannerTitle: '⚡ ऑफ़लाइन मोड — डेटा सुरक्षित है',
+  backOnlineToast: '🟢 वापस ऑनलाइन — ऑफ़लाइन बदलाव सिंक किए गए',
+  offlineHouseholdAction: 'घर प्रबंधित करने के लिए इंटरनेट कनेक्शन आवश्यक है',
+  offlineSupportAction: 'सहायता अनुरोध भेजने के लिए इंटरनेट कनेक्शन आवश्यक है',
 };
+

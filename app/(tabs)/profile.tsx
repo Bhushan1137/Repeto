@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Linking, Alert, Platform, Modal, Pressable, KeyboardAvoidingView, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, Platform, Modal, Pressable, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';

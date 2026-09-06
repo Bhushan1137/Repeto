@@ -19,8 +19,11 @@ import { AppProviders, useAuth } from '@/providers/AppProviders';
 import { Colors } from '@/constants/theme';
 import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary';
 
 export { ErrorBoundary } from 'expo-router';
+
 
 SplashScreen.preventAutoHideAsync();
 
@@ -44,7 +47,7 @@ const paperTheme = {
 };
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
-  const { ready, user, languageSelected } = useAuth();
+  const { ready, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -53,8 +56,6 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
     const rootSegment = segments[0];
     const isInsideOnboarding = rootSegment === '(onboarding)';
-    const isInsideTabs = rootSegment === '(tabs)';
-    const isPresets = rootSegment === 'presets';
     const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms';
     const currentScreen = segments[segments.length - 1];
 
@@ -102,7 +103,8 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
+
+  const [loaded] = useFonts({
     Fraunces_700Bold,
     Fraunces_600SemiBold,
     Manrope_400Regular,
@@ -114,8 +116,10 @@ export default function RootLayout() {
   const [splashComplete, setSplashComplete] = useState(false);
 
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    if (loaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [loaded]);
 
   if (!loaded) return null;
 
@@ -136,23 +140,25 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppProviders>
-        <PaperProvider theme={paperTheme}>
-          <NavigationGuard>
-            <StatusBar style="dark" />
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.surfaceMuted } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(onboarding)" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="presets" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="terms" options={{ presentation: 'modal' }} />
-            </Stack>
-          </NavigationGuard>
-        </PaperProvider>
-      </AppProviders>
-    </GestureHandlerRootView>
+    <GlobalErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AppProviders>
+          <PaperProvider theme={paperTheme}>
+            <NavigationGuard>
+              <StatusBar style="dark" />
+              <OfflineBanner />
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.surfaceMuted } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(onboarding)" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="presets" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="terms" options={{ presentation: 'modal' }} />
+              </Stack>
+            </NavigationGuard>
+          </PaperProvider>
+        </AppProviders>
+      </GestureHandlerRootView>
+    </GlobalErrorBoundary>
   );
 }
-

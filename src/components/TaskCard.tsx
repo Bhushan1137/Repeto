@@ -1,14 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
-import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
-import { daysUntilDue, dayLabel, shortDayLabel, daysPercent } from '@/domain/recurrence';
-import { initials } from '@/domain/insights';
+import { Colors, Radius, Typography } from '@/constants/theme';
+import { daysUntilDue, daysPercent, shortDayLabel } from '@/domain/recurrence';
 import { ProgressRing } from '@/components/ProgressRing';
-import { useAuth } from '@/providers/AuthProvider';
-import { useTranslation } from '@/hooks/useTranslation';
 import { AppIcon } from '@/components/AppIcon';
 
 interface TaskCardProps {
@@ -33,8 +30,6 @@ export function TaskCard({
   const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋', accent: 'marigold' };
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;
-  const { user } = useAuth();
-  const { translate } = useTranslation();
 
   const { catBg, catColor } = useMemo(() => {
     switch (task.category) {
@@ -150,13 +145,28 @@ export function TaskCard({
           <ProgressRing
             percent={daysPercent(days)}
             color={overdue ? Colors.clay : days === 0 ? '#2563EB' : '#16A34A'}
-            size={54}
+            size={52}
             stroke={4.5}
             label={shortDayLabel(days, language)}
             labelColor={overdue ? Colors.clayDeep : Colors.ink}
             testID={`${defaultId}-progress-ring`}
           />
-          <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
+          {!selected && onCompletePress ? (
+            <TouchableRipple
+              style={styles.quickCompleteBtn}
+              testID={`${defaultId}-quick-complete-btn`}
+              onPress={(e) => {
+                e.stopPropagation();
+                onCompletePress();
+              }}
+              borderless
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <AppIcon name="checkmark-circle" size={28} color={overdue ? Colors.clay : Colors.tealDeep} />
+            </TouchableRipple>
+          ) : (
+            <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
+          )}
         </View>
       </Card.Content>
     </Card>
@@ -210,7 +220,13 @@ const styles = StyleSheet.create({
   freqText: { ...Typography.caption, color: Colors.inkSoft, fontSize: 11 },
   amountText: { ...Typography.caption, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold', fontSize: 11 },
   reminderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
-  reminderText: { ...Typography.caption, fontSize: 10.5, color: Colors.inkFaint, fontFamily: 'Manrope_600SemiBold' },
+  reminderText: { ...Typography.caption, fontSize: 10.5, color: Colors.inkSoft, fontFamily: 'Manrope_600SemiBold' },
   rightCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  quickCompleteBtn: {
+    padding: 4,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 

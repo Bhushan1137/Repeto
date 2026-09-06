@@ -7,7 +7,6 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   sendPasswordResetEmail as firebaseSendPasswordReset,
   type User,
 } from 'firebase/auth';
@@ -142,9 +141,8 @@ export async function signOutFirebase(): Promise<void> {
 export function getAuthErrorMessage(code: string): string {
   switch (code) {
     case 'auth/unauthorized-domain':
-      return 'This domain is not authorized. Add it in Firebase Console → Authentication → Settings → Authorized domains.';
     case 'auth/operation-not-allowed':
-      return 'Google Sign-In is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.';
+      return 'Authentication service is currently unavailable. Please try again later.';
     case 'auth/network-request-failed':
       return 'Network error. Check your connection and try again.';
     case 'auth/user-not-found':

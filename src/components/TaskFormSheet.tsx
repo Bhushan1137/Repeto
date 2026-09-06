@@ -20,7 +20,7 @@ import {
 import { TaskFormFields } from '@/components/TaskFormFields';
 import { SelectField } from '@/components/SelectField';
 import { Button } from '@/components/Button';
-import { Colors, Radius, Typography, Shadows, AccentHex } from '@/constants/theme';
+import { Colors, Radius, Typography, AccentHex } from '@/constants/theme';
 import { getCategoryAccent } from '@/constants/categoryHelpers';
 import type { TranslationKey } from '@/i18n';
 import type { Language, SharedMember } from '@/types';

@@ -1,56 +1,46 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, SegmentedButtons } from 'react-native-paper';
-import { useRouter } from 'expo-router';
 import { ScreenShell } from '@/components/ScreenShell';
-import { Button } from '@/components/Button';
 import { Colors, Radius, Typography } from '@/constants/theme';
 
 export default function PrivacyScreen() {
-  const router = useRouter();
   const [lang, setLang] = useState<'en' | 'hi'>('en');
 
-  const backButton = (
-    <Button
-      title={lang === 'hi' ? 'पीछे' : 'Back'}
-      variant="ghost"
-      style={styles.backBtn}
-      onPress={() => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace('/(tabs)');
-        }
-      }}
-    />
-  );
-
   return (
-    <View style={styles.root}>
-      <ScreenShell
-        title={lang === 'hi' ? 'गोपनीयता नीति' : 'Privacy Policy'}
-        subtitle="Repeato App"
-        headerExtra={backButton}
-      >
-        <SegmentedButtons
-          value={lang}
-          onValueChange={(val) => setLang(val as 'en' | 'hi')}
-          buttons={[
-            { value: 'en', label: 'English' },
-            { value: 'hi', label: 'हिन्दी' },
-          ]}
-          style={styles.langSelector}
-          theme={{ colors: { secondaryContainer: Colors.marigoldLight } }}
-        />
+    <ScreenShell title={lang === 'hi' ? 'गोपनीयता नीति' : 'Privacy Policy'}>
+      <ScrollView style={styles.root} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+          <Card style={styles.headerCard} mode="elevated">
+            <Card.Content>
+              <Text style={styles.headerTitle}>
+                {lang === 'hi' ? 'आपकी गोपनीयता हमारी प्राथमिकता है' : 'Your Privacy is Our Priority'}
+              </Text>
+              <Text style={styles.headerSubtitle}>
+                {lang === 'hi'
+                  ? 'जानें कि Repeato आपके डेटा को कैसे सुरक्षित और निजी रखता है।'
+                  : 'Learn how Repeato protects your data and keeps your recurring tasks private.'}
+              </Text>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+              <SegmentedButtons
+                value={lang}
+                onValueChange={(val) => setLang(val as 'en' | 'hi')}
+                buttons={[
+                  { value: 'en', label: 'English' },
+                  { value: 'hi', label: 'हिंदी' },
+                ]}
+                style={styles.segmentedBtn}
+              />
+            </Card.Content>
+          </Card>
+
           {lang === 'en' ? (
-            <>
+            <View style={styles.contentSection}>
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. Welcome & Introduction</Text>
                   <Text style={styles.bodyText}>
-                    Hello and welcome to Repeato! We are absolutely thrilled to have you as part of our community. Your privacy is something we care about deeply, and we want you to feel completely safe and secure while using our app. This policy is written in plain language—without the complicated legal jargon—to help you understand exactly how we handle your information. By using Repeato, you're placing your trust in us, and we promise to protect your personal details with the utmost care and respect.
+                    Hello and welcome to Repeato! We are absolutely thrilled to have you as part of our community. Your privacy is something we care about deeply, and we want you to feel completely safe and secure while using our app. This policy is written in plain language—without the complicated legal jargon—to help you understand exactly how we handle your information. By using Repeato, you&apos;re placing your trust in us, and we promise to protect your personal details with the utmost care and respect.
                   </Text>
                 </Card.Content>
               </Card>
@@ -59,44 +49,35 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>2. What Information We Gather</Text>
                   <Text style={styles.bodyText}>
-                    To make Repeato run smoothly for you and your household, we collect a few basic pieces of information:
+                    To make managing your repeating tasks, household bills, and reminders seamless, Repeato collects:
                   </Text>
-                  <Text style={styles.bodyText}>
-                    • **Your Profile Info:** When you log in using your Google account, we retrieve your name, email address, and profile photo. This helps identify you inside the app and personalize your experience.
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • **Your Task Data:** We store the tasks you create, including task titles, how often they repeat, completed dates, skipped tasks, and notes. This is necessary to keep your schedule accurate.
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • **Household Sharing:** If you choose to share tasks with household members, we collect your unique household code and associate completion updates with your profile so members can collaborate easily.
-                  </Text>
+                  <Text style={styles.bulletText}>• <Text style={styles.boldText}>Google Account Info:</Text> Your name, email address, and profile photo when you sign in via Google.</Text>
+                  <Text style={styles.bulletText}>• <Text style={styles.boldText}>Task & Household Data:</Text> Titles, categories, reminder schedules, financial amounts, and activity history that you create inside the app.</Text>
+                  <Text style={styles.bulletText}>• <Text style={styles.boldText}>Device Settings:</Text> Your language preference (English or Hindi) and notification settings.</Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>3. How We Use Your Data & Personalized Recommendations</Text>
+                  <Text style={styles.sectionTitle}>3. How We Use Your Information</Text>
                   <Text style={styles.bodyText}>
-                    We use your information exclusively to make your scheduling experience beautiful and seamless:
+                    We use your details strictly to power your experience:
                   </Text>
-                  <Text style={styles.bodyText}>
-                    • **Syncing:** Keeping your tasks up-to-date across all your devices and with your household members.
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • **Personalized Recommendations:** We analyze your completed tasks to show you relevant suggestions and offers (for example, suggesting helpful tasks or household tools after you finish an chore). This helps customize your experience and make Repeato more helpful.
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    • **Reminders:** Sending you friendly push notifications so you never miss an important repeat chore.
-                  </Text>
+                  <Text style={styles.bulletText}>• To sync your recurring tasks across your devices in real-time.</Text>
+                  <Text style={styles.bulletText}>• To send timely local push notifications for upcoming task due dates.</Text>
+                  <Text style={styles.bulletText}>• To allow members of your shared household to see shared task updates and activity feeds.</Text>
+                  <Text style={styles.bulletText}>• We NEVER sell your personal information or share it with third-party advertisers.</Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>4. We Never Sell Your Data</Text>
+                  <Text style={styles.sectionTitle}>4. Information Sharing & Third Parties</Text>
                   <Text style={styles.bodyText}>
-                    We want to make this crystal clear: **We do not sell, trade, or rent your personal information or task data to any third-party advertisers or databases.** Your data is used solely inside Repeato to make the app more personalized and useful to you. We believe your schedule is private, and we intend to keep it that way.
+                    We share information only in limited, essential circumstances:
                   </Text>
+                  <Text style={styles.bulletText}>• <Text style={styles.boldText}>Household Members:</Text> Tasks you assign or share within a household context are visible to authorized members of that household.</Text>
+                  <Text style={styles.bulletText}>• <Text style={styles.boldText}>Cloud Infrastructure:</Text> We store backend data securely using Google Firebase (Firestore and Firebase Auth).</Text>
                 </Card.Content>
               </Card>
 
@@ -104,7 +85,7 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>5. Storage, Backups & Safety</Text>
                   <Text style={styles.bodyText}>
-                    Your information is securely saved directly on your phone and backed up in real-time to Google's cloud servers (Firebase Firestore). We use industry-standard encryption and safety measures to ensure that your records are kept private and secure from unauthorized access.
+                    Your information is securely saved directly on your phone and backed up in real-time to Google&apos;s cloud servers (Firebase Firestore). We use industry-standard encryption and safety measures to ensure that your records are kept private and secure from unauthorized access.
                   </Text>
                 </Card.Content>
               </Card>
@@ -127,9 +108,9 @@ export default function PrivacyScreen() {
                   <Text style={styles.contactEmail}>✉ support@repeato.app</Text>
                 </Card.Content>
               </Card>
-            </>
+            </View>
           ) : (
-            <>
+            <View style={styles.contentSection}>
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. परिचय और स्वागत</Text>
@@ -211,16 +192,52 @@ export default function PrivacyScreen() {
                   <Text style={styles.contactEmail}>✉ support@repeato.app</Text>
                 </Card.Content>
               </Card>
-            </>
+            </View>
           )}
-        </ScrollView>
-      </ScreenShell>
-    </View>
+        </View>
+      </ScrollView>
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.surfaceMuted },
+  container: { flex: 1 },
+  headerCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    margin: 16,
+  },
+  headerTitle: {
+    ...Typography.title,
+    fontSize: 18,
+    color: Colors.indigo950,
+    marginBottom: 4,
+    fontFamily: 'Fraunces_700Bold',
+  },
+  headerSubtitle: {
+    ...Typography.bodySm,
+    color: Colors.inkSoft,
+    marginBottom: 12,
+  },
+  segmentedBtn: {
+    marginBottom: 4,
+  },
+  contentSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+  },
+  bulletText: {
+    ...Typography.bodySm,
+    color: Colors.inkSoft,
+    lineHeight: 20,
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  boldText: {
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.indigo950,
+  },
   backBtn: { marginVertical: 0 },
   langSelector: {
     marginHorizontal: 16,

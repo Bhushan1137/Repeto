@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { CategoryKey, Language, SharedMember } from '@/types';
 import type { TranslationKey } from '@/i18n';
@@ -7,16 +7,16 @@ import { FormField } from '@/components/FormField';
 import { SelectField } from '@/components/SelectField';
 import { DateField } from '@/components/DateField';
 import { TimeField } from '@/components/TimeField';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { computeNextDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORIES, CATEGORY_GROUPS, CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
+import { parseTaskInput } from '@/domain/parser';
 import {
   buildRecurrenceRule,
   type TaskFormErrors,
   type TaskFormState,
-  findSchedulingConflicts,
 } from '@/domain/taskForm';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
@@ -43,14 +43,40 @@ export function TaskFormFields({
   onChange,
   onCategoryChange,
   errors,
-  editingTaskId,
+  editingTaskId: _editingTaskId,
   sharedMembers,
 }: TaskFormFieldsProps) {
-  const { user } = useAuth();
-  const { tasks } = useTasks();
+  const { user: _user } = useAuth();
+  const { tasks: _tasks } = useTasks();
 
   const [showRecurrenceModal, setShowRecurrenceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [smartInputText, setSmartInputText] = useState('');
+
+  const applyParsedTask = (textToParse: string) => {
+    if (!textToParse.trim()) return;
+    const res = parseTaskInput(textToParse, language);
+    if (!res) return;
+
+    const patch: Partial<TaskFormState> = {};
+    if (res.title) patch.title = res.title;
+    if (res.amount !== undefined) {
+      patch.amountText = String(res.amount);
+      patch.finance = true;
+    }
+    if (res.icon) patch.icon = res.icon;
+    if (res.reminderTime) patch.reminderTime = res.reminderTime;
+    if (res.recurrence) {
+      patch.recurrenceType = res.recurrence.type;
+      if (res.recurrence.interval) patch.interval = res.recurrence.interval;
+      if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
+      if (res.recurrence.weekday) patch.weekday = res.recurrence.weekday;
+    }
+    if (res.category) {
+      onCategoryChange(res.category);
+    }
+    onChange(patch);
+  };
 
   useEffect(() => {
     if (sharedMembers !== undefined && sharedMembers.length === 0 && state.assignedTo !== null) {
@@ -58,32 +84,9 @@ export function TaskFormFields({
     }
   }, [sharedMembers, state.assignedTo, onChange]);
 
-  const conflicts = useMemo(() => {
-    return findSchedulingConflicts(state, tasks, editingTaskId);
-  }, [state, tasks, editingTaskId]);
-
   const config = getCategoryFormConfig(state.category);
   const previewRule = buildRecurrenceRule(state);
   const previewLabel = frequencyLabelFromRule(previewRule, language);
-
-  const assignOptions = useMemo(() => {
-    const opts = [{ value: '', label: language === 'hi' ? 'कोई नहीं' : 'Unassigned' }];
-    if (user) {
-      opts.push({ value: user.id, label: language === 'hi' ? `आप (${user.name})` : `You (${user.name})` });
-      
-      const list = sharedMembers !== undefined 
-        ? sharedMembers 
-        : (user.householdMembers ?? []);
-
-      for (const m of list) {
-        const val = ('userId' in m && m.userId) ? m.userId : (('code' in m && m.code) ? m.code : ('phone' in m ? m.phone : undefined));
-        if (val) {
-          opts.push({ value: val, label: m.name });
-        }
-      }
-    }
-    return opts;
-  }, [user, language, sharedMembers]);
 
   const defaultIcon = CATEGORY_MAP[state.category].icon;
   const emojiOptions = useMemo(() => {
@@ -159,6 +162,74 @@ export function TaskFormFields({
       {/* ── SECTION 1: TASK IDENTITY ── */}
       <View style={styles.sectionBlock}>
         <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '1. कार्य विवरण' : '1. Task Details'}</Text>
+        
+        {/* Prominent Smart Natural Language Input Bar */}
+        <Card style={styles.smartCard} mode="elevated">
+          <Card.Content style={styles.smartCardContent}>
+            <View style={styles.smartHeaderRow}>
+              <Text style={styles.smartBadge}>⚡ {language === 'hi' ? 'स्मार्ट इनपुट' : 'Smart Input'}</Text>
+              <Text style={styles.smartHint}>
+                {language === 'hi' ? 'ऑटो-फिल के लिए लिखें' : 'Type to auto-fill fields'}
+              </Text>
+            </View>
+            <View style={styles.smartInputWrap}>
+              <AppIcon name="sparkles" size={18} color={Colors.marigoldDeep} />
+              <TextInput
+                style={styles.smartTextInput}
+                placeholder={
+                  language === 'hi'
+                    ? 'उदा: "किराया ₹15000 हर महीने 5 तारीख को"'
+                    : 'e.g. "Rent ₹15000 monthly on 5th"'
+                }
+                placeholderTextColor={Colors.inkFaint}
+                value={smartInputText}
+                onChangeText={(text) => {
+                  setSmartInputText(text);
+                  applyParsedTask(text);
+                }}
+              />
+              {smartInputText.length > 0 && (
+                <Pressable onPress={() => setSmartInputText('')}>
+                  <AppIcon name="close-circle" size={18} color={Colors.inkFaint} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Smart Prompt Suggestions */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.smartPromptScroll}>
+              <Pressable
+                style={styles.smartPromptChip}
+                onPress={() => {
+                  const t = language === 'hi' ? 'किराया ₹15000 हर महीने 5 तारीख को' : 'House Rent ₹15000 monthly on 5th';
+                  setSmartInputText(t);
+                  applyParsedTask(t);
+                }}
+              >
+                <Text style={styles.smartPromptText}>🏠 {language === 'hi' ? 'किराया ₹15000' : 'Rent ₹15,000'}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.smartPromptChip}
+                onPress={() => {
+                  const t = language === 'hi' ? 'कामवाली वेतन ₹5000 हर महीने 1 तारीख को' : 'Maid salary ₹5000 monthly on 1st';
+                  setSmartInputText(t);
+                  applyParsedTask(t);
+                }}
+              >
+                <Text style={styles.smartPromptText}>🧹 {language === 'hi' ? 'कामवाली ₹5000' : 'Maid ₹5,000'}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.smartPromptChip}
+                onPress={() => {
+                  const t = language === 'hi' ? 'पानी का बिल ₹500 हर 2 महीने' : 'Water bill ₹500 every 2 months';
+                  setSmartInputText(t);
+                  applyParsedTask(t);
+                }}
+              >
+                <Text style={styles.smartPromptText}>💧 {language === 'hi' ? 'पानी बिल ₹500' : 'Water bill ₹500'}</Text>
+              </Pressable>
+            </ScrollView>
+          </Card.Content>
+        </Card>
         
         <FormField
           label={translate('presetTitle')}
@@ -896,5 +967,72 @@ const styles = StyleSheet.create({
   },
   switchThumbActive: {
     alignSelf: 'flex-end',
+  },
+
+  // Smart Input Styles
+  smartCard: {
+    backgroundColor: '#FFFBF0',
+    borderColor: '#F5C56E',
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
+    marginBottom: 14,
+    elevation: 2,
+  },
+  smartCardContent: {
+    padding: 12,
+  },
+  smartHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  smartBadge: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 12,
+    color: Colors.marigoldDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  smartHint: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.inkSoft,
+  },
+  smartInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 8,
+    marginBottom: 8,
+  },
+  smartTextInput: {
+    flex: 1,
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 13.5,
+    color: Colors.ink,
+    paddingVertical: 4,
+  },
+  smartPromptScroll: {
+    flexDirection: 'row',
+  },
+  smartPromptChip: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#E8A33D40',
+    borderRadius: Radius.xs,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 6,
+  },
+  smartPromptText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.ink,
   },
 });

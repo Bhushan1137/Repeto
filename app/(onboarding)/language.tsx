@@ -3,7 +3,6 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useOnboarding } from '@/context/OnboardingProvider';
-import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
 import { LanguagePicker } from '@/components/SettingRow';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -17,7 +16,6 @@ export default function LanguageScreen() {
   const router = useRouter();
   const { language, setLanguage } = useOnboarding();
   const { setLanguage: setAuthLanguage } = useAuth();
-  const { translate } = useTranslation(language);
   const insets = useSafeAreaInsets();
 
   return (
@@ -35,29 +33,33 @@ export default function LanguageScreen() {
       <OnboardingProgress step={1} />
       <View style={styles.hero} testID="language-hero-container">
         <ProgressRing percent={100} color={Colors.marigold} size={72} stroke={6} />
-        <Text style={styles.heroTitle}>{translate('obWelcomeTitle')}</Text>
+        <Text style={styles.heroTitle}>
+          {language === 'hi' ? 'भाषा का चयन करें' : 'Choose Your Language'}
+        </Text>
         <Text style={styles.heroSub}>
           {language === 'hi'
             ? 'वह भाषा चुनें जिसमें Repeato आपसे बात करे — आप इसे कभी भी बदल सकते हैं।'
-            : 'Choose the language Repeato should speak to you in — you can change this anytime.'}
+            : 'Select your preferred language for reminders and navigation — you can update this anytime in Settings.'}
         </Text>
       </View>
 
-      <LanguagePicker
-        selected={language}
-        onSelect={(code) => {
-          setLanguage(code as Language);
-          setAuthLanguage(code as Language);
-        }}
-        options={[
-          { code: 'en', label: 'English', native: 'English' },
-          { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
-        ]}
-        testID="language-picker"
-      />
+      <View style={styles.pickerCard}>
+        <LanguagePicker
+          selected={language}
+          onSelect={(code) => {
+            setLanguage(code as Language);
+            setAuthLanguage(code as Language);
+          }}
+          options={[
+            { code: 'en', label: 'English', native: 'English (US/IN)' },
+            { code: 'hi', label: 'Hindi', native: 'हिन्दी (Hindi)' },
+          ]}
+          testID="language-picker"
+        />
+      </View>
 
       <Button
-        title={translate('continueBtn')}
+        title={language === 'hi' ? 'आगे बढ़ें →' : 'Continue with English →'}
         style={styles.cta}
         onPress={async () => {
           await setAuthLanguage(language);
@@ -74,13 +76,23 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', paddingVertical: 26 },
   heroTitle: {
     fontFamily: 'Fraunces_700Bold',
-    fontSize: 24,
+    fontSize: 26,
     color: Colors.ink,
     marginTop: 18,
     marginBottom: 8,
     textAlign: 'center',
   },
-  heroSub: { fontSize: 13.5, color: Colors.inkSoft, textAlign: 'center', lineHeight: 21, maxWidth: 280 },
-  cta: { marginTop: 22 },
+  heroSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 21,
+    maxWidth: 320,
+  },
+  pickerCard: {
+    marginVertical: 12,
+  },
+  cta: { marginTop: 22, height: 48, borderRadius: 24 },
 });
 

@@ -42,7 +42,7 @@ const FEATURES = [
 export default function SignInScreen() {
   const router = useRouter();
   const { language } = useOnboarding();
-  const { signInWithGoogle, user, ready, setUser } = useAuth();
+  const { signInWithGoogle, setUser } = useAuth();
   const { translate } = useTranslation(language);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -81,7 +81,7 @@ export default function SignInScreen() {
       if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
         setEmailError('No account found. New users must sign up using Google Sign-In.');
       } else {
-        setEmailError(e?.message ?? 'Sign-in failed. Please try again.');
+        setEmailError('Sign-in failed. Please check your credentials and try again.');
       }
     } finally {
       setEmailLoading(false);
@@ -99,7 +99,7 @@ export default function SignInScreen() {
       await sendPasswordResetEmail(emailVal.trim());
       setResetSent(true);
     } catch (e: any) {
-      setEmailError(e?.message ?? 'Failed to send reset email.');
+      setEmailError('Failed to send reset email. Please check your email address and try again.');
     } finally {
       setEmailLoading(false);
     }
@@ -214,7 +214,7 @@ export default function SignInScreen() {
             <View style={styles.actionCard} testID="signin-action-card">
               <Text style={styles.cardHeaderTitle} testID="signin-card-title">Get Started Securely</Text>
               <Text style={styles.cardHeaderSub} testID="signin-card-subtitle">
-                We'll back up your reminders securely so you never lose them, even if you switch phones.
+                We&apos;ll back up your reminders securely so you never lose them, even if you switch phones.
               </Text>
 
               {info ? <Text style={styles.info} testID="signin-info-text">{info}</Text> : null}
@@ -544,16 +544,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   customGoogleBtn: {
-    backgroundColor: Colors.indigo950,
+    backgroundColor: Colors.marigoldDeep,
     borderRadius: Radius.full,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
     ...Shadows.sm,
   },
   customGoogleBtnPressed: {
-    backgroundColor: Colors.indigo800,
+    backgroundColor: Colors.marigold,
   },
   googleBtnContent: {
     flexDirection: 'row',

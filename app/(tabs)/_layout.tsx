@@ -32,7 +32,7 @@ function TabIcon({ tab, focused }: { tab: TabKey; focused: boolean }) {
   );
 }
 
-function AddTabButton({ onOpen, ...props }: PressableProps & { onOpen: () => void; children?: React.ReactNode }) {
+function AddTabButton({ onOpen, ..._props }: PressableProps & { onOpen: () => void; children?: React.ReactNode }) {
   return (
     <Pressable onPress={onOpen} style={styles.addSlot} testID="add-task-fab">
       <View style={styles.fabOuter} testID="add-task-fab-outer">

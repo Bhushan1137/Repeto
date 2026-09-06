@@ -2,7 +2,7 @@ import { AppIcon } from '@/components/AppIcon';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { Button } from '@/components/Button';
 import { CalendarView } from '@/components/CalendarView';
-import { EmptyState, ScreenShell, SectionHeader, StatPill } from '@/components/ScreenShell';
+import { EmptyState, ScreenShell, SectionHeader } from '@/components/ScreenShell';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
@@ -34,61 +34,7 @@ const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 's
   month: 'secMonth',
 };
 
-function HomeStatCard({
-  iconName,
-  iconBg,
-  iconColor,
-  label,
-  count,
-  countLabel,
-  linkColor,
-  borderColor,
-  onPress,
-  active = false,
-}: {
-  iconName: string;
-  iconBg: string;
-  iconColor: string;
-  label: string;
-  count: string;
-  countLabel: string;
-  linkColor: string;
-  borderColor: string;
-  onPress: () => void;
-  active?: boolean;
-}) {
-  return (
-    <Card
-      style={[
-        styles.homeStatCard,
-        {
-          borderColor: active ? iconColor : borderColor,
-          borderWidth: active ? 1.8 : 1,
-          backgroundColor: active ? 'rgba(255,255,255,0.85)' : Colors.white,
-        },
-      ]}
-      mode="outlined"
-      onPress={onPress}
-    >
-      <Card.Content style={styles.homeStatContent}>
-        <View style={styles.homeStatHeader}>
-          <View style={[styles.homeStatIconWrap, { backgroundColor: iconBg }]}>
-            <AppIcon name={iconName as any} size={13} color={iconColor} />
-          </View>
-          <Text style={styles.homeStatLabel} numberOfLines={1}>{label}</Text>
-        </View>
-        <View style={styles.homeStatBody}>
-          <Text style={[styles.homeStatCount, { color: iconColor }]}>{count}</Text>
-          <Text style={styles.homeStatCountLabel}>{countLabel}</Text>
-        </View>
-        <View style={styles.homeStatFooter}>
-          <Text style={[styles.homeStatLink, { color: linkColor }]}>View</Text>
-          <AppIcon name="chevron-forward" size={11} color={linkColor} style={{ marginLeft: 2 }} />
-        </View>
-      </Card.Content>
-    </Card>
-  );
-}
+
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -106,7 +52,7 @@ export default function HomeScreen() {
     completeTasks,
     snoozeTasks,
     deleteTasks,
-    archiveTasks,
+    archiveTasks: _archiveTasks,
     setTaskDueDate,
     updateTask,
     deleteHistoryEntry,
@@ -215,21 +161,7 @@ export default function HomeScreen() {
     setSelectedTaskId(null);
   };
 
-  const { currentDayLabel, currentDateValue, currentWeekdayLabel } = useMemo(() => {
-    const dateToFormat = selectedCalendarDate ?? new Date();
-    const day = dateToFormat.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
-      weekday: 'short',
-    });
-    const dateNum = dateToFormat.getDate();
-    const month = dateToFormat.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
-      month: 'short',
-    });
-    return {
-      currentDayLabel: month.toUpperCase(),
-      currentDateValue: String(dateNum),
-      currentWeekdayLabel: day.toUpperCase(),
-    };
-  }, [selectedCalendarDate, language]);
+
 
   const calendarButtonLabel = useMemo(() => {
     const dateToFormat = selectedCalendarDate ?? new Date();
@@ -577,9 +509,9 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Grouped tasks */}
+            {/* Grouped tasks (skips 'today' when TodayFocusSection is active) */}
             {groups.map(({ group, items }) =>
-              items.length === 0 ? null : (
+              items.length === 0 || (!isFiltering && group === 'today') ? null : (
                 <View key={group}>
                   <SectionHeader
                     label={translate(SECTION_KEYS[group])}

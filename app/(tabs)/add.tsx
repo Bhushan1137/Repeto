@@ -1,17 +1,11 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, Image, Linking } from 'react-native';
-import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { TaskFormFields } from '@/components/TaskFormFields';
 import { Button } from '@/components/Button';
-import { SettingRow } from '@/components/SettingRow';
-import { SelectField } from '@/components/SelectField';
-import { TimeField } from '@/components/TimeField';
-import { FormField } from '@/components/FormField';
 import { ScreenShell } from '@/components/ScreenShell';
-import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
-import { CATEGORIES, CATEGORY_GROUPS, CATEGORY_MAP } from '@/constants/categories';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -22,17 +16,10 @@ import { toSharedMember } from '@/domain/household';
 import {
   defaultFormState,
   applyCategoryChange,
-  formStateFromParsed,
   formStateToValues,
   validateFormState,
-  buildRecurrenceRule,
-  weekdayLabel,
-  weekdayLabel as getWeekdayLabel,
-  nthLabel,
-  intervalPresets,
   type TaskFormState,
 } from '@/domain/taskForm';
-import { frequencyLabelFromRule, ordinalSuffix } from '@/domain/recurrence';
 import type { SharedMember } from '@/types';
 
 export default function AddTaskScreen() {

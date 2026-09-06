@@ -58,19 +58,34 @@ export default function FinishScreen() {
     >
       <OnboardingProgress step={5} />
       <View style={styles.hero}>
-        <Text style={styles.emoji}>🔔</Text>
-        <Text style={styles.title}>{translate('finishTitle')}</Text>
-        <Text style={styles.sub}>{translate('finishSub')}</Text>
+        <View style={styles.celebrationBadge}>
+          <Text style={styles.emoji}>🎉</Text>
+        </View>
+        <Text style={styles.title}>
+          {language === 'hi' ? 'सब तैयार है!' : 'You’re All Set!'}
+        </Text>
+        <Text style={styles.sub}>
+          {language === 'hi'
+            ? `${suggestions.filter((s) => s.accepted).length} कार्य सेट किए गए हैं। अब आपका डैशबोर्ड तैयार है।`
+            : `${suggestions.filter((s) => s.accepted).length} repeating tasks created. Your schedule is ready.`}
+        </Text>
       </View>
 
-      <SettingRow
-        label={translate('pushNotifications')}
-        sub={translate('pushNotificationsSub')}
-        value={pushOptIn}
-        onValueChange={setPushOptIn}
-      />
+      <View style={styles.settingBox}>
+        <SettingRow
+          label={translate('pushNotifications')}
+          sub={translate('pushNotificationsSub')}
+          value={pushOptIn}
+          onValueChange={setPushOptIn}
+        />
+      </View>
 
-      <Button title={translate('finishSetup')} style={styles.cta} loading={loading} onPress={finish} />
+      <Button
+        title={language === 'hi' ? 'डैशबोर्ड पर जाएं 🚀' : 'Go to Dashboard 🚀'}
+        style={styles.cta}
+        loading={loading}
+        onPress={finish}
+      />
     </ScrollView>
   );
 }
@@ -78,9 +93,20 @@ export default function FinishScreen() {
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
   hero: { alignItems: 'center', paddingVertical: 26 },
-  emoji: { fontSize: 40, marginBottom: 10 },
-  title: { fontFamily: 'Fraunces_700Bold', fontSize: 24, color: Colors.ink, marginBottom: 8, textAlign: 'center' },
-  sub: { fontSize: 13.5, color: Colors.inkSoft, textAlign: 'center', lineHeight: 21, maxWidth: 280 },
-  cta: { marginTop: 22 },
+  celebrationBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FFF3E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    elevation: 2,
+  },
+  emoji: { fontSize: 36 },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 26, color: Colors.ink, marginBottom: 8, textAlign: 'center' },
+  sub: { fontFamily: 'Manrope_500Medium', fontSize: 13.5, color: Colors.inkSoft, textAlign: 'center', lineHeight: 21, maxWidth: 300 },
+  settingBox: { backgroundColor: Colors.white, borderRadius: 16, padding: 4, marginVertical: 8, elevation: 1 },
+  cta: { marginTop: 24, height: 48, borderRadius: 24 },
 });
 

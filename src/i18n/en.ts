@@ -240,7 +240,14 @@ export const en = {
   householdCreated: 'Household created!',
   householdLimitReached: 'Upgrade to add more households',
   householdNameExists: 'A household with this name already exists',
+  // ── Feature 3: Offline & Network Handling ──
+  offlineBannerTitle: '⚡ Offline Mode — Working locally',
+  backOnlineToast: '🟢 Back online — Synced offline changes',
+  offlineHouseholdAction: 'Internet connection required to manage households',
+  offlineSupportAction: 'Internet connection required to submit support request',
 };
+
+
 
 
 export type TranslationKey = keyof typeof en;

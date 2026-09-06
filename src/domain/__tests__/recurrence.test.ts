@@ -12,7 +12,6 @@ import {
   createTaskFromFormValues,
   completeTaskInstance,
   skipTaskInstance,
-  updateTaskDetails,
   FREE_TASK_LIMIT,
 } from '@/domain/task';
 import type { UserProfile } from '@/types';

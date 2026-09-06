@@ -2,12 +2,10 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { HouseholdContext, Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
-import { signInWithGoogle as authSignIn, profileFromFirebaseUser } from '@/services/authService';
+import { signInWithGoogle as authSignIn, profileFromFirebaseUser, profileFromSignedInUser } from '@/services/authService';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn } from '@/services/firebase/auth';
-import { profileFromSignedInUser } from '@/services/authService';
-import { loadUserRemote } from '@/services/firebase/firestore';
 import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain } from '@/domain/household';
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
@@ -213,7 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    let unsubPromise = init();
+    const unsubPromise = init();
 
     return () => {
       cancelled = true;

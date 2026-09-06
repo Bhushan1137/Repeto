@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useNotifications } from '@/providers/NotificationProvider';
@@ -7,12 +7,12 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { ScreenShell, EmptyState } from '@/components/ScreenShell';
 import { Button } from '@/components/Button';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { translate, language } = useTranslation();
-  const { notifications, unreadCount, markAllAsRead, deleteNotification } = useNotifications();
+  const { language } = useTranslation();
+  const { notifications, markAllAsRead, deleteNotification } = useNotifications();
 
   React.useEffect(() => {
     // Automatically mark all notifications as read when entering the inbox

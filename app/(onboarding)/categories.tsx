@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { CATEGORIES } from '@/constants/categories';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
@@ -46,11 +46,35 @@ export default function CategoriesScreen() {
     >
       <OnboardingProgress step={3} />
       
-      <Text style={styles.title} testID="categories-title">{translate('whatRepeats')}</Text>
-      
-      <View style={styles.infoRow} testID="categories-info-row">
-        <AppIcon name="checkmark-circle-outline" size={16} color={Colors.tealDeep} />
-        <Text style={styles.infoText} testID="categories-info-text">{translate('youCanChangeAnytime')}</Text>
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title} testID="categories-title">{translate('whatRepeats')}</Text>
+          <View style={styles.infoRow} testID="categories-info-row">
+            <AppIcon name="checkmark-circle-outline" size={16} color={Colors.tealDeep} />
+            <Text style={styles.infoText} testID="categories-info-text">{translate('youCanChangeAnytime')}</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => {
+            const allKeys = CATEGORIES.map((c) => c.key);
+            if (categories.length === allKeys.length) {
+              allKeys.forEach((k) => {
+                if (categories.includes(k as CategoryKey)) toggleCategory(k as CategoryKey);
+              });
+            } else {
+              allKeys.forEach((k) => {
+                if (!categories.includes(k as CategoryKey)) toggleCategory(k as CategoryKey);
+              });
+            }
+          }}
+          style={styles.selectAllBtn}
+        >
+          <Text style={styles.selectAllText}>
+            {categories.length === CATEGORIES.length
+              ? (language === 'hi' ? 'सभी हटाएं' : 'Clear All')
+              : (language === 'hi' ? 'सभी चुनें' : 'Select All')}
+          </Text>
+        </Pressable>
       </View>
 
       <Text style={styles.sub} testID="categories-subtitle">{translate('whatRepeatsSub')}</Text>
@@ -112,7 +136,7 @@ export default function CategoriesScreen() {
           testID="categories-skip-btn"
         />
         <Button
-          title={language === 'hi' ? 'जारी रखें →' : 'Continue →'}
+          title={language === 'hi' ? 'टास्क चुनें →' : 'Review Suggestions →'}
           style={[styles.cta, categories.length === 0 ? styles.disabled : undefined]}
           disabled={categories.length === 0}
           onPress={handleContinue}
@@ -130,7 +154,10 @@ export default function CategoriesScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
-  title: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginTop: 10, marginBottom: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10 },
+  selectAllBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: Colors.ivoryDim, marginTop: 4 },
+  selectAllText: { fontFamily: 'Manrope_700Bold', fontSize: 11.5, color: Colors.marigoldDeep },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginBottom: 4 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   infoText: { fontSize: 12, color: Colors.tealDeep, fontFamily: 'Manrope_600SemiBold' },
   sub: { fontSize: 13, color: Colors.inkSoft, marginBottom: 18, fontFamily: 'Manrope_400Regular' },

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { TextInput as PaperInput, HelperText } from 'react-native-paper';
-import { Colors, Typography } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 
 interface FormFieldProps {
   label: string;

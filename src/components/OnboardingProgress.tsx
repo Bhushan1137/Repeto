@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export const ONBOARDING_STEPS = 6;
@@ -60,21 +60,22 @@ export function OnboardingProgress({ step }: { step: number }) {
 const styles = StyleSheet.create({
   container: {
     marginBottom: 20,
+    paddingHorizontal: 4,
   },
   labelsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingHorizontal: 4,
+    marginBottom: 8,
+    gap: 4,
   },
   labelWrapper: {
     alignItems: 'center',
     flex: 1,
   },
   labelText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: 'Manrope_600SemiBold',
-    color: Colors.inkFaint,
+    color: Colors.inkSoft,
     textAlign: 'center',
   },
   labelTextActive: {
@@ -82,13 +83,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_800ExtraBold',
   },
   activeIndicator: {
-    height: 2,
-    backgroundColor: Colors.marigold,
-    width: '60%',
+    height: 2.5,
+    backgroundColor: Colors.marigoldDeep,
+    width: '65%',
     marginTop: 4,
-    borderRadius: 1,
+    borderRadius: 2,
   },
   row: { flexDirection: 'row', gap: 6, marginVertical: 6 },
   bar: { flex: 1, height: 4, borderRadius: 4, backgroundColor: Colors.ivoryLine },
-  barDone: { backgroundColor: Colors.marigold },
+  barDone: { backgroundColor: Colors.marigoldDeep },
 });

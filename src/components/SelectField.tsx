@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { Text, TextInput as PaperInput, HelperText, TouchableRipple, Card } from 'react-native-paper';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';
 
 export interface SelectOption<T extends string | number = string> {

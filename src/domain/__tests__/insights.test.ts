@@ -1,0 +1,124 @@
+import { describe, expect, it } from 'vitest';
+import {
+  calculateStreak,
+  getWeeklyActivity,
+  initials,
+  groupTasksByDue,
+  computeInsights,
+  computeUpcomingStrip,
+  computeSpendForecast,
+  computeMonthTrend,
+  calculateMemberOnTime,
+  deriveHouseholdMembers,
+  getHouseholdStats,
+} from '@/domain/insights';
+import { getMonthLabel } from '@/domain/recurrence';
+import type { RepeatingTask } from '@/types';
+
+const mockTask: RepeatingTask = {
+  id: 'task-1',
+  title: 'Pay Rent',
+  category: 'bills',
+  recurrence: { type: 'monthDay', dayOfMonth: 1 },
+  frequencyLabel: 'Monthly',
+  nextDueDate: '2026-09-01',
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z',
+  escalationCount: 0,
+  finance: true,
+  amount: 15000,
+  sharedWith: [{ code: 'MEMBER1', name: 'Alice', phone: '123', color: '#123456' }],
+  history: [
+    {
+      completedAt: '2026-08-01T10:00:00.000Z',
+      status: 'on_time',
+      month: '2026-08',
+      completedBy: 'user-1',
+    },
+    {
+      completedAt: '2026-09-02T10:00:00.000Z',
+      status: 'on_time',
+      month: getMonthLabel(),
+    },
+  ],
+};
+
+describe('insights domain module', () => {
+  it('calculates initials properly', () => {
+    expect(initials('Malay Mahajan')).toBe('MM');
+    expect(initials('Single')).toBe('S');
+    expect(initials('John Doe Extra')).toBe('JD');
+  });
+
+  it('calculates streak', () => {
+    expect(calculateStreak([mockTask])).toBe(2);
+    const brokenTask: RepeatingTask = {
+      ...mockTask,
+      history: [{ status: 'skipped', month: '2026-08' }],
+    };
+    expect(calculateStreak([brokenTask])).toBe(0);
+  });
+
+  it('gets weekly activity', () => {
+    const activityEn = getWeeklyActivity([mockTask], 'en');
+    const activityHi = getWeeklyActivity([mockTask], 'hi');
+    expect(activityEn).toHaveLength(7);
+    expect(activityHi).toHaveLength(7);
+    expect(activityEn[6].isToday).toBe(true);
+  });
+
+  it('groups tasks by due status', () => {
+    const grouped = groupTasksByDue([mockTask]);
+    expect(grouped).toHaveProperty('overdue');
+    expect(grouped).toHaveProperty('today');
+    expect(grouped).toHaveProperty('week');
+    expect(grouped).toHaveProperty('month');
+  });
+
+  it('computes overall insights result', () => {
+    const emptyResult = computeInsights([], 'en');
+    expect(emptyResult.isEmpty).toBe(true);
+
+    const fullResult = computeInsights([mockTask], 'en');
+    expect(fullResult.isEmpty).toBe(false);
+    expect(fullResult.activeTasksCount).toBe(1);
+    expect(fullResult.bars.length).toBeGreaterThan(0);
+  });
+
+  it('computes upcoming strip slots', () => {
+    const slotsEn = computeUpcomingStrip([mockTask], 'en');
+    const slotsHi = computeUpcomingStrip([mockTask], 'hi');
+    expect(slotsEn.length).toBeGreaterThan(0);
+    expect(slotsHi.length).toBeGreaterThan(0);
+  });
+
+  it('computes spend forecast', () => {
+    const forecast = computeSpendForecast([mockTask], 'en');
+    expect(forecast.thisMonthTotal).toBe(15000);
+    expect(forecast.yearlyEstimate).toBe(180000);
+    expect(forecast.currency).toBe('₹');
+  });
+
+  it('computes month trend', () => {
+    const trend = computeMonthTrend([mockTask], 'en');
+    expect(trend.direction).toBe('insufficient_data');
+  });
+
+  it('derives household members and member statistics', () => {
+    const members = deriveHouseholdMembers(
+      [mockTask],
+      'Malay',
+      [{ code: 'MEMBER1', name: 'Alice', color: '#123456', status: 'active', addedAt: '2026-01-01' }],
+      'user-1',
+      'USERCODE1'
+    );
+    expect(members).toHaveLength(2);
+    expect(members[0].isYou).toBe(true);
+
+    const onTime = calculateMemberOnTime([mockTask], 'user-1', undefined, true);
+    expect(onTime).toBeGreaterThanOrEqual(0);
+
+    const stats = getHouseholdStats([mockTask]);
+    expect(stats.shared).toHaveLength(1);
+  });
+});

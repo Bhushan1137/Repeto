@@ -65,12 +65,13 @@ export async function saveTaskRemote(userId: string, task: RepeatingTask): Promi
   await setDoc(doc(db, 'users', userId, 'tasks', task.id), payload, { merge: true });
 }
 
-export async function loadTasksRemote(userId: string): Promise<RepeatingTask[]> {
+export async function loadTasksRemote(userId: string, maxLimit = 100): Promise<RepeatingTask[]> {
   const db = getFirestoreDb();
   if (!db) return [];
 
   await waitForAuthUid();
-  const snap = await getDocs(collection(db, 'users', userId, 'tasks'));
+  const q = query(collection(db, 'users', userId, 'tasks'), limit(maxLimit));
+  const snap = await getDocs(q);
   return snap.docs.map((d) => d.data() as RepeatingTask);
 }
 

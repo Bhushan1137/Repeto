@@ -15,7 +15,9 @@ import { collection, doc, setDoc, query, where, onSnapshot, updateDoc, arrayUnio
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToast } from '@/providers/ToastProvider';
+import { useNetworkStatus } from '@/providers/AppProviders';
 import { AppIcon } from '@/components/AppIcon';
+
 import { Button } from '@/components/Button';
 import { Colors, Radius, Typography } from '@/constants/theme';
 
@@ -42,6 +44,7 @@ export default function HelpSupportScreen() {
   const router = useRouter();
   const { translate, language } = useTranslation();
   const { showToast } = useToast();
+  const { isOnline } = useNetworkStatus();
   
   const db = getFirestoreDb();
   const auth = getFirebaseAuth();
@@ -110,6 +113,10 @@ export default function HelpSupportScreen() {
 
   // 2. Submit new ticket
   const handleSubmitTicket = async () => {
+    if (!isOnline) {
+      showToast(translate('offlineSupportAction'));
+      return;
+    }
     if (!db || !user) {
       showToast(language === 'hi' ? 'त्रुटि: प्रमाणीकरण आवश्यक है' : 'Error: Authentication required');
       return;
@@ -152,8 +159,13 @@ export default function HelpSupportScreen() {
 
   // 3. User reply submission
   const handleSendReply = async () => {
+    if (!isOnline) {
+      showToast(translate('offlineSupportAction'));
+      return;
+    }
     if (!db || !selectedTicket || !replyText.trim()) return;
     if (!checkSpamCooldown()) return;
+
     
     if (selectedTicket.replies && selectedTicket.replies.length >= 25) {
       showToast(

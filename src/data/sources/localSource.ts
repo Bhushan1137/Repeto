@@ -69,6 +69,7 @@ export interface SyncOperation {
   type: SyncOpType;
   task?: RepeatingTask;
   taskId?: string;
+  householdId?: string;
   timestamp: string;
 }
 

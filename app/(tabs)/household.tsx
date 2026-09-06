@@ -3,13 +3,13 @@ import { View, StyleSheet, Platform, Modal, Pressable, Alert, TouchableOpacity, 
 import { Text, Card, TouchableRipple, TextInput as PaperInput } from 'react-native-paper';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTasks } from '@/providers/TaskProvider';
-import { useAuth } from '@/providers/AuthProvider';
+import { useAuth, useNetworkStatus } from '@/providers/AppProviders';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
+
 import { useNotifications } from '@/providers/NotificationProvider';
 import type { AppNotification } from '@/types/notification';
 import { useHousehold } from '@/hooks/useInsights';
-import { TaskCard } from '@/components/TaskCard';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { ScreenShell, SectionHeader, EmptyState } from '@/components/ScreenShell';
@@ -22,7 +22,6 @@ import { HouseholdContextSwitcher } from "@/components/HouseholdContextSwitcher"
 import { CreateHouseholdSheet } from "@/components/CreateHouseholdSheet";
 import { HouseholdSettingsSheet } from "@/components/HouseholdSettingsSheet";
 import {
-  addHouseholdMember,
   householdMemberFromInvite,
   normalizeInviteCode,
   pendingMemberFromCode,
@@ -31,7 +30,7 @@ import {
   memberColor,
   HOUSEHOLD_COLORS,
 } from '@/domain/household';
-import { Colors, Gradients, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import type { RepeatingTask, CategoryKey, HouseholdMemberProfile, HouseholdContext } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -104,9 +103,12 @@ function SharedTaskCard({
               {language === 'hi' ? 'साझाकर्ता: ' : 'Shared by '}<Text style={styles.sharedSubBold}>{creatorName}</Text>
             </Text>
             <View style={styles.sharedAssigneeWrap}>
-              <AppIcon name="person-circle-outline" size={12} color={Colors.inkSoft} style={{ marginRight: 3 }} />
+              <AppIcon name="person-circle-outline" size={12} color={task.assignedTo ? Colors.tealDeep : Colors.inkFaint} style={{ marginRight: 3 }} />
               <Text style={styles.sharedSubText} numberOfLines={1}>
-                {language === 'hi' ? 'सौंपा: ' : 'Assigned to '}<Text style={styles.sharedSubBold}>{assigneeName}</Text>
+                {task.assignedTo ? (language === 'hi' ? 'सौंपा: ' : 'Assigned: ') : ''}
+                <Text style={[styles.sharedSubBold, !task.assignedTo && { color: Colors.marigoldDeep }]}>
+                  {assigneeName}
+                </Text>
               </Text>
             </View>
           </View>
@@ -162,17 +164,17 @@ function HouseholdView({
   activeHousehold,
   households,
   householdScopedTasks,
-  allTasks,
+  allTasks: _allTasks,
   language,
   translate,
   showToast,
   addNotification,
   updateUser,
-  createHousehold,
+  createHousehold: _createHousehold,
   switchHousehold,
   setCreateSheetVisible,
   setSelectedTaskId,
-  setEditingTaskId,
+  setEditingTaskId: _setEditingTaskId,
   setActivityVisible,
   removeHouseholdMemberAndCleanup,
   scrollRef,
@@ -181,7 +183,7 @@ function HouseholdView({
   activityY,
   onOpenSettings,
 }: HouseholdViewProps) {
-  // All data computed HERE so it re-derives when activeHousehold changes
+  const { isOnline } = useNetworkStatus();
   const { stats, members } = useHousehold(householdScopedTasks);
   const ringPercent = stats.total > 0 ? (stats.onTime / stats.total) * 100 : 0;
 
@@ -220,7 +222,12 @@ function HouseholdView({
   const activeMembers = activeHousehold.members ?? [];
 
   const addByCode = async (customCode?: string) => {
+    if (!isOnline) {
+      showToast(translate('offlineHouseholdAction'));
+      return;
+    }
     if (!user) return;
+
     const code = normalizeInviteCode(customCode ?? codeInput);
     if (!code || code.length < 7) {
       showToast(translate('invalidInviteCode'));
@@ -332,7 +339,7 @@ function HouseholdView({
     }
   };
 
-  const removeMember = async (code?: string) => {
+  const _removeMember = async (code?: string) => {
     if (!user || !code) return;
     const member = activeMembers.find((m: HouseholdMemberProfile) => m.code === code);
     const memberName = member ? member.name : code;
@@ -878,8 +885,7 @@ function ZeroHouseholdCard({
   const [addingCode, setAddingCode] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
-  const { updateUser, createHousehold, activeHousehold } = useAuth();
-  const { addNotification } = useNotifications();
+  const { updateUser, createHousehold } = useAuth();
 
   const addByCode = async (customCode?: string) => {
     if (!user) return;

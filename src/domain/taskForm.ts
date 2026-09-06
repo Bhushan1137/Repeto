@@ -228,7 +228,7 @@ export function formStateFromLegacyFreq(
   category: CategoryKey,
   amount?: number,
   finance?: boolean,
-  lang: Language = 'en',
+  _lang: Language = 'en',
   icon?: string
 ): TaskFormState {
   const recurrence = parseFrequencyLabel(freq);

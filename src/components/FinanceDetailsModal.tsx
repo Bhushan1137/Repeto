@@ -10,7 +10,7 @@ import {
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask } from '@/types';
 import type { TranslationKey } from '@/i18n';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { computeDetailedSpendReport } from '@/domain/financeExplorer';
 import { AppIcon } from '@/components/AppIcon';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';

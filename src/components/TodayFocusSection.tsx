@@ -3,7 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
 import { TaskCard } from '@/components/TaskCard';
 import { AppIcon } from '@/components/AppIcon';

@@ -6,7 +6,7 @@ import {
   parseDate,
   type DateFieldProps,
 } from '@/components/dateFieldShared';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 
 export function DateField({ label, value, onChange, hint, minimumDate, testID }: DateFieldProps) {
   const [open, setOpen] = useState(false);

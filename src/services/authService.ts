@@ -74,9 +74,7 @@ export async function signInWithGoogle(language: Language): Promise<SignInResult
     const message =
       err instanceof FirebaseError
         ? getAuthErrorMessage(err.code)
-        : err instanceof Error
-          ? err.message
-          : 'Sign-in failed';
+        : 'Sign-in failed. Please check your connection and try again.';
 
     return { ok: false, error: 'failed', message };
   }
@@ -100,9 +98,7 @@ export async function signInWithEmail(
     const message =
       err instanceof FirebaseError
         ? getAuthErrorMessage(err.code)
-        : err instanceof Error
-          ? err.message
-          : 'Sign-in failed';
+        : 'Sign-in failed. Please check your connection and try again.';
     return { ok: false, error: 'failed', message };
   }
 }

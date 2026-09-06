@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { View, Modal, Pressable, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Modal, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { Text, TextInput as PaperInput, Card } from "react-native-paper";
-import { Colors, Radius, Typography } from "@/constants/theme";
+import { Colors, Radius } from "@/constants/theme";
 import { HOUSEHOLD_ICONS, HOUSEHOLD_COLORS, MAX_HOUSEHOLDS } from "@/domain/household";
 
 interface CreateHouseholdSheetProps {

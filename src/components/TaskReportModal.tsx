@@ -16,7 +16,7 @@ import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { RepeatingTask } from '@/types';
 import { CATEGORIES, CATEGORY_MAP } from '@/constants/categories';
-import { AccentHex, Colors, Radius, Typography } from '@/constants/theme';
+import { AccentHex, Colors, Radius } from '@/constants/theme';
 import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
 import { daysUntilDue } from '@/domain/recurrence';
 import { AppIcon } from '@/components/AppIcon';

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useOnboarding } from '@/context/OnboardingProvider';
@@ -79,14 +79,22 @@ export default function ProfileScreen() {
       testID="profile-screen-scroll"
     >
       <OnboardingProgress step={2} />
-      <Text style={styles.title} testID="profile-title">{translate('profileTitle')}</Text>
-      <Text style={styles.sub} testID="profile-subtitle">{translate('profileSub')}</Text>
+
+      <View style={styles.avatarSection}>
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarText}>
+            {name.trim() ? name.trim().slice(0, 2).toUpperCase() : '👤'}
+          </Text>
+        </View>
+        <Text style={styles.title} testID="profile-title">{translate('profileTitle')}</Text>
+        <Text style={styles.sub} testID="profile-subtitle">{translate('profileSub')}</Text>
+      </View>
 
       <FormField
         label={translate('fullName')}
         value={name}
         onChangeText={setName}
-        placeholder={translate('fullNamePlaceholder')}
+        placeholder={language === 'hi' ? 'उदा. राहुल शर्मा' : 'e.g. Rahul Sharma'}
         autoCapitalize="words"
         error={errors.name}
         testID="profile-name-input"
@@ -109,12 +117,12 @@ export default function ProfileScreen() {
         keyboardType="phone-pad"
         maxLength={10}
         error={errors.phone}
-        hint={translate('phoneOptionalHint')}
+        hint={language === 'hi' ? 'व्हाट्सएप / एसएमएस रिमाइंडर्स के लिए (ऐच्छिक)' : 'Optional for SMS & WhatsApp task alerts (+91 10-digit number)'}
         testID="profile-phone-input"
       />
 
       <Button
-        title={translate('continueBtn')}
+        title={language === 'hi' ? 'श्रेणियां चुनें →' : 'Continue to Categories →'}
         style={styles.cta}
         loading={loading}
         onPress={handleContinue}
@@ -126,8 +134,20 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
-  title: { fontFamily: 'Fraunces_700Bold', fontSize: 24, color: Colors.ink, marginTop: 14, marginBottom: 4 },
-  sub: { fontSize: 13.5, color: Colors.inkSoft, marginBottom: 18 },
-  cta: { marginTop: 12 },
+  avatarSection: { alignItems: 'center', marginBottom: 16 },
+  avatarCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.marigold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    elevation: 2,
+  },
+  avatarText: { fontFamily: 'Manrope_800ExtraBold', fontSize: 22, color: Colors.white },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 24, color: Colors.ink, marginTop: 4, marginBottom: 4, textAlign: 'center' },
+  sub: { fontFamily: 'Manrope_500Medium', fontSize: 13.5, color: Colors.inkSoft, marginBottom: 14, textAlign: 'center', maxWidth: 300 },
+  cta: { marginTop: 16, height: 48, borderRadius: 24 },
 });
 
