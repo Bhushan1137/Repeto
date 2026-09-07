@@ -16,4 +16,5 @@ service-account*.json
 firebase.json
 .firebaserc
 firestore.rules
+Reapeato_change_request.md
 
