@@ -20,6 +20,8 @@ import { validateName, validatePhone, formatPhone } from '@/domain/validation';
 import type { Language } from '@/types';
 import { exportCalendar } from '@/services/calendarExport';
 
+import { ArchivedTasksSheet } from '@/components/ArchivedTasksSheet';
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, setLanguage, updateUser, signOut } = useAuth();
@@ -29,6 +31,7 @@ export default function ProfileScreen() {
 
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showArchivedSheet, setShowArchivedSheet] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
@@ -81,28 +84,39 @@ export default function ProfileScreen() {
     }
   };
 
-  const displayPhone = user.phone
+  const userLang = user?.language ?? 'en';
+  const displayPhone = user?.phone
     ? user.phone.replace(/(\+91\s)(\d{2})\d{4}(\d{4})/, '$1$2••••$3')
     : translate('noPhoneAdded');
+
+  if (!user) {
+    return (
+      <ScreenShell title={translate('profTitle')} subtitle={translate('profSub')}>
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Text style={{ fontSize: 14, color: Colors.inkSoft }}>Loading profile...</Text>
+        </View>
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell title={translate('profTitle')} subtitle={translate('profSub')}>
       <Card style={styles.heroCard} mode="elevated">
         <LinearGradient colors={[...Gradients.hero]} style={styles.hero}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials(user.name)}</Text>
+            <Text style={styles.avatarText}>{initials(user?.name ?? '')}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.name} testID="settings-profile-name">{user.name}</Text>
+            <Text style={styles.name} testID="settings-profile-name">{user?.name ?? ''}</Text>
             <Text style={styles.phone} testID="settings-profile-phone">{displayPhone}</Text>
-            {user.userCode && (
+            {user?.userCode && (
               <Pressable
                 onPress={() => setShowQrModal(true)}
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}
               >
                 <AppIcon name="qr-code-outline" size={14} color={Colors.marigold} />
                 <Text style={{ fontSize: 11, fontFamily: 'Manrope_700Bold', color: Colors.marigold }}>
-                  {user.language === 'hi' ? 'मेरा क्यूआर / कोड:' : 'My QR / Code:'} {user.userCode}
+                  {userLang === 'hi' ? 'मेरा क्यूआर / कोड:' : 'My QR / Code:'} {user.userCode}
                 </Text>
               </Pressable>
             )}
@@ -115,7 +129,7 @@ export default function ProfileScreen() {
 
       <SectionHeader label={translate('language')} />
       <LanguagePicker
-        selected={user.language}
+        selected={userLang}
         onSelect={handleLanguage}
         options={[
           { code: 'en', label: 'English', native: 'English' },
@@ -128,7 +142,7 @@ export default function ProfileScreen() {
       <SettingRow
         label={translate('pushNotifications')}
         sub={translate('pushNotificationsSub')}
-        value={user.pushOptIn}
+        value={!!user?.pushOptIn}
         onValueChange={async (v) => {
           if (v) await requestNotificationPermission();
           updateUser({ pushOptIn: v });
@@ -137,13 +151,18 @@ export default function ProfileScreen() {
       />
 
       <SectionHeader label={translate('more')} />
+      <LinkRow
+        label={userLang === 'hi' ? 'आर्काइव किए गए कार्य' : 'Archived Tasks'}
+        onPress={() => setShowArchivedSheet(true)}
+        testID="settings-archived-link"
+      />
       <LinkRow label={translate('manageHousehold')} onPress={() => router.push('/(tabs)/household')} testID="settings-household-link" />
       <LinkRow
-        label={user.language === 'hi' ? 'कैलेंडर में एक्सपोर्ट करें' : 'Export tasks to Calendar'}
+        label={userLang === 'hi' ? 'कैलेंडर में एक्सपोर्ट करें' : 'Export tasks to Calendar'}
         onPress={async () => {
           const ok = await exportCalendar(tasks);
           if (ok) {
-            showToast(user.language === 'hi' ? 'कैलेंडर फ़ाइल तैयार है!' : 'Calendar exported successfully!');
+            showToast(userLang === 'hi' ? 'कैलेंडर फ़ाइल तैयार है!' : 'Calendar exported successfully!');
           } else {
             showToast(translate('saveError'));
           }
@@ -287,6 +306,12 @@ export default function ProfileScreen() {
           </Card>
         </View>
       </Modal>
+
+      <ArchivedTasksSheet
+        visible={showArchivedSheet}
+        onClose={() => setShowArchivedSheet(false)}
+        language={user.language}
+      />
     </ScreenShell>
   );
 }

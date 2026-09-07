@@ -160,6 +160,19 @@ export function restoreTask(task: RepeatingTask): RepeatingTask {
   return { ...task, archived: false, archivedAt: undefined, updatedAt: new Date().toISOString() };
 }
 
+export function undoSkipTask(task: RepeatingTask): RepeatingTask {
+  const history = [...(task.history ?? [])];
+  const lastIndex = history.map((h) => h.status).lastIndexOf('skipped');
+  if (lastIndex === -1) return task;
+
+  history.splice(lastIndex, 1);
+  return {
+    ...task,
+    history,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function setNextDueDate(task: RepeatingTask, date: Date): RepeatingTask {
   return { ...task, nextDueDate: date.toISOString(), updatedAt: new Date().toISOString() };
 }

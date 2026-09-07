@@ -45,6 +45,7 @@ export default function HomeScreen() {
     completeTask: rawCompleteTask,
     snoozeTask,
     skipTask,
+    undoSkipTask,
     deleteTask,
     archiveTask,
     pinTask,
@@ -575,6 +576,7 @@ export default function HomeScreen() {
         onComplete={(id, note) => handleAction(() => completeTask(id, note))}
         onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
         onSkip={(id) => handleAction(() => skipTask(id))}
+        onUndoSkip={(id) => handleAction(() => undoSkipTask(id))}
         onDelete={(id) => handleAction(() => deleteTask(id))}
         onArchive={(id) => handleAction(() => archiveTask(id))}
         onPin={(id) => handleAction(() => pinTask(id))}

@@ -24,16 +24,24 @@ export const taskRepository = {
   async load(userId: string | null): Promise<RepeatingTask[]> {
     if (!userId) return [];
 
+    const local = await loadTasksForUser(userId);
+
     if (!remoteEnabled()) {
-      return loadTasksForUser(userId);
+      return local;
     }
 
     try {
-      const remote = await loadTasksRemote(userId);
-      await saveTasksForUser(userId, remote);
-      return remote;
+      const remote = await Promise.race([
+        loadTasksRemote(userId),
+        new Promise<RepeatingTask[]>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2500))
+      ]);
+      if (remote && Array.isArray(remote)) {
+        await saveTasksForUser(userId, remote);
+        return remote.length > 0 ? remote : local;
+      }
+      return local;
     } catch {
-      return loadTasksForUser(userId);
+      return local;
     }
   },
 

@@ -86,10 +86,9 @@ export default function CategoriesScreen() {
           const hint = language === 'hi' ? cat.hintHi : cat.hintEn;
 
           return (
-            <Card
+            <View
               key={cat.key}
-              style={[styles.catCard, { width: cardWidth }, active && styles.catCardActive]}
-              mode="elevated"
+              style={[styles.catCard, { width: cardWidth }, active ? styles.catCardActive : styles.catCardInactive]}
               testID={`categories-card-${cat.key}`}
             >
               <TouchableRipple
@@ -119,7 +118,7 @@ export default function CategoriesScreen() {
                   ) : null}
                 </View>
               </TouchableRipple>
-            </Card>
+            </View>
           );
         })}
       </View>
@@ -166,14 +165,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     backgroundColor: Colors.white,
     overflow: 'hidden',
-    elevation: 1,
     marginBottom: 8,
+  },
+  catCardInactive: {
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
   },
   catCardActive: {
     borderWidth: 1.5,
     borderColor: Colors.teal,
-    backgroundColor: 'rgba(62,124,106,0.04)',
-    elevation: 0,
+    backgroundColor: 'rgba(62,124,106,0.06)',
   },
   cardRipple: {
     padding: 10,

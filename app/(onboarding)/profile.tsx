@@ -67,68 +67,74 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.container,
-        {
-          paddingTop: Math.max(insets.top, 16) + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 16,
-        },
-      ]}
-      keyboardShouldPersistTaps="handled"
-      testID="profile-screen-scroll"
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <OnboardingProgress step={2} />
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: Math.max(insets.top, 16) + 16,
+            paddingBottom: Math.max(insets.bottom, 16) + 120,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        testID="profile-screen-scroll"
+      >
+        <OnboardingProgress step={2} />
 
-      <View style={styles.avatarSection}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>
-            {name.trim() ? name.trim().slice(0, 2).toUpperCase() : '👤'}
-          </Text>
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>
+              {name.trim() ? name.trim().slice(0, 2).toUpperCase() : '👤'}
+            </Text>
+          </View>
+          <Text style={styles.title} testID="profile-title">{translate('profileTitle')}</Text>
+          <Text style={styles.sub} testID="profile-subtitle">{translate('profileSub')}</Text>
         </View>
-        <Text style={styles.title} testID="profile-title">{translate('profileTitle')}</Text>
-        <Text style={styles.sub} testID="profile-subtitle">{translate('profileSub')}</Text>
-      </View>
 
-      <FormField
-        label={translate('fullName')}
-        value={name}
-        onChangeText={setName}
-        placeholder={language === 'hi' ? 'उदा. राहुल शर्मा' : 'e.g. Rahul Sharma'}
-        autoCapitalize="words"
-        error={errors.name}
-        testID="profile-name-input"
-      />
+        <FormField
+          label={translate('fullName')}
+          value={name}
+          onChangeText={setName}
+          placeholder={language === 'hi' ? 'उदा. राहुल शर्मा' : 'e.g. Rahul Sharma'}
+          autoCapitalize="words"
+          error={errors.name}
+          testID="profile-name-input"
+        />
 
-      <FormField
-        label={translate('email')}
-        value={email || user?.email || ''}
-        editable={false}
-        error={undefined}
-        hint={translate('emailFromGoogle')}
-        testID="profile-email-input"
-      />
+        <FormField
+          label={translate('email')}
+          value={email || user?.email || ''}
+          editable={false}
+          error={undefined}
+          hint={translate('emailFromGoogle')}
+          testID="profile-name-input"
+        />
 
-      <FormField
-        label={translate('mobileNumberOptional')}
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="9876543210"
-        keyboardType="phone-pad"
-        maxLength={10}
-        error={errors.phone}
-        hint={language === 'hi' ? 'व्हाट्सएप / एसएमएस रिमाइंडर्स के लिए (ऐच्छिक)' : 'Optional for SMS & WhatsApp task alerts (+91 10-digit number)'}
-        testID="profile-phone-input"
-      />
+        <FormField
+          label={translate('mobileNumberOptional')}
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="9876543210"
+          keyboardType="phone-pad"
+          maxLength={10}
+          error={errors.phone}
+          hint={language === 'hi' ? 'व्हाट्सएप / एसएमएस रिमाइंडर्स के लिए (ऐच्छिक)' : 'Optional for SMS & WhatsApp task alerts (+91 10-digit number)'}
+          testID="profile-phone-input"
+        />
 
-      <Button
-        title={language === 'hi' ? 'श्रेणियां चुनें →' : 'Continue to Categories →'}
-        style={styles.cta}
-        loading={loading}
-        onPress={handleContinue}
-        testID="profile-continue-btn"
-      />
-    </ScrollView>
+        <Button
+          title={language === 'hi' ? 'श्रेणियां चुनें →' : 'Continue to Categories →'}
+          style={styles.cta}
+          loading={loading}
+          onPress={handleContinue}
+          testID="profile-continue-btn"
+        />
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

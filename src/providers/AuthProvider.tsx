@@ -61,19 +61,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Repeato] Failed to load saved language', err);
       }
 
-      // 2. Load local user
+      // 2. Load local user from SQLite/AsyncStorage
+      let localUser: UserProfile | null = null;
       try {
-        const loaded = await userRepository.load();
-        if (!cancelled && loaded) {
-          setUser(loaded);
-          setReady(true);
+        localUser = await userRepository.load();
+        if (!cancelled && localUser) {
+          setUser(localUser);
         }
       } catch (err) {
         console.warn('[Repeato] Failed to load local user', err);
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
       }
 
       if (!firebaseReady) {
-        setReady(true);
         return;
       }
 
@@ -106,8 +109,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!firebaseUser) {
-          setUser(null);
-          setReady(true);
+          // Keep local user session if already loaded
+          if (!localUser) {
+            setUser(null);
+          }
           return;
         }
 

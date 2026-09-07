@@ -35,9 +35,9 @@ export function TodayFocusSection({
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
-  // Pending tasks due today
+  // Pending tasks needing focus today (due today or overdue)
   const pendingTodayTasks = useMemo(() => {
-    return tasks.filter((t) => daysUntilDue(t.nextDueDate) === 0);
+    return tasks.filter((t) => daysUntilDue(t.nextDueDate) <= 0);
   }, [tasks]);
 
   // Tasks completed today from task.history
@@ -221,17 +221,15 @@ export function TodayFocusSection({
           );
 
           return (
-            <Card
+            <View
               key={`completed-${item.task.id}-${idx}`}
               style={styles.completedCard}
-              mode="elevated"
-              onPress={() => onSelectTask(item.task.id)}
             >
               <TouchableRipple style={styles.completedRipple} onPress={() => onSelectTask(item.task.id)} borderless>
                 <View style={styles.completedContent}>
                   {/* Left Success Icon Badge */}
                   <View style={styles.successIconBadge}>
-                    <AppIcon name="checkmark-done-outline" size={16} color={Colors.white} />
+                    <AppIcon name="checkmark-done-outline" size={14} color={Colors.white} />
                   </View>
 
                   {/* Body Text */}
@@ -264,7 +262,7 @@ export function TodayFocusSection({
                   </View>
                 </View>
               </TouchableRipple>
-            </Card>
+            </View>
           );
         })}
       </View>
@@ -373,15 +371,16 @@ const styles = StyleSheet.create({
 
   // Completed Task Card Styles
   completedCard: {
-    backgroundColor: 'rgba(62, 124, 106, 0.05)',
-    borderRadius: Radius.md,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.sm,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: 'rgba(62, 124, 106, 0.18)',
-    elevation: 0.5,
+    borderColor: Colors.ivoryLine,
     overflow: 'hidden',
   },
   completedRipple: {
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   completedContent: {
     flexDirection: 'row',

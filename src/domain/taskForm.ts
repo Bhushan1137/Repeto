@@ -256,13 +256,19 @@ export function validateFormState(
 ): TaskFormErrors {
   const errors: TaskFormErrors = {};
 
-  if (state.title.trim().length < 2) errors.title = translate('presetTitleRequired');
+  const trimmedTitle = state.title.trim();
+  const hasAlphanumeric = /[a-zA-Z0-9\u0900-\u097F]/.test(trimmedTitle);
+  if (trimmedTitle.length < 2 || !hasAlphanumeric) {
+    errors.title = translate('presetTitleRequired');
+  }
 
   // Amount is required if Finance is toggled ON
   if (state.finance) {
     const digits = state.amountText.replace(/\D/g, '');
     if (!digits || Number(digits) <= 0) {
       errors.amount = translate('amountRequired');
+    } else if (Number(digits) > 9999999) {
+      errors.amount = 'Maximum amount allowed is ₹99,99,999';
     }
   }
 

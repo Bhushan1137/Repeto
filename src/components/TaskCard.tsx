@@ -93,24 +93,15 @@ export function TaskCard({
           <View style={[styles.iconBadge, { backgroundColor: Colors.marigold }]} testID={`${defaultId}-selected-badge`}>
             <Text style={[styles.icon, { color: Colors.white }]}>✓</Text>
           </View>
-        ) : onCompletePress ? (
+        ) : (
           <TouchableRipple
             style={[styles.iconBadge, { backgroundColor: catBg }]}
-            testID={`${defaultId}-complete-btn`}
-            onPress={(e) => {
-              e.stopPropagation();
-              onCompletePress();
-            }}
+            testID={`${defaultId}-icon-btn`}
+            onPress={onPress}
             borderless
           >
-            <Text style={styles.icon}>
-              {task.icon || cat.icon}
-            </Text>
-          </TouchableRipple>
-        ) : (
-          <View style={[styles.iconBadge, { backgroundColor: catBg }]} testID={`${defaultId}-icon-badge`}>
             <Text style={styles.icon}>{task.icon || cat.icon}</Text>
-          </View>
+          </TouchableRipple>
         )}
 
         <View style={styles.info} testID={`${defaultId}-info`}>

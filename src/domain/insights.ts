@@ -154,15 +154,31 @@ export function groupTasksByDue(tasks: RepeatingTask[]): Record<TaskGroup, Repea
     week: [],
     month: [],
   };
+  const today = new Date();
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
   tasks.forEach((task) => {
+    // Filter out invalid/empty tasks
+    if (!task || !task.title || !task.title.trim()) return;
+
     const group = getTaskGroup(daysUntilDue(task.nextDueDate));
     groups[group].push(task);
   });
-  // Sort each group by soonest due first
+
+  // Sort each group: pending tasks first, completed today tasks at the bottom
   (Object.keys(groups) as TaskGroup[]).forEach((key) => {
-    groups[key].sort(
-      (a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime()
-    );
+    groups[key].sort((a, b) => {
+      const aDoneToday = a.history?.some((h) => h.completedAt && isSameDay(new Date(h.completedAt), today));
+      const bDoneToday = b.history?.some((h) => h.completedAt && isSameDay(new Date(h.completedAt), today));
+
+      if (aDoneToday !== bDoneToday) {
+        return aDoneToday ? 1 : -1; // Move completed to bottom
+      }
+      return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime();
+    });
   });
   return groups;
 }

@@ -12,6 +12,7 @@ import {
   createTaskFromPreset,
   duplicateTask,
   restoreTask,
+  undoSkipTask,
   setNextDueDate,
   skipTaskInstance,
   snoozeTaskInstance,
@@ -138,13 +139,16 @@ describe('domain/task', () => {
   it('snoozeTaskInstance and skipTaskInstance add history entries', () => {
     const task = createTaskFromPreset('Gym', 'health', 'Monthly');
     task.nextDueDate = '2026-09-01T00:00:00.000Z';
+    const skipped = skipTaskInstance(task, 'UserB');
+    expect(skipped.history).toHaveLength(1);
+    expect(skipped.history[0].status).toBe('skipped');
+
+    const unskipped = undoSkipTask(skipped);
+    expect(unskipped.history).toHaveLength(0);
 
     const snoozed = snoozeTaskInstance(task, 3, 'UserA');
     expect(snoozed.snoozedUntil).toBeDefined();
     expect(snoozed.history[0].status).toBe('snoozed');
-
-    const skipped = skipTaskInstance(task, 'UserB');
-    expect(skipped.history[0].status).toBe('skipped');
   });
 
   it('updateTaskDetails updates fields and recalculates date if recurrence or start date changes', () => {

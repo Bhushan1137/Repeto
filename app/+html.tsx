@@ -29,6 +29,14 @@ export default function Root({ children }: { children: ReactNode }) {
 }
 
 const responsiveBackground = `
+* {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+*:focus, *:active, *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 body {
   background-color: #fff;
 }

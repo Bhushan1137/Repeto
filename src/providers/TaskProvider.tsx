@@ -27,6 +27,7 @@ import {
   toggleTaskPin,
   archiveTask,
   restoreTask,
+  undoSkipTask,
   setNextDueDate,
   duplicateTask,
   cleanupTasksOnRemoval,
@@ -47,6 +48,7 @@ interface OnboardingPreset {
 
 interface TaskContextValue {
   tasks: RepeatingTask[];
+  archivedTasks: RepeatingTask[];
   loading: boolean;
   addTask: (
     parsed: ParsedTaskInput,
@@ -55,6 +57,7 @@ interface TaskContextValue {
   completeTask: (taskId: string, note?: string) => Promise<void>;
   snoozeTask: (taskId: string, days?: number) => Promise<void>;
   skipTask: (taskId: string) => Promise<void>;
+  undoSkipTask: (taskId: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   archiveTask: (taskId: string) => Promise<void>;
   restoreTask: (taskId: string) => Promise<void>;
@@ -457,6 +460,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [applyMutation]
   );
 
+  const undoSkipTaskCb = useCallback(
+    (taskId: string) => applyMutation(taskId, undoSkipTask, 'taskUpdated'),
+    [applyMutation]
+  );
+
   const setTaskDueDate = useCallback(
     (taskId: string, date: Date) => applyMutation(taskId, (t) => setNextDueDate(t, date), 'taskUpdated'),
     [applyMutation]
@@ -732,11 +740,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       tasks: hydrated ? tasks.filter((t) => !t.archived) : [],
+      archivedTasks: hydrated ? tasks.filter((t) => t.archived) : [],
       loading,
       addTask,
       completeTask,
       snoozeTask,
       skipTask,
+      undoSkipTask: undoSkipTaskCb,
       deleteTask,
       archiveTask: archiveTaskCb,
       restoreTask: restoreTaskCb,
@@ -755,7 +765,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       removeHouseholdMemberAndCleanup,
       unshareAllLocalTasks,
     }),
-    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks]
+    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, undoSkipTaskCb, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks]
   );
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

@@ -40,10 +40,9 @@ export function LanguagePicker({ options, selected, onSelect, testID }: Language
       {options.map((opt) => {
         const active = selected === opt.code;
         return (
-          <Card
+          <View
             key={opt.code}
-            style={[styles.langCard, active && styles.langCardActive]}
-            mode="elevated"
+            style={[styles.langCard, active ? styles.langCardActive : styles.langCardInactive]}
             testID={testID ? `${testID}-card-${opt.code}` : undefined}
           >
             <TouchableRipple
@@ -66,7 +65,7 @@ export function LanguagePicker({ options, selected, onSelect, testID }: Language
                 )}
               </View>
             </TouchableRipple>
-          </Card>
+          </View>
         );
       })}
     </>
@@ -98,14 +97,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: Radius.md,
     marginBottom: 12,
-    elevation: 1,
     overflow: 'hidden',
+  },
+  langCardInactive: {
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
   },
   langCardActive: {
     borderWidth: 1.5,
     borderColor: Colors.marigold,
-    backgroundColor: 'rgba(232,163,61,0.04)',
-    elevation: 0,
+    backgroundColor: 'rgba(232,163,61,0.06)',
   },
   ripple: {
     padding: 16,

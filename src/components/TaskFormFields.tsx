@@ -234,8 +234,9 @@ export function TaskFormFields({
         <FormField
           label={translate('presetTitle')}
           value={state.title}
-          onChangeText={(title) => onChange({ title })}
+          onChangeText={(title) => onChange({ title: title.slice(0, 60) })}
           placeholder={translate(config.titlePlaceholder)}
+          maxLength={60}
           error={errors?.title}
           testID="task-title-input"
         />
@@ -374,9 +375,13 @@ export function TaskFormFields({
             <FormField
               label={language === 'hi' ? 'राशि (₹)' : 'Amount (₹)'}
               value={state.amountText}
-              onChangeText={(amountText) => onChange({ amountText })}
+              onChangeText={(val) => {
+                const cleaned = val.replace(/\D/g, '').slice(0, 7);
+                onChange({ amountText: cleaned });
+              }}
               placeholder={language === 'hi' ? 'राशि प्रविष्ट करें (उदा. ₹1,500)' : 'Enter amount (e.g. ₹1,500)'}
               keyboardType="number-pad"
+              maxLength={7}
               error={errors?.amount}
               testID="task-amount-input"
             />

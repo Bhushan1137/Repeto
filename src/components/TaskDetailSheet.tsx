@@ -50,6 +50,7 @@ interface TaskDetailSheetProps {
   onEdit?: (taskId: string) => void;
   onSetDueDate?: (taskId: string, date: Date) => void;
   onDeleteHistoryEntry?: (taskId: string, entryIndex: number) => void;
+  onUndoSkip?: (taskId: string) => void;
 }
 
 export function TaskDetailSheet({
@@ -61,6 +62,7 @@ export function TaskDetailSheet({
   onComplete,
   onSnooze,
   onSkip,
+  onUndoSkip,
   onDelete,
   onArchive,
   onPin,
@@ -519,6 +521,17 @@ export function TaskDetailSheet({
                         <Text style={styles.historyNote}>📝 {h.note}</Text>
                       ) : null}
                     </View>
+                    {h.status === 'skipped' && onUndoSkip && (
+                      <TouchableRipple
+                        style={[styles.deleteHistoryBtn, { backgroundColor: Colors.surfaceMuted, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 6 }]}
+                        onPress={() => onUndoSkip(task.id)}
+                        borderless
+                      >
+                        <Text style={{ fontSize: 11, fontFamily: 'Manrope_700Bold', color: Colors.tealDeep }}>
+                          {language === 'hi' ? 'पूर्ववत करें' : 'Undo Skip'}
+                        </Text>
+                      </TouchableRipple>
+                    )}
                     {onDeleteHistoryEntry && (
                       <TouchableRipple
                         style={styles.deleteHistoryBtn}
