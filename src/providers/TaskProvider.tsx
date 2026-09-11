@@ -120,8 +120,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    let cancelled = false;
+    if (userIdRef.current !== user.id) {
+      setTasks([]);
+      setHydrated(false);
+      setLoading(true);
+    }
     userIdRef.current = user.id;
+    let cancelled = false;
     let unsubscribeRemote: (() => void) | null = null;
 
     // 1. Immediately load local tasks so Home/Insights populate instantly without blocking

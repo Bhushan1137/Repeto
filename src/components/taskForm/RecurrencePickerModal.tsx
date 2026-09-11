@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, Modal, Pressable, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, Modal, Pressable, Text, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import type { Language, RecurrenceType } from '@/types';
 import type { TaskFormState } from '@/domain/taskForm';
 import { FormField } from '@/components/FormField';
@@ -20,6 +20,12 @@ interface RecurrencePickerModalProps {
   monthNameStr: string;
   nth: number;
   nthStr: string;
+}
+
+function formatOrdinalDay(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
 export function RecurrencePickerModal({
@@ -44,10 +50,14 @@ export function RecurrencePickerModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.modalSheet}>
-        <View style={styles.modalHandle} />
-        <ScrollView contentContainerStyle={styles.modalBody}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalKeyboardAvoiding}
+      >
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
           <Text style={styles.modalTitle}>{translate('howDoesItRepeat')}</Text>
           <Text style={styles.modalSub}>{translate('howDoesItRepeatSub')}</Text>
 
@@ -140,7 +150,7 @@ export function RecurrencePickerModal({
                   <Text style={styles.radioOptionSub}>
                     {language === 'hi'
                       ? `हर महीने की ${dateNum} तारीख को`
-                      : `Repeats every month on the ${dateNum} day`}
+                      : `Repeats every month on the ${formatOrdinalDay(dateNum)}`}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -278,12 +288,17 @@ export function RecurrencePickerModal({
             </View>
           )}
         </ScrollView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalKeyboardAvoiding: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',

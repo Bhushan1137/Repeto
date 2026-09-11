@@ -10,6 +10,7 @@ import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, 
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
+import { cancelAllNotifications } from '@/services/notifications';
 
 interface AuthContextValue {
   ready: boolean;
@@ -111,16 +112,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!firebaseUser) {
-          // Keep local user session if already loaded
-          if (!localUser) {
-            setUser(null);
+          if (localUser) {
+            localUser = null;
+            userRepository.clear().catch(() => {});
           }
+          setUser(null);
           setReady(true);
           return;
         }
 
+        // Ensure cached local profile belongs to the currently signed-in Firebase account
+        if (localUser && localUser.id !== firebaseUser.uid) {
+          const staleId = localUser.id;
+          localUser = null;
+          userRepository.clear(staleId).catch(() => {});
+        }
+
         if (!isOnline) {
-          if (localUser) {
+          if (localUser && localUser.id === firebaseUser.uid) {
             setUser(localUser);
           } else {
             setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
@@ -136,7 +145,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
-              const base = remote ? { ...localUser, ...remote } : (localUser ?? profileFromFirebaseUser(firebaseUser, language));
+              const matchingLocal = localUser && localUser.id === firebaseUser.uid ? localUser : null;
+              const base = remote
+                ? (matchingLocal ? { ...matchingLocal, ...remote } : remote)
+                : (matchingLocal ?? profileFromFirebaseUser(firebaseUser, language));
               const normalized = normalizeHouseholdProfile({
                 ...base,
                 profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
@@ -295,8 +307,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const userId = user?.id;
-    await userRepository.clear(userId);
     setUser(null);
+    await userRepository.clear(userId);
+    await cancelAllNotifications();
   }, [user?.id]);
 
   const activeHousehold = useMemo(() => {

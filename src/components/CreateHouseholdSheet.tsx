@@ -70,7 +70,7 @@ export function CreateHouseholdSheet({
     >
       <Pressable style={styles.backdrop} onPress={handleClose} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.sheetWrapper}
       >
         <Card style={styles.sheet} mode="elevated">

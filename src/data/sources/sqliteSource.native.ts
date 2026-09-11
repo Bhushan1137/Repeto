@@ -257,17 +257,23 @@ export async function clearAllSqliteData(userId?: string): Promise<void> {
   if (db) {
     try {
       db.runSync('DELETE FROM users');
-      if (userId) {
-        db.runSync('DELETE FROM tasks WHERE user_id = ?', [userId]);
-        db.runSync('DELETE FROM sync_queue WHERE user_id = ?', [userId]);
-      }
+      db.runSync('DELETE FROM tasks');
+      db.runSync('DELETE FROM sync_queue');
     } catch (err) {
       console.warn('[Repeato SQLite Native] Error clearing data:', err);
     }
   }
-  await AsyncStorage.removeItem(KEYS.user);
-  if (userId) {
-    await AsyncStorage.removeItem(tasksKey(userId));
-    await AsyncStorage.removeItem(syncKey(userId));
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const repeatoKeys = keys.filter((k) => k.startsWith('@repeato/'));
+    if (repeatoKeys.length > 0) {
+      await Promise.all(repeatoKeys.map((k) => AsyncStorage.removeItem(k)));
+    }
+  } catch {
+    await AsyncStorage.removeItem(KEYS.user);
+    if (userId) {
+      await AsyncStorage.removeItem(tasksKey(userId));
+      await AsyncStorage.removeItem(syncKey(userId));
+    }
   }
 }

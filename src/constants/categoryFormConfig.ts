@@ -14,6 +14,16 @@ export interface CategoryFormConfig {
   defaultReminderTime?: string;
 }
 
+const ALL_RECURRENCE_TYPES: RecurrenceType[] = [
+  'daily',
+  'weekly',
+  'monthDay',
+  'monthly',
+  'nthWeekday',
+  'yearly',
+  'interval',
+];
+
 export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
   bills: {
     titlePlaceholder: 'catPlaceholderBills',
@@ -23,7 +33,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'monthDay', dayOfMonth: 5 },
-    allowedRecurrenceTypes: ['monthDay', 'monthly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   finance: {
     titlePlaceholder: 'catPlaceholderFinance',
@@ -32,7 +42,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'monthDay', dayOfMonth: 1 },
-    allowedRecurrenceTypes: ['monthDay', 'monthly', 'yearly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   subs: {
     titlePlaceholder: 'catPlaceholderSubs',
@@ -41,7 +51,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'monthly' },
-    allowedRecurrenceTypes: ['monthly', 'yearly', 'monthDay'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   home: {
     titlePlaceholder: 'catPlaceholderHome',
@@ -50,7 +60,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'interval', interval: 30, intervalUnit: 'days' },
-    allowedRecurrenceTypes: ['interval', 'monthly', 'monthDay'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   help: {
     titlePlaceholder: 'catPlaceholderHelp',
@@ -60,7 +70,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'monthDay', dayOfMonth: 1 },
-    allowedRecurrenceTypes: ['monthDay', 'monthly'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   vehicle: {
     titlePlaceholder: 'catPlaceholderVehicle',
@@ -69,7 +79,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'interval', interval: 6, intervalUnit: 'months' },
-    allowedRecurrenceTypes: ['interval', 'yearly', 'nthWeekday'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   health: {
     titlePlaceholder: 'catPlaceholderHealth',
@@ -80,7 +90,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'daily' },
     defaultReminderTime: '08:00',
-    allowedRecurrenceTypes: ['daily', 'weekly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   personal: {
     titlePlaceholder: 'catPlaceholderPersonal',
@@ -90,7 +100,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'monthly' },
     defaultReminderTime: '10:00',
-    allowedRecurrenceTypes: ['weekly', 'monthly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   education: {
     titlePlaceholder: 'catPlaceholderEducation',
@@ -99,7 +109,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: false,
     defaultRecurrence: { type: 'monthDay', dayOfMonth: 10 },
-    allowedRecurrenceTypes: ['monthDay', 'monthly', 'interval', 'yearly'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   kids: {
     titlePlaceholder: 'catPlaceholderKids',
@@ -109,7 +119,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'weekly', weekday: 6 },
     defaultReminderTime: '16:00',
-    allowedRecurrenceTypes: ['weekly', 'monthly', 'daily'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   pets: {
     titlePlaceholder: 'catPlaceholderPets',
@@ -119,7 +129,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'interval', interval: 30, intervalUnit: 'days' },
     defaultReminderTime: '09:00',
-    allowedRecurrenceTypes: ['interval', 'weekly', 'monthly'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   festival: {
     titlePlaceholder: 'catPlaceholderFestival',
@@ -128,7 +138,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showReminderTime: false,
     showStartDate: true,
     defaultRecurrence: { type: 'yearly' },
-    allowedRecurrenceTypes: ['yearly'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   shopping: {
     titlePlaceholder: 'catPlaceholderShopping',
@@ -138,7 +148,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'monthly' },
     defaultReminderTime: '10:00',
-    allowedRecurrenceTypes: ['weekly', 'monthly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   fitness: {
     titlePlaceholder: 'catPlaceholderFitness',
@@ -148,7 +158,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'daily' },
     defaultReminderTime: '07:00',
-    allowedRecurrenceTypes: ['daily', 'weekly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   medicines: {
     titlePlaceholder: 'catPlaceholderMedicines',
@@ -158,7 +168,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'daily' },
     defaultReminderTime: '08:00',
-    allowedRecurrenceTypes: ['daily', 'weekly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
   work: {
     titlePlaceholder: 'catPlaceholderWork',
@@ -168,7 +178,7 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     showStartDate: false,
     defaultRecurrence: { type: 'weekly', weekday: 1 },
     defaultReminderTime: '09:00',
-    allowedRecurrenceTypes: ['daily', 'weekly', 'monthly', 'interval'],
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
 };
 

@@ -223,7 +223,11 @@ export default function HelpSupportScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}
+    >
+      <View style={styles.root}>
       {/* Header Row */}
       <View style={styles.header}>
         <TouchableRipple
@@ -444,7 +448,8 @@ export default function HelpSupportScreen() {
         </Modal>
       )}
     </View>
-  );
+  </KeyboardAvoidingView>
+);
 }
 
 const styles = StyleSheet.create({

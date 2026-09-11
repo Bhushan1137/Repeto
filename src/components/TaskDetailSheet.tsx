@@ -11,6 +11,7 @@ import {
   Alert,
   Image,
   Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -150,8 +151,12 @@ export function TaskDetailSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <Card style={styles.sheet} mode="elevated">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+      >
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Card style={styles.sheet} mode="elevated">
         <View style={styles.handle} />
 
         <LinearGradient colors={[...Gradients.hero]} style={styles.heroBand}>
@@ -603,7 +608,8 @@ export function TaskDetailSheet({
             </View>
           </TouchableRipple>
         </ScrollView>
-      </Card>
+        </Card>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

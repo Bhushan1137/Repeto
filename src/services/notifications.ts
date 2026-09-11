@@ -56,6 +56,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return permissionGranted;
 }
 
+export async function cancelAllNotifications(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // ignore
+  }
+}
+
 export async function cancelTaskReminder(taskId: string): Promise<void> {
   if (Platform.OS === 'web') return;
 
