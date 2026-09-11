@@ -1,4 +1,4 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, setLogLevel, type FirebaseApp } from 'firebase/app';
 // @ts-expect-error getReactNativePersistence types differ across bundlers
 import { initializeAuth, getReactNativePersistence, getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -13,6 +13,11 @@ let db: Firestore | null = null;
 export function initFirebase(): boolean {
   if (!isFirebaseConfigured()) return false;
   if (!getApps().length) {
+    try {
+      setLogLevel('silent');
+    } catch {
+      // Ignore if setLogLevel fails on platform
+    }
     app = initializeApp(firebaseConfig);
     if (Platform.OS === 'web') {
       auth = getAuth(app);

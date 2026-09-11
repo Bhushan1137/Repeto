@@ -2,6 +2,8 @@ import type { RepeatingTask } from '@/types';
 import {
   loadTasksForUser,
   saveTasksForUser,
+  saveSingleTaskLocal,
+  deleteSingleTaskLocal,
   enqueueSync,
   drainSyncQueue,
   requeueSyncOps,
@@ -21,23 +23,23 @@ function remoteEnabled(): boolean {
 }
 
 export const taskRepository = {
-  async load(userId: string | null): Promise<RepeatingTask[]> {
+  async load(userId: string | null, isOnline = true): Promise<RepeatingTask[]> {
     if (!userId) return [];
 
     const local = await loadTasksForUser(userId);
 
-    if (!remoteEnabled()) {
+    if (!remoteEnabled() || !isOnline) {
       return local;
     }
 
     try {
       const remote = await Promise.race([
         loadTasksRemote(userId),
-        new Promise<RepeatingTask[]>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2500))
+        new Promise<RepeatingTask[]>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1500))
       ]);
-      if (remote && Array.isArray(remote)) {
+      if (remote && Array.isArray(remote) && remote.length > 0) {
         await saveTasksForUser(userId, remote);
-        return remote.length > 0 ? remote : local;
+        return remote;
       }
       return local;
     } catch {
@@ -55,6 +57,8 @@ export const taskRepository = {
     userId: string,
     op: 'create' | 'update' = 'update'
   ): Promise<void> {
+    if (!userId || !task) return;
+    await saveSingleTaskLocal(userId, task);
     if (remoteEnabled()) {
       try {
         await saveTaskRemote(userId, task);
@@ -72,6 +76,8 @@ export const taskRepository = {
     userId: string,
     op: 'create' | 'update' = 'update'
   ): Promise<void> {
+    if (!userId || !task) return;
+    await saveSingleTaskLocal(userId, task);
     if (remoteEnabled()) {
       try {
         await saveHouseholdTaskRemote(householdId, task);
@@ -84,6 +90,8 @@ export const taskRepository = {
   },
 
   async deleteOne(taskId: string, userId: string): Promise<void> {
+    if (!userId || !taskId) return;
+    await deleteSingleTaskLocal(userId, taskId);
     if (remoteEnabled()) {
       try {
         await deleteTaskRemote(userId, taskId);
@@ -96,6 +104,8 @@ export const taskRepository = {
   },
 
   async deleteOneHousehold(taskId: string, householdId: string, userId: string): Promise<void> {
+    if (!userId || !taskId) return;
+    await deleteSingleTaskLocal(userId, taskId);
     if (remoteEnabled()) {
       try {
         await deleteHouseholdTaskRemote(householdId, taskId);

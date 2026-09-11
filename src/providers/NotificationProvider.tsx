@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from './AuthProvider';
+import { useNetworkStatus } from './NetworkProvider';
 import { userRepository } from '@/data/repositories/userRepository';
 import type { AppNotification } from '@/types/notification';
 
@@ -15,6 +16,7 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   // Keep a mutable ref of notifications to prevent markAllAsRead from re-triggering effects
@@ -24,18 +26,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [notifications]);
 
   useEffect(() => {
-    if (!user?.id) {
-      setNotifications([]);
+    if (!user?.id || !isOnline) {
       return;
     }
 
-    // Subscribe to remote Firestore notifications if remote is enabled
+    // Subscribe to remote Firestore notifications if remote is enabled and online
     const unsub = userRepository.listenNotifications(user.id, (notifs) => {
       setNotifications(notifs);
     });
 
     return () => unsub();
-  }, [user?.id]);
+  }, [user?.id, isOnline]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.read).length;

@@ -1,6 +1,6 @@
 import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
-import { frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
+import { computeNextDueDate, frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
 import type { TranslationKey } from '@/i18n';
 
 export interface TaskFormValues {
@@ -149,6 +149,8 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
 export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
   const config = getCategoryFormConfig(parsed.category);
   const rec = recurrenceToFormState(parsed.recurrence);
+  const rule = buildRecurrenceRule(rec);
+  const startDate = computeNextDueDate(rule, new Date()).slice(0, 10);
   return {
     title: parsed.title,
     category: parsed.category,
@@ -156,7 +158,7 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     amountText: parsed.amount ? String(parsed.amount) : '',
     finance: config.showFinance && !!parsed.amount,
     reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? null,
-    startDate: null,
+    startDate,
     assignedTo: null,
     householdId: null,
     icon: parsed.icon ?? null,
@@ -257,6 +259,7 @@ export function validateFormState(
   const errors: TaskFormErrors = {};
 
   const trimmedTitle = state.title.trim();
+  // eslint-disable-next-line no-misleading-character-class
   const hasAlphanumeric = /[a-zA-Z0-9\u0900-\u097F]/.test(trimmedTitle);
   if (trimmedTitle.length < 2 || !hasAlphanumeric) {
     errors.title = translate('presetTitleRequired');

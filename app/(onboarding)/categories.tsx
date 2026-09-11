@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { Text, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { CATEGORIES } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';

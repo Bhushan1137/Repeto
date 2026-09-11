@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
 import { useAuth } from './AuthProvider';
+import { useNetworkStatus } from './NetworkProvider';
 import {
   logRecommendationImpressionRemote,
   logRecommendationClickRemote,
@@ -20,11 +21,11 @@ const RecommendationContext = createContext<RecommendationContextValue | null>(n
 
 export function RecommendationProvider({ children }: { children: React.ReactNode }) {
   const { firebaseReady, user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
 
   useEffect(() => {
-    if (!firebaseReady || !user) {
-      setRecommendations([]);
+    if (!firebaseReady || !user || !isOnline) {
       return;
     }
 
@@ -32,16 +33,22 @@ export function RecommendationProvider({ children }: { children: React.ReactNode
     if (!db) return;
 
     // Realtime snapshot listener for runtime updates
-    const unsub = onSnapshot(collection(db, 'recommendations'), (snap) => {
-      const list: Recommendation[] = [];
-      snap.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as Recommendation);
-      });
-      setRecommendations(list);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'recommendations'),
+      (snap) => {
+        const list: Recommendation[] = [];
+        snap.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() } as Recommendation);
+        });
+        setRecommendations(list);
+      },
+      (error) => {
+        console.warn('[Repeato] Recommendation listener failed:', error);
+      }
+    );
 
     return () => unsub();
-  }, [firebaseReady, user?.id]);
+  }, [firebaseReady, user?.id, isOnline]);
 
   const findMatch = useCallback(
     (task: RepeatingTask): Recommendation | null => {

@@ -9,6 +9,7 @@ import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn } 
 import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain } from '@/domain/household';
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
+import { useNetworkStatus } from './NetworkProvider';
 
 interface AuthContextValue {
   ready: boolean;
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [savedLanguage, setSavedLanguage] = useState<Language>('en');
   const [languageSelected, setLanguageSelected] = useState(false);
+  const { isOnline } = useNetworkStatus();
   const firebaseReady = isFirebaseConfigured() && initFirebase();
 
   const language: Language = user?.language ?? savedLanguage;
@@ -113,6 +115,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (!localUser) {
             setUser(null);
           }
+          setReady(true);
+          return;
+        }
+
+        if (!isOnline) {
+          if (localUser) {
+            setUser(localUser);
+          } else {
+            setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+          }
+          setReady(true);
           return;
         }
 
@@ -123,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
-              const base = remote ?? profileFromFirebaseUser(firebaseUser, language);
+              const base = remote ? { ...localUser, ...remote } : (localUser ?? profileFromFirebaseUser(firebaseUser, language));
               const normalized = normalizeHouseholdProfile({
                 ...base,
                 profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
@@ -168,13 +181,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(profile);
             } catch (err) {
               console.warn('[Repeato] Error loading snapshot profile data', err);
-              setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+              if (localUser) {
+                setUser(localUser);
+              } else {
+                setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+              }
             } finally {
               setReady(true);
             }
           }, (err) => {
             console.warn('[Repeato] Profile snapshot listener failed', err);
-            setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+            if (localUser) {
+              setUser(localUser);
+            } else {
+              setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
+            }
             setReady(true);
           });
 
@@ -226,7 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
     };
-  }, [firebaseReady]);
+  }, [firebaseReady, isOnline]);
 
   const persistUser = useCallback(async (next: UserProfile | null) => {
     const normalized = next ? normalizeHouseholdProfile(next) : null;

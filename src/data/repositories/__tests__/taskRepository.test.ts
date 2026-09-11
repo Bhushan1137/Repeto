@@ -47,13 +47,15 @@ describe('data/repositories/taskRepository', () => {
     expect(localSource.saveTasksForUser).toHaveBeenCalledWith('u1', [dummyTask]);
   });
 
-  it('saveOne enqueues sync when remote is disabled', async () => {
+  it('saveOne saves to local SQLite and enqueues sync when remote is disabled', async () => {
     await taskRepository.saveOne(dummyTask, 'u1', 'create');
+    expect(localSource.saveSingleTaskLocal).toHaveBeenCalledWith('u1', dummyTask);
     expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'create', task: dummyTask });
   });
 
-  it('deleteOne enqueues sync for task deletion when remote is disabled', async () => {
+  it('deleteOne deletes from local SQLite and enqueues sync for task deletion when remote is disabled', async () => {
     await taskRepository.deleteOne('t1', 'u1');
+    expect(localSource.deleteSingleTaskLocal).toHaveBeenCalledWith('u1', 't1');
     expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'delete', taskId: 't1' });
   });
 });

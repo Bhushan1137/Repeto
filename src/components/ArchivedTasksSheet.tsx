@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
-import type { Language, RepeatingTask, CategoryKey } from '@/types';
+import type { Language, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';

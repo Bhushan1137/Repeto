@@ -259,12 +259,14 @@ export function addMemberToHousehold(
   householdId: string,
   member: HouseholdMemberProfile
 ): Partial<UserProfile> {
-  const households = (user.households ?? []).map(h => {
+  const normalized = normalizeHouseholdProfile(user);
+  const userCode = normalizeInviteCode(normalized.userCode);
+  const code = normalizeInviteCode(member.code);
+
+  const households = (normalized.households ?? []).map(h => {
     if (h.id !== householdId) return h;
-    const code = normalizeInviteCode(member.code);
-    const userCode = user.userCode ? normalizeInviteCode(user.userCode) : '';
     // Prevent adding yourself to your own household member list
-    if ((member.userId && member.userId === user.id) || (code && code === userCode)) return h;
+    if ((member.userId && member.userId === normalized.id) || (code && code === userCode)) return h;
     const exists = h.members.some(
       m => normalizeInviteCode(m.code) === code || (member.userId && m.userId === member.userId)
     );

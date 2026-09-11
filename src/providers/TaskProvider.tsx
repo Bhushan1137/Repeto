@@ -127,7 +127,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     // 1. Immediately load local tasks so Home/Insights populate instantly without blocking
     (async () => {
       try {
-        const localTasks = await taskRepository.load(user.id);
+        const localTasks = await taskRepository.load(user.id, isOnline);
         if (!cancelled && userIdRef.current === user.id) {
           setTasks(localTasks);
           setHydrated(true);
@@ -135,12 +135,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.warn('[Repeato] Failed to load local tasks:', err);
       } finally {
-        if (!cancelled && !firebaseReady) setLoading(false);
+        if (!cancelled && (!firebaseReady || !isOnline)) setLoading(false);
       }
     })();
 
-    // 2. Subscribe to remote tasks when Firebase is ready
-    if (firebaseReady) {
+    // 2. Subscribe to remote tasks when Firebase is ready and device is online
+    if (firebaseReady && isOnline) {
       setLoading(true);
       const householdIds = (user.households ?? []).map((h) => h.id);
       unsubscribeRemote = subscribeToUserTasksAndHouseholds(
@@ -176,7 +176,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       if (unsubscribeRemote) unsubscribeRemote();
     };
-  }, [user?.id, householdIdsKey, firebaseReady, showToast, translate]);
+  }, [user?.id, householdIdsKey, firebaseReady, isOnline, showToast, translate]);
 
   const persistAll = useCallback(
     async (next: RepeatingTask[]) => {

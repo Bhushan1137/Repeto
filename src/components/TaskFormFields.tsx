@@ -1,16 +1,15 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { CategoryKey, Language, SharedMember } from '@/types';
 import type { TranslationKey } from '@/i18n';
 import { FormField } from '@/components/FormField';
-import { SelectField } from '@/components/SelectField';
 import { DateField } from '@/components/DateField';
 import { TimeField } from '@/components/TimeField';
 import { Colors, Radius } from '@/constants/theme';
 import { computeNextDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
-import { CATEGORIES, CATEGORY_GROUPS, CATEGORY_MAP } from '@/constants/categories';
+import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { parseTaskInput } from '@/domain/parser';
 import {
@@ -22,7 +21,9 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { AppIcon } from '@/components/AppIcon';
 import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
-import { Button } from '@/components/Button';
+import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
+import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
+import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
 
 interface TaskFormFieldsProps {
   language: Language;
@@ -90,7 +91,7 @@ export function TaskFormFields({
 
   const defaultIcon = CATEGORY_MAP[state.category].icon;
   const emojiOptions = useMemo(() => {
-    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '<ctrl42>', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'];
+    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '🚗', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'];
     return [defaultIcon, ...baseEmojis.filter((e) => e !== defaultIcon)];
   }, [defaultIcon]);
 
@@ -121,14 +122,20 @@ export function TaskFormFields({
   const allowed = config.allowedRecurrenceTypes;
 
   const handleSelectExample = (config: any) => {
-    onChange({
+    const patch: Partial<TaskFormState> = {
       recurrenceType: config.recurrenceType,
       reminderTime: config.reminderTime,
       ...(config.interval !== undefined && { interval: config.interval }),
       ...(config.intervalUnit !== undefined && { intervalUnit: config.intervalUnit }),
       ...(config.dayOfMonth !== undefined && { dayOfMonth: config.dayOfMonth }),
       ...(config.weekday !== undefined && { weekday: config.weekday }),
-    });
+    };
+
+    const rule = buildRecurrenceRule({ ...state, ...patch });
+    const nextDueIso = computeNextDueDate(rule, new Date());
+    patch.startDate = nextDueIso.slice(0, 10);
+
+    onChange(patch);
   };
 
   const calculatedNextDue = useMemo(() => {
@@ -259,24 +266,12 @@ export function TaskFormFields({
         {config.subtitle ? <Text style={styles.catHint}>{translate(config.subtitle)}</Text> : null}
 
         <Text style={styles.fieldLabel}>{language === 'hi' ? 'इमोजी चुनें (वैकल्पिक)' : 'Choose Emoji (Optional)'}</Text>
-        <View style={styles.emojiContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emojiList}>
-            {emojiOptions.map((emoji) => {
-              const isActive = state.icon === emoji || (!state.icon && emoji === defaultIcon);
-              return (
-                <TouchableRipple
-                  key={emoji}
-                  onPress={() => onChange({ icon: emoji })}
-                  testID={`task-emoji-btn-${emoji}`}
-                  style={[styles.emojiBtn, isActive && styles.emojiBtnActive]}
-                  borderless
-                >
-                  <Text style={styles.emojiText}>{emoji}</Text>
-                </TouchableRipple>
-              );
-            })}
-          </ScrollView>
-        </View>
+        <IconPickerStrip
+          options={emojiOptions}
+          selectedIcon={state.icon}
+          defaultIcon={defaultIcon}
+          onSelectIcon={(icon) => onChange({ icon })}
+        />
       </View>
 
       {/* ── SECTION 2: SCHEDULE & RECURRENCE ── */}
@@ -288,7 +283,29 @@ export function TaskFormFields({
             <DateField
               label={language === 'hi' ? 'तारीख' : 'Date'}
               value={state.startDate || new Date().toISOString().slice(0, 10)}
-              onChange={(startDate) => onChange({ startDate })}
+              onChange={(startDate) => {
+                const patch: Partial<TaskFormState> = { startDate };
+                try {
+                  const d = new Date(startDate);
+                  if (!isNaN(d.getTime())) {
+                    const dayOfMonth = d.getDate();
+                    const weekday = d.getDay();
+                    const nthWeekday = Math.ceil(dayOfMonth / 7);
+
+                    if (state.recurrenceType === 'monthDay') {
+                      patch.dayOfMonth = dayOfMonth;
+                    } else if (state.recurrenceType === 'weekly') {
+                      patch.weekday = weekday;
+                    } else if (state.recurrenceType === 'nthWeekday') {
+                      patch.nthWeekday = nthWeekday;
+                      patch.weekday = weekday;
+                    }
+                  }
+                } catch {
+                  // ignore date parsing error
+                }
+                onChange(patch);
+              }}
               testID="task-date-picker"
             />
           </View>
@@ -403,187 +420,31 @@ export function TaskFormFields({
       </View>
 
       {/* Category Selection Modal */}
-      <Modal
+      <CategoryPickerModal
         visible={showCategoryModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCategoryModal(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setShowCategoryModal(false)} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <ScrollView contentContainerStyle={styles.modalBody}>
-            <Text style={styles.modalTitle}>{translate('parseCategory')}</Text>
-            <Text style={styles.modalSub}>
-              {language === 'hi' ? 'अपने कार्य के लिए श्रेणी चुनें' : 'Choose a category for your task'}
-            </Text>
-
-            {CATEGORY_GROUPS.map((group) => (
-              <View key={group.key} style={styles.groupBlock}>
-                <Text style={styles.groupLabel}>{language === 'hi' ? group.labelHi : group.labelEn}</Text>
-                <View style={styles.catGrid}>
-                  {CATEGORIES.filter((c) => c.group === group.key).map((cat) => {
-                    const active = state.category === cat.key;
-                    return (
-                      <Card
-                        key={cat.key}
-                        style={[styles.catChip, active && styles.catChipActive]}
-                        mode="elevated"
-                      >
-                        <TouchableRipple
-                          onPress={() => {
-                            onCategoryChange(cat.key);
-                            setShowCategoryModal(false);
-                          }}
-                          testID={`task-category-chip-${cat.key}`}
-                          style={styles.catChipInner}
-                          borderless
-                        >
-                          <View style={styles.catContent}>
-                            <Text style={styles.catChipIcon}>{cat.icon}</Text>
-                            <Text style={[styles.catChipText, active && styles.catChipTextActive]} numberOfLines={1}>
-                              {getCategoryLabel(cat.key, language)}
-                            </Text>
-                          </View>
-                        </TouchableRipple>
-                      </Card>
-                    );
-                  })}
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
+        onClose={() => setShowCategoryModal(false)}
+        selectedCategory={state.category}
+        onSelectCategory={onCategoryChange}
+        language={language}
+        translate={translate}
+      />
 
       {/* Recurrence Selection Modal */}
-      <Modal visible={showRecurrenceModal} transparent animationType="slide" onRequestClose={() => setShowRecurrenceModal(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setShowRecurrenceModal(false)} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <ScrollView contentContainerStyle={styles.modalBody}>
-            <Text style={styles.modalTitle}>{translate('howDoesItRepeat')}</Text>
-            <Text style={styles.modalSub}>{translate('howDoesItRepeatSub')}</Text>
-
-            {/* Recurrence Options */}
-            {allowed.includes('daily') && (
-              <TouchableOpacity style={styles.radioOption} onPress={() => onChange({ recurrenceType: 'daily' })} activeOpacity={0.7}>
-                <View style={[styles.radioCircle, state.recurrenceType === 'daily' && styles.radioCircleActive]}>
-                  {state.recurrenceType === 'daily' && <View style={styles.radioInnerCircle} />}
-                </View>
-                <View style={styles.radioText}>
-                  <Text style={styles.radioOptionTitle}>{language === 'hi' ? 'हर दिन' : 'Every day'}</Text>
-                  <Text style={styles.radioOptionSub}>{language === 'hi' ? 'प्रतिदिन पुनरावृत्ति' : 'Repeats every day'}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {allowed.includes('weekly') && (
-              <TouchableOpacity style={styles.radioOption} onPress={() => onChange({ recurrenceType: 'weekly', weekday: weekdayIndex })} activeOpacity={0.7}>
-                <View style={[styles.radioCircle, state.recurrenceType === 'weekly' && styles.radioCircleActive]}>
-                  {state.recurrenceType === 'weekly' && <View style={styles.radioInnerCircle} />}
-                </View>
-                <View style={styles.radioText}>
-                  <Text style={styles.radioOptionTitle}>{language === 'hi' ? 'हर हफ्ते' : 'Every week'}</Text>
-                  <Text style={styles.radioOptionSub}>{language === 'hi' ? `${weekdayNameStr} को दोहराता है` : `Repeats every week on ${weekdayNameStr}`}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {(allowed.includes('monthDay') || allowed.includes('monthly') || allowed.includes('nthWeekday')) && (
-              <View style={styles.monthlyBlock}>
-                <TouchableOpacity style={styles.radioOption} onPress={() => onChange({ recurrenceType: 'monthDay', dayOfMonth: dateNum })} activeOpacity={0.7}>
-                  <View style={[styles.radioCircle, state.recurrenceType === 'monthDay' && styles.radioCircleActive]}>
-                    {state.recurrenceType === 'monthDay' && <View style={styles.radioInnerCircle} />}
-                  </View>
-                  <View style={styles.radioText}>
-                    <Text style={styles.radioOptionTitle}>{language === 'hi' ? 'हर महीने' : 'Every month'}</Text>
-                    <Text style={styles.radioOptionSub}>
-                      {language === 'hi' ? `हर महीने की ${dateNum} तारीख को` : `Repeats every month on the ${dateNum} day`}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {allowed.includes('nthWeekday') && (
-                  <TouchableOpacity
-                    style={[styles.radioOption, styles.radioOptionNested]}
-                    onPress={() => onChange({ recurrenceType: 'nthWeekday', nthWeekday: nth, weekday: weekdayIndex })}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.radioCircle, state.recurrenceType === 'nthWeekday' && styles.radioCircleActive]}>
-                      {state.recurrenceType === 'nthWeekday' && <View style={styles.radioInnerCircle} />}
-                    </View>
-                    <View style={styles.radioText}>
-                      <Text style={styles.radioOptionTitle}>
-                        {language === 'hi' ? `हर महीने का ${nthStr} ${weekdayNameStr}` : `Every ${nthStr} ${weekdayNameStr}`}
-                      </Text>
-                      <Text style={styles.radioOptionSub}>
-                        {language === 'hi' ? 'दिन के स्थान के आधार पर' : 'Repeats based on day position'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {allowed.includes('yearly') && (
-              <TouchableOpacity style={styles.radioOption} onPress={() => onChange({ recurrenceType: 'yearly' })} activeOpacity={0.7}>
-                <View style={[styles.radioCircle, state.recurrenceType === 'yearly' && styles.radioCircleActive]}>
-                  {state.recurrenceType === 'yearly' && <View style={styles.radioInnerCircle} />}
-                </View>
-                <View style={styles.radioText}>
-                  <Text style={styles.radioOptionTitle}>{language === 'hi' ? 'हर साल' : 'Every year'}</Text>
-                  <Text style={styles.radioOptionSub}>
-                    {language === 'hi' ? `${dateNum} ${monthNameStr} को हर साल` : `Repeats every year on ${monthNameStr} ${dateNum}`}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {allowed.includes('interval') && (
-              <View style={styles.customBlock}>
-                <TouchableOpacity style={styles.radioOption} onPress={() => onChange({ recurrenceType: 'interval' })} activeOpacity={0.7}>
-                  <View style={[styles.radioCircle, state.recurrenceType === 'interval' && styles.radioCircleActive]}>
-                    {state.recurrenceType === 'interval' && <View style={styles.radioInnerCircle} />}
-                  </View>
-                  <View style={styles.radioText}>
-                    <Text style={styles.radioOptionTitle}>{language === 'hi' ? 'कस्टम अंतराल' : 'Custom interval'}</Text>
-                    <Text style={styles.radioOptionSub}>{language === 'hi' ? 'हर कुछ दिन या महीने' : 'Set a custom repeat pattern'}</Text>
-                  </View>
-                </TouchableOpacity>
-
-                {state.recurrenceType === 'interval' && (
-                  <View style={styles.customFields}>
-                    <FormField
-                      label={translate('customInterval')}
-                      value={String(state.interval)}
-                      onChangeText={(v) => {
-                        onChange({ recurrenceType: 'interval', interval: Math.max(1, parseInt(v.replace(/\D/g, ''), 10) || 1) });
-                      }}
-                      keyboardType="number-pad"
-                    />
-                    <SelectField
-                      label={translate('intervalUnit')}
-                      value={state.intervalUnit}
-                      options={[
-                        { value: 'days' as const, label: translate('intervalDays') },
-                        { value: 'months' as const, label: translate('intervalMonths') },
-                      ]}
-                      onChange={(intervalUnit) => onChange({ recurrenceType: 'interval', intervalUnit })}
-                    />
-                  </View>
-                )}
-              </View>
-            )}
-
-            <Button
-              title={language === 'hi' ? 'सहेजें' : 'Done'}
-              onPress={() => setShowRecurrenceModal(false)}
-              style={styles.modalDoneBtn}
-            />
-          </ScrollView>
-        </View>
-      </Modal>
+      <RecurrencePickerModal
+        visible={showRecurrenceModal}
+        onClose={() => setShowRecurrenceModal(false)}
+        state={state}
+        onChange={onChange}
+        allowed={allowed}
+        language={language}
+        translate={translate}
+        dateNum={dateNum}
+        weekdayIndex={weekdayIndex}
+        weekdayNameStr={weekdayNameStr}
+        monthNameStr={monthNameStr}
+        nth={nth}
+        nthStr={nthStr}
+      />
     </View>
   );
 }

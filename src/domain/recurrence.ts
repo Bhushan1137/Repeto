@@ -239,45 +239,39 @@ export function getMonthLabel(date: Date = new Date()): string {
   return date.toLocaleString('en', { month: 'short', year: 'numeric' });
 }
 
-export function isCurrentMonth(monthLabel: string): boolean {
-  return monthLabel === getMonthLabel();
+export function isCurrentMonth(monthLabel: string, date: Date = new Date()): boolean {
+  if (!monthLabel) return false;
+  if (monthLabel === getMonthLabel(date)) return true;
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  return monthLabel === `${yyyy}-${mm}`;
 }
 
 export function computePreviousDueDate(rule: RecurrenceRule, nextDueDateIso: string): string {
   const next = new Date(nextDueDateIso);
-  const copy = new Date(next);
   switch (rule.type) {
     case 'daily':
-      copy.setDate(copy.getDate() - 1);
-      break;
+      return addDays(next, -1).toISOString();
     case 'weekly':
-      copy.setDate(copy.getDate() - 7);
-      break;
+      return addDays(next, -7).toISOString();
     case 'monthly':
-      copy.setMonth(copy.getMonth() - 1);
-      break;
+      return addMonths(next, -1).toISOString();
     case 'yearly':
-      copy.setFullYear(copy.getFullYear() - 1);
-      break;
+      return addMonths(next, -12).toISOString();
     case 'interval': {
       const n = rule.interval ?? 30;
       if (rule.intervalUnit === 'months') {
-        copy.setMonth(copy.getMonth() - n);
-      } else {
-        copy.setDate(copy.getDate() - n);
+        return addMonths(next, -n).toISOString();
       }
-      break;
+      return addDays(next, -n).toISOString();
     }
     case 'monthDay': {
-      copy.setMonth(copy.getMonth() - 1);
-      break;
+      return setDayOfMonth(addMonths(next, -1), rule.dayOfMonth ?? 1).toISOString();
     }
     case 'nthWeekday': {
-      copy.setDate(copy.getDate() - 28);
-      break;
+      return addDays(next, -28).toISOString();
     }
     default:
-      copy.setDate(copy.getDate() - 30);
+      return addDays(next, -30).toISOString();
   }
-  return copy.toISOString();
 }
