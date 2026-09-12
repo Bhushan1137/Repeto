@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   archiveTask,
   canAddTask,
@@ -24,11 +24,21 @@ import {
   toggleTaskPin,
   updateTaskDetails,
   updateTaskInList,
+  mergeTasksLocalAndRemote,
 } from '@/domain/task';
 import type { RepeatingTask } from '@/types';
 import type { TaskFormValues } from '@/domain/taskForm';
 
 describe('domain/task', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-12T10:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('capTasksForPlan, canAddTask, canShareWith return expected defaults', () => {
     expect(canAddTask(null, 5)).toBe(true);
     expect(canShareWith(null, [])).toBe(true);
@@ -521,5 +531,90 @@ describe('domain/task', () => {
 
     const bulkUnpinned = bulkPinned.map((t) => toggleTaskPin(t));
     expect(bulkUnpinned.every((t) => t.pinned === false)).toBe(true);
+  });
+
+  describe('mergeTasksLocalAndRemote', () => {
+    it('prefers local task when local updatedAt is newer than remote', () => {
+      const remoteTask: RepeatingTask = {
+        ...createTaskFromPreset('Car Wash', 'vehicle', 'Weekly'),
+        id: 'task-car-wash',
+        nextDueDate: '2026-09-10T00:00:00.000Z', // Overdue
+        history: [],
+        updatedAt: '2026-09-10T12:00:00.000Z',
+      };
+
+      // User marked done locally
+      const localCompletedTask = completeTaskInstance(remoteTask);
+
+      const result = mergeTasksLocalAndRemote([localCompletedTask], [remoteTask]);
+      expect(result.merged).toHaveLength(1);
+      expect(result.merged[0].id).toBe('task-car-wash');
+      expect(result.merged[0].history).toHaveLength(1);
+      expect(result.merged[0].history[0].status).toBe('late');
+      expect(result.newerLocalTasks).toHaveLength(1);
+      expect(result.newerLocalTasks[0].id).toBe('task-car-wash');
+    });
+
+    it('prefers remote task when remote updatedAt is newer than local', () => {
+      const localTask: RepeatingTask = {
+        ...createTaskFromPreset('Rent', 'bills', 'Monthly'),
+        id: 'task-rent',
+        nextDueDate: '2026-09-15T00:00:00.000Z',
+        updatedAt: '2026-09-01T10:00:00.000Z',
+      };
+
+      const remoteTask: RepeatingTask = {
+        ...localTask,
+        title: 'Rent (Updated Remotely)',
+        updatedAt: '2026-09-12T15:00:00.000Z',
+      };
+
+      const result = mergeTasksLocalAndRemote([localTask], [remoteTask]);
+      expect(result.merged).toHaveLength(1);
+      expect(result.merged[0].title).toBe('Rent (Updated Remotely)');
+      expect(result.newerLocalTasks).toHaveLength(0);
+    });
+
+    it('preserves local tasks that are missing from remote and tags them in newerLocalTasks', () => {
+      const localTask: RepeatingTask = {
+        ...createTaskFromPreset('New Offline Task', 'personal', 'Daily'),
+        id: 'task-offline-new',
+        updatedAt: '2026-09-12T16:00:00.000Z',
+      };
+
+      const remoteTask: RepeatingTask = {
+        ...createTaskFromPreset('Existing Remote Task', 'bills', 'Monthly'),
+        id: 'task-remote-1',
+        updatedAt: '2026-09-12T10:00:00.000Z',
+      };
+
+      const result = mergeTasksLocalAndRemote([localTask], [remoteTask]);
+      expect(result.merged).toHaveLength(2);
+      expect(result.merged.map((t) => t.id)).toEqual(['task-offline-new', 'task-remote-1']);
+      expect(result.newerLocalTasks).toHaveLength(1);
+      expect(result.newerLocalTasks[0].id).toBe('task-offline-new');
+    });
+
+    it('resolves ties by favoring task with completion today', () => {
+      const nowIso = new Date().toISOString();
+      const localWithCompletion: RepeatingTask = {
+        ...createTaskFromPreset('Water Plants', 'home', 'Daily'),
+        id: 'task-plants',
+        history: [{ month: 'Sep', status: 'on_time', completedAt: nowIso }],
+        updatedAt: nowIso,
+      };
+
+      const remoteWithoutCompletion: RepeatingTask = {
+        ...createTaskFromPreset('Water Plants', 'home', 'Daily'),
+        id: 'task-plants',
+        history: [],
+        updatedAt: nowIso,
+      };
+
+      const result = mergeTasksLocalAndRemote([localWithCompletion], [remoteWithoutCompletion]);
+      expect(result.merged).toHaveLength(1);
+      expect(result.merged[0].history).toHaveLength(1);
+      expect(result.newerLocalTasks).toHaveLength(1);
+    });
   });
 });

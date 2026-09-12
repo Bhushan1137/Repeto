@@ -151,9 +151,10 @@ export async function saveTasksSqlite(userId: string, tasks: RepeatingTask[]): P
         );
       }
       db.execSync('COMMIT');
+      return;
     } catch (err) {
       try { db.execSync('ROLLBACK'); } catch { /* ignore rollback error */ }
-      console.warn('[Repeato SQLite Native] Error saving tasks:', err);
+      console.warn('[Repeato SQLite Native] Error saving tasks, falling back to AsyncStorage:', err);
     }
   }
   await AsyncStorage.setItem(tasksKey(userId), JSON.stringify(tasks));
@@ -168,8 +169,9 @@ export async function saveSingleTaskSqlite(userId: string, task: RepeatingTask):
         'INSERT INTO tasks (id, user_id, task_json, is_archived, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET task_json=excluded.task_json, is_archived=excluded.is_archived, updated_at=excluded.updated_at',
         [task.id, userId, JSON.stringify(task), task.archived ? 1 : 0, task.updatedAt || new Date().toISOString()]
       );
+      return;
     } catch (err) {
-      console.warn('[Repeato SQLite Native] Error saving single task:', err);
+      console.warn('[Repeato SQLite Native] Error saving single task, falling back to AsyncStorage:', err);
     }
   }
   const current = await loadTasksSqlite(userId);
@@ -184,8 +186,9 @@ export async function deleteSingleTaskSqlite(userId: string, taskId: string): Pr
   if (db) {
     try {
       db.runSync('DELETE FROM tasks WHERE id = ? AND user_id = ?', [taskId, userId]);
+      return;
     } catch (err) {
-      console.warn('[Repeato SQLite Native] Error deleting task:', err);
+      console.warn('[Repeato SQLite Native] Error deleting task, falling back to AsyncStorage:', err);
     }
   }
   const current = await loadTasksSqlite(userId);
@@ -209,8 +212,9 @@ export async function enqueueSyncSqlite(
         'INSERT INTO sync_queue (id, user_id, op_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)',
         [opId, userId, op.type, JSON.stringify(fullOp), timestamp]
       );
+      return;
     } catch (err) {
-      console.warn('[Repeato SQLite Native] Error queuing sync op:', err);
+      console.warn('[Repeato SQLite Native] Error queuing sync op, falling back to AsyncStorage:', err);
     }
   }
 

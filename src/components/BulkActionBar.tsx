@@ -2,17 +2,22 @@ import React from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
-import { Colors, Radius, Typography } from '@/constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Radius } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';
 
 interface BulkActionBarProps {
   selectedCount: number;
   totalCount?: number;
+  completableCount?: number;
+  snoozableCount?: number;
   isAllSelected?: boolean;
   onSelectAll?: () => void;
   onClear: () => void;
   onComplete: () => void;
   onSnooze: () => void;
+  onDisabledComplete?: () => void;
+  onDisabledSnooze?: () => void;
   onSkip?: () => void;
   onDelete: () => void;
   language: 'en' | 'hi';
@@ -21,20 +26,40 @@ interface BulkActionBarProps {
 export function BulkActionBar({
   selectedCount,
   totalCount,
+  completableCount,
+  snoozableCount,
   isAllSelected,
   onSelectAll,
   onClear,
   onComplete,
   onSnooze,
+  onDisabledComplete,
+  onDisabledSnooze,
   onSkip,
   onDelete,
   language,
 }: BulkActionBarProps) {
+  const insets = useSafeAreaInsets();
+  const isDoneDisabled =
+    completableCount === undefined ||
+    selectedCount === 0 ||
+    completableCount < selectedCount;
+
+  const isSnoozeDisabled =
+    snoozableCount === undefined ||
+    selectedCount === 0 ||
+    snoozableCount < selectedCount;
+
+  const doneLabel = language === 'hi' ? 'पूरा करें' : 'Done';
+  const snoozeLabel = language === 'hi' ? 'सणूज़' : 'Snooze';
+
+  const bottomOffset = Math.max(insets.bottom, 12) + (Platform.OS === 'ios' ? 96 : 90);
+
   return (
     <Animated.View
-      entering={SlideInDown.duration(250)}
-      exiting={SlideOutDown.duration(200)}
-      style={styles.container}
+      entering={SlideInDown.springify().damping(18).stiffness(140)}
+      exiting={SlideOutDown.duration(180)}
+      style={[styles.container, { bottom: bottomOffset }]}
     >
       <View style={styles.header}>
         <View style={styles.countBadge}>
@@ -50,7 +75,7 @@ export function BulkActionBar({
             <Pressable onPress={onSelectAll} hitSlop={8} style={styles.selectAllBtn}>
               <AppIcon
                 name={isAllSelected ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                size={16}
+                size={15}
                 color={Colors.tealDeep}
               />
               <Text style={styles.selectAllText}>
@@ -62,23 +87,57 @@ export function BulkActionBar({
           )}
 
           <Pressable onPress={onClear} hitSlop={12} style={styles.closeBtn}>
-            <AppIcon name="close" size={18} color={Colors.inkSoft} />
+            <AppIcon name="close" size={17} color={Colors.inkSoft} />
           </Pressable>
         </View>
       </View>
 
       <View style={styles.buttonRow}>
-        <Pressable style={[styles.actionBtn, styles.actionBtnDone]} onPress={onComplete}>
-          <AppIcon name="checkmark-done-outline" size={18} color={Colors.tealDeep} />
-          <Text style={[styles.btnLabel, { color: Colors.tealDeep }]}>
-            {language === 'hi' ? 'पूरा करें' : 'Done'}
+        <Pressable
+          style={[
+            styles.actionBtn,
+            styles.actionBtnDone,
+            isDoneDisabled && styles.actionBtnDisabled,
+          ]}
+          onPress={isDoneDisabled ? onDisabledComplete : onComplete}
+          disabled={isDoneDisabled && !onDisabledComplete}
+        >
+          <AppIcon
+            name="checkmark-done-outline"
+            size={18}
+            color={isDoneDisabled ? Colors.inkFaint : Colors.tealDeep}
+          />
+          <Text
+            style={[
+              styles.btnLabel,
+              { color: isDoneDisabled ? Colors.inkFaint : Colors.tealDeep },
+            ]}
+          >
+            {doneLabel}
           </Text>
         </Pressable>
 
-        <Pressable style={[styles.actionBtn, styles.actionBtnSnooze]} onPress={onSnooze}>
-          <AppIcon name="time-outline" size={18} color={Colors.marigoldDeep} />
-          <Text style={[styles.btnLabel, { color: Colors.marigoldDeep }]}>
-            {language === 'hi' ? 'सणूज़' : 'Snooze'}
+        <Pressable
+          style={[
+            styles.actionBtn,
+            styles.actionBtnSnooze,
+            isSnoozeDisabled && styles.actionBtnDisabled,
+          ]}
+          onPress={isSnoozeDisabled ? onDisabledSnooze : onSnooze}
+          disabled={isSnoozeDisabled && !onDisabledSnooze}
+        >
+          <AppIcon
+            name="time-outline"
+            size={18}
+            color={isSnoozeDisabled ? Colors.inkFaint : Colors.marigoldDeep}
+          />
+          <Text
+            style={[
+              styles.btnLabel,
+              { color: isSnoozeDisabled ? Colors.inkFaint : Colors.marigoldDeep },
+            ]}
+          >
+            {snoozeLabel}
           </Text>
         </Pressable>
 
@@ -105,62 +164,58 @@ export function BulkActionBar({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 96 : 84,
     left: 16,
     right: 16,
     backgroundColor: Colors.white,
     borderRadius: Radius.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    elevation: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.marigold,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 27, 54, 0.08)',
     shadowColor: Colors.indigo950,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
-    shadowRadius: 14,
-    zIndex: 999,
+    shadowRadius: 18,
+    zIndex: 9999,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   countBadge: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   countText: {
-    ...Typography.title,
-    fontSize: 14,
     fontFamily: 'Fraunces_700Bold',
+    fontSize: 14,
     color: Colors.ink,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   selectAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Radius.full,
-    backgroundColor: Colors.ivory,
-    borderWidth: 1,
-    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(13, 148, 136, 0.08)',
   },
   selectAllText: {
-    ...Typography.caption,
     fontSize: 11.5,
     fontFamily: 'Manrope_700Bold',
     color: Colors.tealDeep,
   },
   closeBtn: {
-    padding: 2,
+    padding: 4,
+    borderRadius: Radius.full,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -171,8 +226,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+    gap: 5,
+    paddingVertical: 9,
     backgroundColor: Colors.surfaceMuted,
     borderRadius: Radius.sm,
     borderWidth: 1,
@@ -194,9 +249,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     borderColor: '#FECACA',
   },
+  actionBtnDisabled: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    opacity: 0.45,
+  },
   btnLabel: {
-    ...Typography.caption,
-    fontSize: 12,
+    fontSize: 11.5,
     fontFamily: 'Manrope_700Bold',
     color: Colors.ink,
   },

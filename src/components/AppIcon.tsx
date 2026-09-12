@@ -59,7 +59,18 @@ export type AppIconName =
   | 'exit-outline'
   | 'log-out-outline'
   | 'arrow-undo-outline'
-  | 'refresh-outline';
+  | 'refresh-outline'
+  | 'call-outline'
+  | 'shield-checkmark'
+  | 'shield-checkmark-outline'
+  | 'globe-outline'
+  | 'alarm-outline'
+  | 'help-circle-outline'
+  | 'shield-outline'
+  | 'document-text-outline'
+  | 'share-social-outline'
+  | 'pricetag-outline'
+  | 'megaphone-outline';
 
 interface AppIconProps {
   name: AppIconName;

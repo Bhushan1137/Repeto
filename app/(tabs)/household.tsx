@@ -1,43 +1,43 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, StyleSheet, Platform, Modal, Pressable, Alert, TouchableOpacity, ScrollView } from 'react-native';
-import { Text, Card, TextInput as PaperInput } from 'react-native-paper';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useTasks } from '@/providers/TaskProvider';
-import { useAuth, useNetworkStatus } from '@/providers/AppProviders';
-import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth, useNetworkStatus } from '@/providers/AppProviders';
+import { useTasks } from '@/providers/TaskProvider';
+import { useToast } from '@/providers/ToastProvider';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Card, TextInput as PaperInput, Text } from 'react-native-paper';
 
-import { useNotifications } from '@/providers/NotificationProvider';
-import type { AppNotification } from '@/types/notification';
-import { useHousehold } from '@/hooks/useInsights';
-import { useNudge } from '@/hooks/useNudge';
+import { ActivityFeed } from '@/components/ActivityFeed';
+import { AppIcon } from '@/components/AppIcon';
+import { Button } from '@/components/Button';
+import { CreateHouseholdSheet } from "@/components/CreateHouseholdSheet";
+import { HouseholdContextSwitcher } from '@/components/HouseholdContextSwitcher';
+import { HouseholdSettingsSheet } from "@/components/HouseholdSettingsSheet";
+import { EmptyState, ScreenShell } from '@/components/ScreenShell';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
-import { ScreenShell, EmptyState } from '@/components/ScreenShell';
-import { Button } from '@/components/Button';
-import { AppIcon } from '@/components/AppIcon';
-import { ActivityFeed } from '@/components/ActivityFeed';
-import { taskToFormValues } from '@/domain/preset';
+import { CATEGORY_MAP } from '@/constants/categories';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { userRepository } from '@/data/repositories/userRepository';
-import { HouseholdContextSwitcher } from '@/components/HouseholdContextSwitcher';
-import * as Clipboard from 'expo-clipboard';
-import QRCode from 'react-native-qrcode-svg';
-import { initials } from '@/domain/insights';
-import { CreateHouseholdSheet } from "@/components/CreateHouseholdSheet";
-import { HouseholdSettingsSheet } from "@/components/HouseholdSettingsSheet";
 import {
-  householdMemberFromInvite,
-  normalizeInviteCode,
-  pendingMemberFromCode,
   addMemberToHousehold,
+  HOUSEHOLD_COLORS,
+  householdMemberFromInvite,
   listHouseholds,
   memberColor,
-  HOUSEHOLD_COLORS,
+  normalizeInviteCode,
+  pendingMemberFromCode,
 } from '@/domain/household';
-import { Colors, Radius, Typography } from '@/constants/theme';
-import type { RepeatingTask, CategoryKey, HouseholdMemberProfile, HouseholdContext } from '@/types';
-import { CATEGORY_MAP } from '@/constants/categories';
+import { initials } from '@/domain/insights';
+import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
+import { useHousehold } from '@/hooks/useInsights';
+import { useNudge } from '@/hooks/useNudge';
+import { useNotifications } from '@/providers/NotificationProvider';
+import type { CategoryKey, HouseholdContext, HouseholdMemberProfile, RepeatingTask } from '@/types';
+import type { AppNotification } from '@/types/notification';
+import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 
 function SharedTaskCard({
   task,
@@ -60,18 +60,18 @@ function SharedTaskCard({
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;
 
-  const catBg = 
+  const catBg =
     task.category === 'bills' || task.category === 'finance' ? '#FFF3E0' : // light orange
-    task.category === 'home' ? '#E3F2FD' : // light blue
-    '#FCE7F3'; // light pink
+      task.category === 'home' ? '#E3F2FD' : // light blue
+        '#FCE7F3'; // light pink
 
-  const catColor = 
+  const catColor =
     task.category === 'bills' || task.category === 'finance' ? '#E65100' :
-    task.category === 'home' ? '#0D47A1' :
-    '#880E4F';
+      task.category === 'home' ? '#0D47A1' :
+        '#880E4F';
 
   const creatorName = task.creatorName === user?.name ? (language === 'hi' ? 'आप' : 'You') : task.creatorName || (language === 'hi' ? 'अन्य' : 'Other');
-  
+
   const assigneeName = useMemo(() => {
     if (!task.assignedTo) return language === 'hi' ? 'कोई नहीं' : 'Unassigned';
     if (task.assignedTo === user?.id || task.assignedTo === user?.userCode) return language === 'hi' ? 'आपको' : 'You';
@@ -100,6 +100,62 @@ function SharedTaskCard({
     return `${dateStr}, ${timeStr}`;
   }, [task.nextDueDate, task.reminderTime, language]);
 
+  const isAssignedToMe = useMemo(() => {
+    if (!task.assignedTo) return false;
+    return task.assignedTo === user?.id || task.assignedTo === user?.userCode;
+  }, [task.assignedTo, user?.id, user?.userCode]);
+
+  const canClaim = !task.assignedTo && Boolean(onClaim);
+  const canNudge = Boolean(task.assignedTo && !isAssignedToMe && days <= 0 && onNudge);
+  const hasAction = canClaim || canNudge;
+
+  const respConfig = useMemo(() => {
+    if (task.isRotating) {
+      const turnLabel = isAssignedToMe
+        ? (language === 'hi' ? 'आपकी बारी' : 'Your turn')
+        : (language === 'hi' ? `बारी: ${assigneeName}` : `Turn: ${assigneeName}`);
+      return {
+        label: turnLabel,
+        icon: <Text style={styles.rotIconEmoji}>🔄</Text>,
+        bgStyle: styles.respRotatingBadge,
+        textColor: '#0284C7',
+      };
+    }
+
+    if (task.assignedTo) {
+      const assignedLabel = isAssignedToMe
+        ? (language === 'hi' ? 'सौंपा: आप' : 'Assigned: You')
+        : (language === 'hi' ? `सौंपा: ${assigneeName}` : `Assigned: ${assigneeName}`);
+      return {
+        label: assignedLabel,
+        icon: (
+          <AppIcon
+            name="person-circle-outline"
+            size={12}
+            color={isAssignedToMe ? Colors.tealDeep : Colors.inkSoft}
+            style={{ marginRight: 3 }}
+          />
+        ),
+        bgStyle: isAssignedToMe ? styles.respMeBadge : styles.respMemberBadge,
+        textColor: isAssignedToMe ? Colors.tealDeep : Colors.ink,
+      };
+    }
+
+    return {
+      label: language === 'hi' ? 'सभी के लिए खुला' : 'Open to all',
+      icon: (
+        <AppIcon
+          name="people-outline"
+          size={12}
+          color={Colors.marigoldDeep}
+          style={{ marginRight: 3 }}
+        />
+      ),
+      bgStyle: styles.respOpenBadge,
+      textColor: Colors.marigoldDeep,
+    };
+  }, [task.isRotating, task.assignedTo, isAssignedToMe, assigneeName, language]);
+
   return (
     <Card style={styles.sharedCard} mode="elevated" onPress={onPress}>
       <Card.Content style={styles.sharedCardContent}>
@@ -107,67 +163,83 @@ function SharedTaskCard({
           <Text style={[styles.sharedCatIcon, { color: catColor }]}>{task.icon || cat.icon}</Text>
         </View>
 
-        <View style={styles.sharedInfoCol}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.sharedTitle} numberOfLines={1}>{task.title}</Text>
-            {task.isRotating && (
-              <View style={styles.rotBadge}>
-                <Text style={styles.rotBadgeText}>
-                  {language === 'hi' ? `🔄 बारी: ${assigneeName}` : `🔄 Turn: ${assigneeName}`}
+        <View style={styles.sharedBodyCol}>
+          {/* Row 1: Title + Due Status Pill + Chevron */}
+          <View style={styles.sharedTopRow}>
+            <Text style={styles.sharedTitle} numberOfLines={1} ellipsizeMode="tail">
+              {task.title}
+            </Text>
+            <View style={styles.sharedStatusWrap}>
+              <View style={[styles.sharedStatusPill, { backgroundColor: statusStyle.bg }]}>
+                <Text style={[styles.sharedStatusText, { color: statusStyle.color }]}>
+                  {statusStyle.text}
                 </Text>
               </View>
-            )}
-          </View>
-          <View style={styles.sharedSubRow}>
-            <Text style={styles.sharedSubText} numberOfLines={1}>
-              {language === 'hi' ? 'साझाकर्ता: ' : 'Shared by '}<Text style={styles.sharedSubBold}>{creatorName}</Text>
-            </Text>
-            <View style={styles.sharedAssigneeWrap}>
-              <AppIcon name="person-circle-outline" size={12} color={task.assignedTo ? Colors.tealDeep : Colors.inkFaint} style={{ marginRight: 3 }} />
-              <Text style={styles.sharedSubText} numberOfLines={1}>
-                {task.assignedTo ? (language === 'hi' ? 'सौंपा: ' : 'Assigned: ') : ''}
-                <Text style={[styles.sharedSubBold, !task.assignedTo && { color: Colors.marigoldDeep }]}>
-                  {assigneeName}
-                </Text>
-              </Text>
-              {!task.assignedTo && onClaim && (
-                <TouchableOpacity
-                  onPress={(e: any) => {
-                    e?.stopPropagation?.();
-                    onClaim();
-                  }}
-                  style={styles.claimMiniBtn}
-                  hitSlop={6}
-                >
-                  <Text style={styles.claimMiniBtnText}>{language === 'hi' ? 'मैं करूंगा' : 'Claim'}</Text>
-                </TouchableOpacity>
-              )}
-              {task.assignedTo && task.assignedTo !== user?.id && task.assignedTo !== user?.userCode && days <= 0 && onNudge && (
-                <TouchableOpacity
-                  onPress={(e: any) => {
-                    e?.stopPropagation?.();
-                    onNudge();
-                  }}
-                  style={styles.nudgeMiniBtn}
-                  hitSlop={6}
-                >
-                  <Text style={styles.nudgeMiniBtnText}>👉 {language === 'hi' ? 'नज़' : 'Nudge'}</Text>
-                </TouchableOpacity>
-              )}
+              <AppIcon name="chevron-forward" size={14} color={Colors.inkFaint} style={{ marginLeft: 4 }} />
             </View>
           </View>
-        </View>
 
-        <View style={styles.sharedRightCol}>
-          <View style={[styles.sharedStatusPill, { backgroundColor: statusStyle.bg }]}>
-            <Text style={[styles.sharedStatusText, { color: statusStyle.color }]}>{statusStyle.text}</Text>
+          {/* Row 2: Sub Row (Shared by & Due Date) */}
+          <View style={styles.sharedSubRow}>
+            <Text style={styles.sharedSubText} numberOfLines={1} ellipsizeMode="tail">
+              {language === 'hi' ? 'साझाकर्ता: ' : 'Shared by '}
+              <Text style={styles.sharedSubBold}>{creatorName}</Text>
+            </Text>
+            <Text style={styles.sharedDotSep}>•</Text>
+            <View style={styles.sharedDateRow}>
+              <AppIcon name="calendar-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 3 }} />
+              <Text style={styles.sharedDateText}>{formattedDate}</Text>
+            </View>
           </View>
-          <View style={styles.sharedDateRow}>
-            <AppIcon name="calendar-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 3 }} />
-            <Text style={styles.sharedDateText}>{formattedDate}</Text>
+
+          {/* Row 3: Responsibility Pill + Action (Claim / Nudge) */}
+          <View style={styles.sharedBottomRow}>
+            <View
+              style={[
+                styles.sharedRespBadge,
+                respConfig.bgStyle,
+                hasAction && styles.sharedRespBadgeConstrained,
+              ]}
+            >
+              {respConfig.icon}
+              <Text
+                style={[styles.sharedRespText, { color: respConfig.textColor }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {respConfig.label}
+              </Text>
+            </View>
+
+            {canClaim && (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  onClaim?.();
+                }}
+                style={styles.claimMiniBtn}
+                hitSlop={6}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.claimMiniBtnText}>✋ {language === 'hi' ? 'मैं करूंगा' : 'Claim'}</Text>
+              </TouchableOpacity>
+            )}
+
+            {canNudge && (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  onNudge?.();
+                }}
+                style={styles.nudgeMiniBtn}
+                hitSlop={6}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.nudgeMiniBtnText}>👉 {language === 'hi' ? 'नज़' : 'Nudge'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
-        <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} style={{ marginLeft: 4 }} />
       </Card.Content>
     </Card>
   );
@@ -476,8 +548,8 @@ function HouseholdView({
                   backgroundColor: isAllClean
                     ? '#10B981'
                     : overdueCount > 0
-                    ? '#EF4444'
-                    : '#F59E0B',
+                      ? '#EF4444'
+                      : '#F59E0B',
                 },
               ]}
             />
@@ -485,8 +557,8 @@ function HouseholdView({
               {isAllClean
                 ? (language === 'hi' ? 'सब कुछ ठीक है ✨' : '100% All Caught Up ✨')
                 : overdueCount > 0
-                ? (language === 'hi' ? `${overdueCount} कार्य विलंबित` : `${overdueCount} chore${overdueCount > 1 ? 's' : ''} overdue`)
-                : (language === 'hi' ? `${stats.onTime} / ${stats.total} कार्य समय पर` : `${stats.onTime} of ${stats.total} on-track`)}
+                  ? (language === 'hi' ? `${overdueCount} कार्य विलंबित` : `${overdueCount} chore${overdueCount > 1 ? 's' : ''} overdue`)
+                  : (language === 'hi' ? `${stats.onTime} / ${stats.total} कार्य समय पर` : `${stats.onTime} of ${stats.total} on-track`)}
             </Text>
             <Text style={styles.pulseStatusSub}>
               • {members.length} {language === 'hi' ? 'सदस्य' : members.length === 1 ? 'member' : 'members'}
@@ -938,7 +1010,7 @@ function HouseholdView({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <AppIcon name="add" size={16} color={Colors.marigoldDeep} />
               <Text style={styles.sheetInviteBannerText}>
-                {language === 'hi' ? '+ नए सदस्य को आमंत्रित करें' : '+ Invite New Roommate'}
+                {language === 'hi' ? 'नए सदस्य को आमंत्रित करें' : 'Invite New Roommate'}
               </Text>
             </View>
             <AppIcon name="chevron-forward" size={14} color={Colors.inkSoft} />
@@ -1733,73 +1805,141 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: Colors.ivoryLine,
-    elevation: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+    elevation: 2,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
   },
   sharedCardContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 12,
   },
   sharedCatIconWrap: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 11,
+    marginTop: 1,
   },
   sharedCatIcon: {
     fontSize: 20,
   },
-  sharedInfoCol: {
+  sharedBodyCol: {
     flex: 1,
-    justifyContent: 'center',
+    gap: 5,
+  },
+  sharedTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sharedTitle: {
+    flex: 1,
     fontSize: 14.5,
     fontFamily: 'Manrope_800ExtraBold',
     color: Colors.indigo950,
-    marginBottom: 2,
+    marginRight: 8,
+  },
+  sharedStatusWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  sharedStatusPill: {
+    paddingHorizontal: 7.5,
+    paddingVertical: 2.5,
+    borderRadius: Radius.full,
+  },
+  sharedStatusText: {
+    fontSize: 9.5,
+    fontFamily: 'Manrope_800ExtraBold',
   },
   sharedSubRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'nowrap',
+    gap: 5,
   },
   sharedSubText: {
     fontSize: 10.5,
     fontFamily: 'Manrope_500Medium',
     color: Colors.inkSoft,
+    flexShrink: 1,
   },
   sharedSubBold: {
     fontFamily: 'Manrope_700Bold',
     color: Colors.indigo950,
   },
-  sharedAssigneeWrap: {
+  sharedDotSep: {
+    fontSize: 10,
+    color: Colors.inkFaint,
+  },
+  sharedDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
   },
-  rotBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+  sharedDateText: {
+    fontSize: 10,
+    fontFamily: 'Manrope_600SemiBold',
+    color: Colors.inkFaint,
+  },
+  sharedBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  sharedRespBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7.5,
+    paddingVertical: 2.5,
     borderRadius: Radius.full,
-    backgroundColor: '#E0F2FE',
     borderWidth: 1,
+    flexShrink: 1,
+  },
+  sharedRespBadgeConstrained: {
+    maxWidth: '70%',
+  },
+  sharedRespText: {
+    fontSize: 10,
+    fontFamily: 'Manrope_700Bold',
+  },
+  rotIconEmoji: {
+    fontSize: 10,
+    marginRight: 3,
+  },
+  respRotatingBadge: {
+    backgroundColor: '#F0F9FF',
     borderColor: '#BAE6FD',
   },
-  rotBadgeText: {
-    fontSize: 9.5,
-    fontFamily: 'Manrope_700Bold',
-    color: '#0369A1',
+  respMeBadge: {
+    backgroundColor: 'rgba(13, 148, 136, 0.08)',
+    borderColor: 'rgba(13, 148, 136, 0.22)',
+  },
+  respMemberBadge: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  respOpenBadge: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
   },
   claimMiniBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginLeft: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: Radius.full,
     backgroundColor: Colors.tealDeep,
+    flexShrink: 0,
   },
   claimMiniBtnText: {
     fontSize: 9.5,
@@ -1808,12 +1948,13 @@ const styles = StyleSheet.create({
   },
   nudgeMiniBtn: {
     marginLeft: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: Radius.full,
     backgroundColor: '#FEF3C7',
     borderWidth: 1,
     borderColor: '#FDE68A',
+    flexShrink: 0,
   },
   nudgeMiniBtnText: {
     fontSize: 9.5,
@@ -1822,9 +1963,11 @@ const styles = StyleSheet.create({
   },
   choresCountBadge: {
     backgroundColor: 'rgba(13, 148, 136, 0.1)',
-    paddingHorizontal: 7,
-    paddingVertical: 1.5,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   choresCountBadgeText: {
     fontSize: 11,
@@ -1861,30 +2004,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Manrope_700Bold',
     color: Colors.white,
-  },
-  sharedRightCol: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginRight: 6,
-    gap: 4,
-  },
-  sharedStatusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  sharedStatusText: {
-    fontSize: 9.5,
-    fontFamily: 'Manrope_800ExtraBold',
-  },
-  sharedDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sharedDateText: {
-    fontSize: 9.5,
-    fontFamily: 'Manrope_600SemiBold',
-    color: Colors.inkFaint,
   },
   quickAccessHub: {
     marginTop: 18,
@@ -2174,7 +2293,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 18,
-    marginBottom: 4,
+    marginBottom: 10,
   },
 
   // Zero-Household Card Styles

@@ -137,4 +137,32 @@ describe('domain/taskForm', () => {
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0].id).toBe(task1.id);
   });
+
+  it('formStateToValues and formStateFromTask preserve household scope and chore rotation', () => {
+    const state = defaultFormState('home');
+    state.title = 'Clean Balcony';
+    state.householdId = 'hh-home-1';
+    state.assignedTo = 'user-malay';
+    state.isRotating = true;
+    state.rotationMembers = ['user-malay', 'user-sarah'];
+
+    const values = formStateToValues(state, 'en');
+    expect(values.householdId).toBe('hh-home-1');
+    expect(values.assignedTo).toBe('user-malay');
+    expect(values.isRotating).toBe(true);
+    expect(values.rotationMembers).toEqual(['user-malay', 'user-sarah']);
+
+    const task = createTaskFromPreset('Clean Balcony', 'home', 'Weekly');
+    task.householdId = 'hh-home-1';
+    task.assignedTo = 'user-sarah';
+    task.isRotating = true;
+    task.rotationMembers = ['user-sarah', 'user-malay'];
+
+    const restoredState = formStateFromTask(task);
+    expect(restoredState.householdId).toBe('hh-home-1');
+    expect(restoredState.assignedTo).toBe('user-sarah');
+    expect(restoredState.isRotating).toBe(true);
+    expect(restoredState.rotationMembers).toEqual(['user-sarah', 'user-malay']);
+  });
 });
+

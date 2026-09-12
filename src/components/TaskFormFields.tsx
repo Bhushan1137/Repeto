@@ -1,30 +1,30 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
-import type { CategoryKey, Language, SharedMember } from '@/types';
-import type { TranslationKey } from '@/i18n';
-import { FormField } from '@/components/FormField';
+import { AppIcon } from '@/components/AppIcon';
 import { DateField } from '@/components/DateField';
+import { FormField } from '@/components/FormField';
+import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
+import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
+import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
+import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
 import { TimeField } from '@/components/TimeField';
-import { Colors, Radius } from '@/constants/theme';
-import { computeInitialDueDate, computeNextDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import { formatTime } from '@/components/timeFieldShared';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
+import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { Colors, Radius } from '@/constants/theme';
 import { parseTaskInput } from '@/domain/parser';
+import { computeInitialDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import {
   buildRecurrenceRule,
   type TaskFormErrors,
   type TaskFormState,
 } from '@/domain/taskForm';
+import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
-import { AppIcon } from '@/components/AppIcon';
-import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
-import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
-import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
-import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
+import type { CategoryKey, Language, SharedMember } from '@/types';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Card, Text, TouchableRipple } from 'react-native-paper';
 
 interface TaskFormFieldsProps {
   language: Language;
@@ -155,8 +155,8 @@ export function TaskFormFields({
       const dueDaysStr = daysLeft === 0
         ? (language === 'hi' ? 'आज' : 'Today')
         : daysLeft === 1
-        ? (language === 'hi' ? 'कल' : 'Tomorrow')
-        : (language === 'hi' ? `${daysLeft} दिनों में` : `in ${daysLeft} days`);
+          ? (language === 'hi' ? 'कल' : 'Tomorrow')
+          : (language === 'hi' ? `${daysLeft} दिनों में` : `in ${daysLeft} days`);
       return `${dateStr} (${dueDaysStr})`;
     } catch {
       return calculatedNextDue.slice(0, 10);
@@ -169,15 +169,12 @@ export function TaskFormFields({
       {/* ── SECTION 1: TASK IDENTITY ── */}
       <View style={styles.sectionBlock}>
         <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '1. कार्य विवरण' : '1. Task Details'}</Text>
-        
+
         {/* Prominent Smart Natural Language Input Bar */}
         <Card style={styles.smartCard} mode="elevated">
           <Card.Content style={styles.smartCardContent}>
             <View style={styles.smartHeaderRow}>
               <Text style={styles.smartBadge}>⚡ {language === 'hi' ? 'स्मार्ट इनपुट' : 'Smart Input'}</Text>
-              <Text style={styles.smartHint}>
-                {language === 'hi' ? 'ऑटो-फिल के लिए लिखें' : 'Type to auto-fill fields'}
-              </Text>
             </View>
             <View style={styles.smartInputWrap}>
               <AppIcon name="sparkles" size={18} color={Colors.marigoldDeep} />
@@ -185,8 +182,8 @@ export function TaskFormFields({
                 style={styles.smartTextInput}
                 placeholder={
                   language === 'hi'
-                    ? 'उदा: "किराया ₹15000 हर महीने 5 तारीख को"'
-                    : 'e.g. "Rent ₹15000 monthly on 5th"'
+                    ? 'कार्य, समय और राशि भरने के लिए लिखें (उदा. "किराया ₹15000 हर महीने 5 तारीख को")'
+                    : 'Type to auto-fill title, repeat & amount (e.g. "Rent ₹15000 monthly on 5th")'
                 }
                 placeholderTextColor={Colors.inkFaint}
                 value={smartInputText}
@@ -237,7 +234,7 @@ export function TaskFormFields({
             </ScrollView>
           </Card.Content>
         </Card>
-        
+
         <FormField
           label={translate('presetTitle')}
           value={state.title}
@@ -349,8 +346,8 @@ export function TaskFormFields({
           <View style={styles.summaryTextWrapper}>
             <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
             <Text style={styles.summarySub}>
-              {language === 'hi' 
-                ? `आपको ${previewLabel} पर ${formatTime(state.reminderTime || '09:00')} बजे याद दिलाया जाएगा।` 
+              {language === 'hi'
+                ? `आपको ${previewLabel} पर ${formatTime(state.reminderTime || '09:00')} बजे याद दिलाया जाएगा।`
                 : `You'll be reminded ${previewLabel} at ${formatTime(state.reminderTime || '09:00')}.`}
               {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
             </Text>

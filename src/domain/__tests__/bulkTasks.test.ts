@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   canCompleteTask,
   completeTaskInstance,
@@ -12,6 +12,15 @@ import {
 import type { RepeatingTask } from '@/types';
 
 describe('Bulk Tasks End-to-End Flows (Done, Snooze, Skip, Undo, Pin)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-12T10:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const createMockTasks = (): RepeatingTask[] => {
     const t1: RepeatingTask = {
       ...createTaskFromPreset('Pay Utility Bill', 'bills', 'Monthly'),

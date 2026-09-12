@@ -1,7 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { RepeatingTask } from '@/types';
+import type { Recommendation } from '@/types/recommendation';
 import { computeNextDueDate } from '@/domain/recurrence';
+import { hasCompletedToday } from '@/domain/task';
 
 try {
   Notifications.setNotificationHandler({
@@ -20,6 +22,12 @@ try {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync('promotions', {
+      name: 'Special Offers & Updates',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+    }).catch(() => {});
   }
 
   if (Platform.OS !== 'web') {
@@ -27,17 +35,46 @@ try {
       {
         identifier: 'MARK_DONE',
         buttonTitle: 'Mark Done',
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
       {
         identifier: 'SNOOZE_2D',
         buttonTitle: 'Snooze 2 Days',
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
     ]).catch(() => {});
   }
 } catch (error) {
   console.warn('[Repeato] Failed to set notification handler:', error);
+}
+
+export async function setupNotificationCategories(isHi = false): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.setNotificationCategoryAsync('task-actions', [
+      {
+        identifier: 'MARK_DONE',
+        buttonTitle: isHi ? 'पूरा करें (Mark Done)' : 'Mark Done',
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: 'SNOOZE_2D',
+        buttonTitle: isHi ? '2 दिन स्नूज़ (Snooze)' : 'Snooze 2 Days',
+        options: { opensAppToForeground: true },
+      },
+    ]);
+  } catch (error) {
+    console.warn('[Repeato] Failed to set notification category:', error);
+  }
+}
+
+export async function dismissNotification(identifier: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.dismissNotificationAsync(identifier);
+  } catch {
+    // ignore
+  }
 }
 
 let permissionGranted = false;
@@ -84,6 +121,9 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   if (Platform.OS === 'web') return;
 
+  // Do not schedule reminders for archived tasks
+  if (task.archived) return;
+
   // Query notification permission dynamically and auto-request if not yet determined
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') {
@@ -113,20 +153,55 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     sound: true,
   };
 
-  const recType = task.recurrence?.type;
-
-  try {
-    if (recType === 'daily') {
+  // If task is currently snoozed, schedule directly for the snooze date
+  if (task.snoozedUntil) {
+    const snoozeDate = new Date(task.snoozedUntil);
+    snoozeDate.setHours(hour, minute, 0, 0);
+    if (snoozeDate.getTime() > Date.now()) {
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour,
-          minute,
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: snoozeDate,
           channelId: 'default',
         },
         identifier: `task-${task.id}`,
       });
+    }
+    return;
+  }
+
+  const recType = task.recurrence?.type;
+
+  try {
+    if (recType === 'daily') {
+      // If task was already completed today, schedule for next due date to avoid duplicate alarm today
+      if (hasCompletedToday(task)) {
+        const nextDate = new Date(task.nextDueDate);
+        nextDate.setHours(hour, minute, 0, 0);
+        if (nextDate.getTime() > Date.now()) {
+          await Notifications.scheduleNotificationAsync({
+            content,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: nextDate,
+              channelId: 'default',
+            },
+            identifier: `task-${task.id}`,
+          });
+        }
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour,
+            minute,
+            channelId: 'default',
+          },
+          identifier: `task-${task.id}`,
+        });
+      }
     } else if (recType === 'weekly') {
       const jsWeekday = task.recurrence.weekday ?? new Date(task.nextDueDate).getDay();
       const expoWeekday = jsWeekday + 1; // JS 0=Sun..6=Sat -> Expo 1=Sun..7=Sat
@@ -223,6 +298,56 @@ export async function sendTestNotification(): Promise<boolean> {
     return true;
   } catch (error) {
     console.warn('[Repeato] Failed to send test notification:', error);
+    return false;
+  }
+}
+
+/** Schedule a promotional campaign notification immediately */
+export async function scheduleCampaignNotification(
+  campaign: Recommendation,
+  isHi = false
+): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') {
+    const granted = await requestNotificationPermission();
+    if (!granted) return false;
+  }
+
+  const title = isHi ? `विशेष ऑफर: ${campaign.title}` : `Special Offer: ${campaign.title}`;
+  const body = campaign.promoCode
+    ? (isHi
+        ? `${campaign.description} (कोड: ${campaign.promoCode})`
+        : `${campaign.description} (Use code: ${campaign.promoCode})`)
+    : campaign.description;
+
+  const content: Notifications.NotificationContentInput = {
+    title,
+    body,
+    data: {
+      type: 'campaign',
+      campaignId: campaign.id,
+      redirectUrl: campaign.redirectUrl,
+      promoCode: campaign.promoCode,
+      imageUrl: campaign.imageUrl,
+    },
+    sound: true,
+  };
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 1,
+        channelId: Platform.OS === 'android' ? 'promotions' : 'default',
+      },
+      identifier: `campaign-${campaign.id}`,
+    });
+    return true;
+  } catch (error) {
+    console.warn(`[Repeato] Failed to schedule campaign notification for ${campaign.id}:`, error);
     return false;
   }
 }

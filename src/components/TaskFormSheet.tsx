@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { Text, Card } from 'react-native-paper';
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
   applyCategoryChange,
@@ -18,20 +18,16 @@ import {
   type TaskFormState,
 } from '@/domain/taskForm';
 import { TaskFormFields } from '@/components/TaskFormFields';
-import { SelectField } from '@/components/SelectField';
+import { TaskScopeSection } from '@/components/taskForm/TaskScopeSection';
 import { Button } from '@/components/Button';
-import { Colors, Radius, Typography, AccentHex } from '@/constants/theme';
+import { Colors, Radius, AccentHex } from '@/constants/theme';
 import { getCategoryAccent } from '@/constants/categoryHelpers';
 import type { TranslationKey } from '@/i18n';
-import type { Language, SharedMember, HouseholdMemberProfile } from '@/types';
+import type { Language, SharedMember } from '@/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/providers/ToastProvider';
-import { canShareWith } from '@/domain/task';
-import { initials } from '@/domain/insights';
-import { toSharedMember, listHouseholds } from '@/domain/household';
 
 import { Toast } from '@/components/Toast';
-import { Toggle } from '@/components/Toggle';
 
 interface TaskFormSheetProps {
   visible: boolean;
@@ -78,15 +74,7 @@ export function TaskFormSheet({
     setErrors({});
     setShared(initialShared ?? []);
     setSaving(false);
-  }, [initial, visible, initialShared, mode, activeHousehold?.id]);
-
-  const availableMembers = useMemo(() => {
-    if (formState?.householdId) {
-      const hh = listHouseholds(user ?? ({} as any)).find((h) => h.id === formState.householdId);
-      if (hh?.members && hh.members.length > 0) return hh.members;
-    }
-    return activeHousehold?.members ?? user?.householdMembers ?? [];
-  }, [formState?.householdId, user, activeHousehold]);
+  }, [initial, visible, initialShared, mode, activeHousehold]);
 
   if (!formState) return null;
 
@@ -96,32 +84,6 @@ export function TaskFormSheet({
 
   const handleCategoryChange = (category: TaskFormState['category']) => {
     setFormState((prev) => (prev ? applyCategoryChange(prev, category) : prev));
-  };
-
-  const addContact = () => {
-    const nextShared = [...shared];
-    const members = availableMembers;
-    if (members.length === 0) {
-      showToast(translate('addHouseholdFirst'));
-      return;
-    }
-    const used = nextShared.map((s) => s.code ?? s.phone);
-    const nextMember = members.find((m: HouseholdMemberProfile) => !used.includes(m.code));
-    const next = nextMember ? toSharedMember(nextMember) : null;
-    if (!next) {
-      showToast(translate('allContactsAdded'));
-      return;
-    }
-    nextShared.push(next);
-    if (!canShareWith(user, nextShared)) {
-      showToast(translate('sharedLimit'));
-      return;
-    }
-    setShared(nextShared);
-  };
-
-  const removeContact = (phone: string) => {
-    setShared(shared.filter((s) => s.phone !== phone));
   };
 
   const handleSave = async () => {
@@ -167,120 +129,26 @@ export function TaskFormSheet({
               sharedMembers={shared}
             />
 
-            {listHouseholds(user ?? ({} as any)).length > 0 ? (
-              <View style={styles.shareSectionBlock}>
-                <Text style={styles.label}>
-                  {language === 'hi' ? 'घर / टैग (Household Context)' : 'Tag Household / Context:'}
-                </Text>
-                <View style={styles.hhPillsRow}>
-                  {/* Option 1: Personal Task */}
-                  <Pressable
-                    onPress={() => patchForm({ householdId: null })}
-                    style={[styles.hhPillBtn, !formState.householdId && styles.hhPillBtnActive]}
-                  >
-                    <Text style={styles.hhPillIcon}>👤</Text>
-                    <Text style={[styles.hhPillText, !formState.householdId && styles.hhPillTextActive]}>
-                      {language === 'hi' ? 'व्यक्तिगत (Personal)' : 'Personal'}
-                    </Text>
-                  </Pressable>
-
-                  {/* Option 2+: User Households */}
-                  {listHouseholds(user ?? ({} as any)).map((hh) => {
-                    const isSelected = formState.householdId === hh.id;
-                    return (
-                      <Pressable
-                        key={hh.id}
-                        onPress={() => patchForm({ householdId: hh.id })}
-                        style={[styles.hhPillBtn, isSelected && styles.hhPillBtnActive]}
-                      >
-                        <Text style={styles.hhPillIcon}>{hh.icon || '🏠'}</Text>
-                        <Text style={[styles.hhPillText, isSelected && styles.hhPillTextActive]}>{hh.name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                {/* Member Sharing Section */}
-                {availableMembers && availableMembers.length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={styles.label}>{translate('shareHousehold')}</Text>
-                    <View style={styles.chips}>
-                      {shared.map((s) => (
-                        <Card key={s.phone || s.code} style={styles.chipCard} mode="elevated">
-                          <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                            <View style={styles.chipContent}>
-                              <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                                <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
-                              </View>
-                              <Text style={styles.chipText}>{s.name}</Text>
-                              <Text style={styles.chipRemove}>×</Text>
-                            </View>
-                          </TouchableRipple>
-                        </Card>
-                      ))}
-                      <Card style={styles.addChipCard} mode="elevated">
-                        <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
-                          <Text style={styles.addChipText}>{translate('addContact')}</Text>
-                        </TouchableRipple>
-                      </Card>
-                    </View>
-                  </View>
-                )}
-
-                {/* Assign to — Shown ONLY if shared with household member(s) */}
-                {shared.length > 0 && (
-                  <View style={{ marginTop: 10 }}>
-                    <SelectField
-                      label={language === 'hi' ? 'किसे सौंपा गया' : 'Assign To'}
-                      value={formState.assignedTo ?? ''}
-                      options={[
-                        { value: '', label: language === 'hi' ? 'किसी को नहीं (सामान्य)' : 'Unassigned (Shared)' },
-                        { value: user?.id ?? 'me', label: language === 'hi' ? `आप (${user?.name})` : `You (${user?.name})` },
-                        ...shared.map((s) => ({
-                          value: s.userId || s.code || s.phone,
-                          label: s.name,
-                        })),
-                      ]}
-                      onChange={(assignedTo) => patchForm({ assignedTo: assignedTo || null })}
-                      testID="task-assigned-picker"
-                    />
-                  </View>
-                )}
-
-                {/* Chore Rotation Toggle — Shown if shared with members */}
-                {shared.length > 0 && (
-                  <View style={{ marginTop: 14, padding: 12, backgroundColor: Colors.surfaceMuted, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.ivoryLine }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flex: 1, paddingRight: 10 }}>
-                        <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 13, color: Colors.ink }}>
-                          {language === 'hi' ? 'बारी-बारी से घुमाएं (Rotation) 🔄' : 'Rotate Turn (Round-Robin) 🔄'}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: Colors.inkSoft, marginTop: 2 }}>
-                          {language === 'hi'
-                            ? 'प्रत्येक पूर्णता के बाद अगला कार्य दूसरे सदस्य को सौंपा जाएगा।'
-                            : 'Automatically advances to the next roommate/member on completion.'}
-                        </Text>
-                      </View>
-                      <Toggle
-                        value={formState.isRotating}
-                        onValueChange={(v) => {
-                          const allMemberIds = [
-                            user?.id ?? 'me',
-                            ...shared.map((s) => s.userId || s.code || s.phone),
-                          ];
-                          patchForm({
-                            isRotating: v,
-                            rotationMembers: v ? (formState.rotationMembers.length ? formState.rotationMembers : allMemberIds) : [],
-                            assignedTo: v && !formState.assignedTo ? (user?.id ?? allMemberIds[0]) : formState.assignedTo,
-                          });
-                        }}
-                        testID="task-rotation-toggle"
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-            ) : null}
+            <TaskScopeSection
+              householdId={formState.householdId}
+              assignedTo={formState.assignedTo}
+              isRotating={formState.isRotating}
+              rotationMembers={formState.rotationMembers}
+              user={user}
+              language={language}
+              translate={translate}
+              onChange={(patch) => {
+                if (patch.shared !== undefined) {
+                  setShared(patch.shared);
+                }
+                patchForm({
+                  householdId: patch.householdId !== undefined ? patch.householdId : formState.householdId,
+                  assignedTo: patch.assignedTo !== undefined ? patch.assignedTo : formState.assignedTo,
+                  isRotating: patch.isRotating !== undefined ? patch.isRotating : formState.isRotating,
+                  rotationMembers: patch.rotationMembers !== undefined ? patch.rotationMembers : formState.rotationMembers,
+                });
+              }}
+            />
 
             <Button
               title={
@@ -345,77 +213,4 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 36 },
   heading: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginBottom: 2 },
   subHeading: { fontFamily: 'Manrope_500Medium', fontSize: 13, color: Colors.inkSoft, marginBottom: 16 },
-  shareSectionBlock: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.md,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.ivoryLine,
-    marginTop: 18,
-  },
-  label: { ...Typography.label, color: Colors.inkFaint, marginBottom: 8, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, marginTop: 6 },
-  chipCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.full,
-    elevation: 1,
-    overflow: 'hidden',
-  },
-  chipRipple: {
-    paddingVertical: 6,
-    paddingRight: 12,
-    paddingLeft: 6,
-  },
-  chipContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  chipAvatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chipAvatarText: { fontSize: 9.5, color: Colors.white, fontFamily: 'Manrope_800ExtraBold' },
-  chipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
-  chipRemove: { fontSize: 16, color: Colors.inkSoft, marginLeft: 2 },
-  addChipCard: {
-    backgroundColor: Colors.ivoryDim,
-    borderRadius: Radius.full,
-    elevation: 0.5,
-    overflow: 'hidden',
-  },
-  addChipRipple: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  addChipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
-  hhPillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  hhPillBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: Colors.ivoryLine,
-  },
-  hhPillBtnActive: {
-    backgroundColor: Colors.tealDeep,
-    borderColor: Colors.tealDeep,
-  },
-  hhPillIcon: { fontSize: 13 },
-  hhPillText: {
-    fontFamily: 'Manrope_600SemiBold',
-    fontSize: 12,
-    color: Colors.ink,
-  },
-  hhPillTextActive: {
-    color: Colors.white,
-    fontFamily: 'Manrope_700Bold',
-  },
 });

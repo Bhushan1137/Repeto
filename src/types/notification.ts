@@ -1,6 +1,6 @@
 export interface AppNotification {
   id: string;
-  type: 'household' | 'payment' | 'streak' | 'system' | 'nudge';
+  type: 'household' | 'payment' | 'streak' | 'system' | 'nudge' | 'campaign';
   title: string;
   body: string;
   timestamp: string;
@@ -11,5 +11,11 @@ export interface AppNotification {
     memberCode?: string;
     fromUserId?: string;
     fromUserName?: string;
+    campaignId?: string;
+    redirectUrl?: string;
+    promoCode?: string;
+    imageUrl?: string;
+    buttonText?: string;
   };
 }
+

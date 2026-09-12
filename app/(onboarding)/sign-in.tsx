@@ -60,18 +60,6 @@ export default function SignInScreen() {
   const [emailError, setEmailError] = useState('');
   const [resetSent, setResetSent] = useState(false);
 
-  const navigateAfterAuth = (authUser: import('@/types').UserProfile) => {
-    if (!authUser.languageSelected) {
-      router.replace('/(onboarding)/language');
-    } else if (!authUser.profileComplete) {
-      router.replace('/(onboarding)/profile');
-    } else if (!authUser.onboardingComplete) {
-      router.replace('/(onboarding)/categories');
-    } else {
-      router.replace('/(tabs)');
-    }
-  };
-
   const handleEmailSignIn = async () => {
     if (!agreed) {
       setEmailError(translate('agreeRequired'));
@@ -86,9 +74,12 @@ export default function SignInScreen() {
     setResetSent(false);
     try {
       const res = await signInWithEmail(emailVal.trim(), passwordVal, language as any);
+      if (res.ok && res.isDeleted) {
+        // Soft-deleted account: NavigationGuard handles routing to account-recovery
+        return;
+      }
       if (res.ok && res.user) {
         setUser(res.user);
-        navigateAfterAuth(res.user);
       } else if (res.message) {
         setEmailError(res.message);
       }
@@ -159,8 +150,9 @@ export default function SignInScreen() {
       return;
     }
 
-    if (result.user) {
-      navigateAfterAuth(result.user);
+    if (result.isDeleted) {
+      // Soft-deleted account: NavigationGuard handles routing to account-recovery
+      return;
     }
   };
 

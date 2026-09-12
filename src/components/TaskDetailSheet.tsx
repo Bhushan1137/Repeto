@@ -31,6 +31,21 @@ import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { listHouseholds } from '@/domain/household';
 
+function formatDateTime(isoString: string, lang: Language): string {
+  try {
+    const d = new Date(isoString);
+    const datePart = d.toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const timePart = formatTime12(isoString);
+    return `${datePart}, ${timePart}`;
+  } catch {
+    return isoString;
+  }
+}
+
 let DateTimePicker: any;
 if (Platform.OS !== 'web') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -214,6 +229,8 @@ export function TaskDetailSheet({
             size={72}
             stroke={6}
             label={isCompletedToday ? (language === 'hi' ? 'पूर्ण' : 'Done') : dayLabel(days, language)}
+            labelColor={Colors.onDark}
+            trackColor="rgba(255, 255, 255, 0.16)"
           />
           <View style={styles.heroText}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -304,16 +321,18 @@ export function TaskDetailSheet({
                     <Button
                       title={language === 'hi' ? 'कार्य लें' : 'Claim Task'}
                       variant="outline"
+                      compact
                       onPress={() => onClaim(task.id)}
-                      style={{ minWidth: 90, height: 34, marginVertical: 0 }}
+                      style={{ minWidth: 90, marginVertical: 0 }}
                     />
                   )}
                   {task.assignedTo && task.assignedTo !== user?.id && task.assignedTo !== user?.userCode && onNudge && (
                     <Button
                       title={language === 'hi' ? '👉 नज़ करें' : '👉 Nudge'}
                       variant="outline"
+                      compact
                       onPress={() => onNudge(task.id)}
-                      style={{ minWidth: 80, height: 34, marginVertical: 0, borderColor: '#F59E0B' }}
+                      style={{ minWidth: 80, marginVertical: 0, borderColor: '#F59E0B' }}
                     />
                   )}
                 </View>
@@ -728,8 +747,10 @@ export function TaskDetailSheet({
 
           {/* Metadata info */}
           <View style={styles.metadataContainer}>
+            <AppIcon name="information-circle-outline" size={15} color={Colors.inkFaint} />
             <Text style={styles.metadataText}>
-              ℹ️ {language === 'hi' ? 'कार्य निर्माण तिथि:' : 'Created on:'} {new Date(task.createdAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US')}
+              {language === 'hi' ? 'कार्य निर्माण तिथि:' : 'Created on:'}{' '}
+              <Text style={styles.metadataTextBold}>{formatDateTime(task.createdAt, language)}</Text>
             </Text>
           </View>
 
@@ -758,11 +779,33 @@ export function TaskDetailSheet({
                     <View style={styles.historyTextCol}>
                       <View style={styles.historyTopRow}>
                         <Text style={styles.historyMonth}>{h.month}</Text>
-                        <Text style={styles.historyStatus}>{statusText[h.status]}</Text>
+                        <View
+                          style={[
+                            styles.historyStatusPill,
+                            h.status === 'on_time'
+                              ? styles.statusPillOk
+                              : h.status === 'late'
+                              ? styles.statusPillLate
+                              : styles.statusPillMissed,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.historyStatusText,
+                              h.status === 'on_time'
+                                ? styles.statusTextOk
+                                : h.status === 'late'
+                                ? styles.statusTextLate
+                                : styles.statusTextMissed,
+                            ]}
+                          >
+                            {statusText[h.status]}
+                          </Text>
+                        </View>
                       </View>
                       {h.completedAt && (
                         <Text style={styles.historyTime}>
-                          📅 {new Date(h.completedAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US')}
+                          📅 {formatDateTime(h.completedAt, language)}
                         </Text>
                       )}
                       {h.note ? (
@@ -861,24 +904,34 @@ function ActionChip({
   icon,
   label,
   onPress,
+  disabled,
   compact,
 }: {
   icon: AppIconName;
   label: string;
   onPress?: () => void;
+  disabled?: boolean;
   compact?: boolean;
 }) {
+  const isInactive = disabled || !onPress;
   return (
-    <Card style={styles.chipCard} mode="elevated">
+    <Card style={[styles.chipCard, isInactive && styles.chipCardDisabled]} mode="elevated">
       <TouchableRipple
         style={styles.chipRipple}
         onPress={onPress}
-        disabled={!onPress}
+        disabled={isInactive}
         borderless
       >
         <View style={styles.chipInner}>
-          <AppIcon name={icon} size={18} color={Colors.tealDeep} />
-          <Text style={[styles.chipLabel, compact && styles.chipLabelCompact]} numberOfLines={2}>
+          <AppIcon name={icon} size={18} color={isInactive ? Colors.inkFaint : Colors.tealDeep} />
+          <Text
+            style={[
+              styles.chipLabel,
+              compact && styles.chipLabelCompact,
+              isInactive && styles.chipLabelDisabled,
+            ]}
+            numberOfLines={2}
+          >
             {label}
           </Text>
         </View>
@@ -1106,6 +1159,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_700Bold',
   },
   chipLabelCompact: { fontSize: 9.5 },
+  chipCardDisabled: {
+    opacity: 0.5,
+    backgroundColor: Colors.surfaceMuted,
+  },
+  chipLabelDisabled: {
+    color: Colors.inkFaint,
+  },
 
   extraActionsRow: {
     flexDirection: 'row',
@@ -1155,6 +1215,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyHistory: { ...Typography.bodySm, color: Colors.inkFaint, textAlign: 'center', lineHeight: 20 },
+  metadataContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(23, 27, 54, 0.04)',
+    borderRadius: Radius.sm,
+    marginBottom: 16,
+  },
+  metadataText: {
+    ...Typography.caption,
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    fontFamily: 'Manrope_500Medium',
+  },
+  metadataTextBold: {
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.ink,
+  },
   historyCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.sm,
@@ -1163,7 +1243,7 @@ const styles = StyleSheet.create({
   },
   historyRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -1173,9 +1253,40 @@ const styles = StyleSheet.create({
   dotLate: { backgroundColor: Colors.marigold },
   dotMissed: { backgroundColor: Colors.clay },
   historyTextCol: { flex: 1 },
-  historyTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  historyMonth: { flex: 1, ...Typography.bodySm, color: Colors.inkSoft },
+  historyTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  historyMonth: { flex: 1, ...Typography.bodySm, color: Colors.inkSoft, fontFamily: 'Manrope_600SemiBold' },
   historyStatus: { ...Typography.caption, color: Colors.inkSoft },
+  historyStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  statusPillOk: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  statusPillLate: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  statusPillMissed: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FECACA',
+  },
+  historyStatusText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10.5,
+  },
+  statusTextOk: {
+    color: '#059669',
+  },
+  statusTextLate: {
+    color: '#D97706',
+  },
+  statusTextMissed: {
+    color: '#DC2626',
+  },
   historyNote: {
     ...Typography.caption,
     color: Colors.inkFaint,
@@ -1319,16 +1430,7 @@ const styles = StyleSheet.create({
   doneSecondaryBtn: {
     flex: 1,
   },
-  metadataContainer: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.ivoryLine,
-    marginBottom: 12,
-  },
-  metadataText: {
-    ...Typography.caption,
-    color: Colors.inkSoft,
-  },
+
   historyTime: {
     ...Typography.caption,
     fontSize: 11,

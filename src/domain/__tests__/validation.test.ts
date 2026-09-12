@@ -16,7 +16,8 @@ describe('domain/validation', () => {
   });
 
   it('validatePhone validates empty or 10-digit Indian phone numbers starting with 6-9', () => {
-    expect(validatePhone('')).toEqual({ valid: true });
+    expect(validatePhone('', true)).toEqual({ valid: false, error: 'phoneRequired' });
+    expect(validatePhone('', false)).toEqual({ valid: true });
     expect(validatePhone('9876543210')).toEqual({ valid: true });
     expect(validatePhone('+91 9876543210')).toEqual({ valid: true });
     expect(validatePhone('1234567890')).toEqual({ valid: false, error: 'invalidPhone' });

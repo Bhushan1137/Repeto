@@ -454,3 +454,89 @@ export function cleanupTasksOnRemoval(
     });
   }
 }
+
+export interface TaskMergeResult {
+  merged: RepeatingTask[];
+  newerLocalTasks: RepeatingTask[];
+}
+
+/**
+ * Merges local and remote tasks with conflict resolution:
+ * - Compares updatedAt timestamps (last-write-wins).
+ * - If timestamps are equal, prioritizes longer history or completion today so completions are never lost.
+ * - Preserves tasks created locally that are not yet in remote, and tags them in `newerLocalTasks` so they can be synced.
+ * - Appends remote-only tasks (e.g. from other devices or household members).
+ */
+export function mergeTasksLocalAndRemote(
+  localTasks: RepeatingTask[] = [],
+  remoteTasks: RepeatingTask[] = []
+): TaskMergeResult {
+  const localMap = new Map<string, RepeatingTask>();
+  for (const t of localTasks) {
+    if (t && t.id) localMap.set(t.id, t);
+  }
+
+  const remoteMap = new Map<string, RepeatingTask>();
+  for (const t of remoteTasks) {
+    if (t && t.id) remoteMap.set(t.id, t);
+  }
+
+  const mergedMap = new Map<string, RepeatingTask>();
+  const newerLocalTasks: RepeatingTask[] = [];
+
+  // 1. Process local tasks first to maintain local order
+  for (const local of localTasks) {
+    if (!local || !local.id) continue;
+    const remote = remoteMap.get(local.id);
+
+    if (!remote) {
+      // Local only — keep local and tag for remote sync
+      mergedMap.set(local.id, local);
+      newerLocalTasks.push(local);
+    } else {
+      // Exists in both: compare recency
+      const localTime = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+      const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+
+      if (localTime > remoteTime) {
+        mergedMap.set(local.id, local);
+        newerLocalTasks.push(local);
+      } else if (remoteTime > localTime) {
+        mergedMap.set(local.id, remote);
+      } else {
+        // Timestamps equal or unparseable — compare history & completion
+        const localHistLen = local.history?.length ?? 0;
+        const remoteHistLen = remote.history?.length ?? 0;
+        if (localHistLen > remoteHistLen) {
+          mergedMap.set(local.id, local);
+          newerLocalTasks.push(local);
+        } else if (remoteHistLen > localHistLen) {
+          mergedMap.set(local.id, remote);
+        } else {
+          // Check if local has completed today while remote does not
+          const localDoneToday = hasCompletedToday(local);
+          const remoteDoneToday = hasCompletedToday(remote);
+          if (localDoneToday && !remoteDoneToday) {
+            mergedMap.set(local.id, local);
+            newerLocalTasks.push(local);
+          } else {
+            mergedMap.set(local.id, remote);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Append any remote tasks not present in local
+  for (const remote of remoteTasks) {
+    if (!remote || !remote.id) continue;
+    if (!mergedMap.has(remote.id)) {
+      mergedMap.set(remote.id, remote);
+    }
+  }
+
+  return {
+    merged: Array.from(mergedMap.values()),
+    newerLocalTasks,
+  };
+}

@@ -65,7 +65,10 @@ export function RecurrencePickerModal({
           {allowed.includes('daily') && (
             <TouchableOpacity
               style={styles.radioOption}
-              onPress={() => onChange({ recurrenceType: 'daily' })}
+              onPress={() => {
+                onChange({ recurrenceType: 'daily' });
+                onClose();
+              }}
               activeOpacity={0.7}
             >
               <View
@@ -93,9 +96,10 @@ export function RecurrencePickerModal({
           {allowed.includes('weekly') && (
             <TouchableOpacity
               style={styles.radioOption}
-              onPress={() =>
-                onChange({ recurrenceType: 'weekly', weekday: weekdayIndex })
-              }
+              onPress={() => {
+                onChange({ recurrenceType: 'weekly', weekday: weekdayIndex });
+                onClose();
+              }}
               activeOpacity={0.7}
             >
               <View
@@ -128,9 +132,10 @@ export function RecurrencePickerModal({
             <View style={styles.monthlyBlock}>
               <TouchableOpacity
                 style={styles.radioOption}
-                onPress={() =>
-                  onChange({ recurrenceType: 'monthDay', dayOfMonth: dateNum })
-                }
+                onPress={() => {
+                  onChange({ recurrenceType: 'monthDay', dayOfMonth: dateNum });
+                  onClose();
+                }}
                 activeOpacity={0.7}
               >
                 <View
@@ -158,13 +163,14 @@ export function RecurrencePickerModal({
               {allowed.includes('nthWeekday') && (
                 <TouchableOpacity
                   style={[styles.radioOption, styles.radioOptionNested]}
-                  onPress={() =>
+                  onPress={() => {
                     onChange({
                       recurrenceType: 'nthWeekday',
                       nthWeekday: nth,
                       weekday: weekdayIndex,
-                    })
-                  }
+                    });
+                    onClose();
+                  }}
                   activeOpacity={0.7}
                 >
                   <View
@@ -199,7 +205,10 @@ export function RecurrencePickerModal({
           {allowed.includes('yearly') && (
             <TouchableOpacity
               style={styles.radioOption}
-              onPress={() => onChange({ recurrenceType: 'yearly' })}
+              onPress={() => {
+                onChange({ recurrenceType: 'yearly' });
+                onClose();
+              }}
               activeOpacity={0.7}
             >
               <View
@@ -283,6 +292,15 @@ export function RecurrencePickerModal({
                       onChange({ recurrenceType: 'interval', intervalUnit })
                     }
                   />
+                  <TouchableOpacity
+                    style={styles.doneIntervalBtn}
+                    onPress={onClose}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.doneIntervalBtnText}>
+                      {language === 'hi' ? 'हो गया ✓' : 'Done ✓'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -389,5 +407,18 @@ const styles = StyleSheet.create({
     marginLeft: 34,
     marginTop: 8,
     gap: 12,
+  },
+  doneIntervalBtn: {
+    backgroundColor: Colors.tealDeep,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  doneIntervalBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13.5,
+    color: Colors.white,
   },
 });

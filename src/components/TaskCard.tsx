@@ -15,17 +15,19 @@ interface TaskCardProps {
   onPress: () => void;
   onCompletePress?: () => void;
   selected?: boolean;
+  selectionMode?: boolean;
   onLongPress?: () => void;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-export function TaskCard({
+function TaskCardComponent({
   task,
   language,
   onPress,
   onCompletePress,
   selected,
+  selectionMode,
   onLongPress,
   testID,
   style,
@@ -80,32 +82,47 @@ export function TaskCard({
   }, [days, task.nextDueDate, task.reminderTime, language]);
 
   const defaultId = testID ?? `task-card-${task.id}`;
+  const showCheckbox = selectionMode || selected;
 
   return (
     <Pressable
-      style={[styles.card, selected && styles.cardSelected, style]}
+      style={({ pressed }) => [
+        styles.card,
+        selected && styles.cardSelected,
+        pressed && styles.cardPressed,
+        style,
+      ]}
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={200}
       android_ripple={{ color: 'rgba(0, 0, 0, 0.04)' }}
       testID={defaultId}
     >
       <View style={styles.cardContent} testID={`${defaultId}-content`}>
         <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : catColor }]} testID={`${defaultId}-accent-bar`} />
-        
-        {selected ? (
-          <View style={[styles.iconBadge, { backgroundColor: Colors.marigold }]} testID={`${defaultId}-selected-badge`}>
-            <Text style={[styles.icon, { color: Colors.white }]}>✓</Text>
-          </View>
-        ) : (
-          <TouchableRipple
-            style={[styles.iconBadge, { backgroundColor: catBg }]}
-            testID={`${defaultId}-icon-btn`}
-            onPress={onPress}
-            borderless
+
+        {/* Sleek selection checkbox */}
+        {showCheckbox && (
+          <View
+            style={[
+              styles.checkboxCircle,
+              selected && styles.checkboxCircleSelected,
+            ]}
+            testID={`${defaultId}-checkbox`}
           >
-            <Text style={styles.icon}>{task.icon || cat.icon}</Text>
-          </TouchableRipple>
+            {selected && (
+              <AppIcon name="checkmark" size={13} color={Colors.white} />
+            )}
+          </View>
         )}
+
+        {/* Category Icon Badge remains preserved */}
+        <View
+          style={[styles.iconBadge, { backgroundColor: catBg }]}
+          testID={`${defaultId}-icon-btn`}
+        >
+          <Text style={styles.icon}>{task.icon || cat.icon}</Text>
+        </View>
 
         <View style={styles.info} testID={`${defaultId}-info`}>
           <View style={styles.titleRow} testID={`${defaultId}-title-row`}>
@@ -145,7 +162,7 @@ export function TaskCard({
             labelColor={overdue ? Colors.clayDeep : Colors.ink}
             testID={`${defaultId}-progress-ring`}
           />
-          {!selected && onCompletePress ? (
+          {!selected && !selectionMode && onCompletePress ? (
             <TouchableRipple
               style={styles.quickCompleteBtn}
               testID={`${defaultId}-quick-complete-btn`}
@@ -156,16 +173,31 @@ export function TaskCard({
               borderless
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <AppIcon name="checkmark-circle" size={28} color={overdue ? Colors.clay : Colors.tealDeep} />
+              <AppIcon name="checkmark-circle-outline" size={26} color={overdue ? Colors.clay : Colors.inkFaint} />
             </TouchableRipple>
-          ) : (
+          ) : !selectionMode ? (
             <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
-          )}
+          ) : null}
         </View>
       </View>
     </Pressable>
   );
 }
+
+export const TaskCard = React.memo(TaskCardComponent, (prev, next) => {
+  return (
+    prev.task.id === next.task.id &&
+    prev.task.updatedAt === next.task.updatedAt &&
+    prev.task.nextDueDate === next.task.nextDueDate &&
+    prev.task.title === next.task.title &&
+    prev.task.pinned === next.task.pinned &&
+    prev.task.escalationCount === next.task.escalationCount &&
+    prev.selected === next.selected &&
+    prev.selectionMode === next.selectionMode &&
+    prev.language === next.language &&
+    Boolean(prev.onCompletePress) === Boolean(next.onCompletePress)
+  );
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -176,21 +208,23 @@ const styles = StyleSheet.create({
     elevation: 2,
     shadowColor: Colors.indigo950,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
+    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   cardSelected: {
-    borderWidth: 1.5,
-    borderColor: Colors.marigold,
-    backgroundColor: Colors.ivory,
-    elevation: 0,
+    backgroundColor: Colors.white,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  cardPressed: {
+    opacity: 0.94,
+    transform: [{ scale: 0.992 }],
   },
   cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
     paddingLeft: 16,
@@ -202,13 +236,27 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 4,
   },
+  checkboxCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.8,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  checkboxCircleSelected: {
+    borderColor: Colors.tealDeep,
+    backgroundColor: Colors.tealDeep,
+  },
   iconBadge: { 
-    width: 46, 
-    height: 46, 
-    borderRadius: 14, 
+    width: 44, 
+    height: 44, 
+    borderRadius: 13, 
     alignItems: 'center', 
     justifyContent: 'center',
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
   icon: { fontSize: 20, textAlign: 'center' },
   info: { flex: 1, minWidth: 0, marginLeft: 2 },
@@ -229,4 +277,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

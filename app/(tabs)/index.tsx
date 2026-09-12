@@ -7,9 +7,9 @@ import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { TaskCard } from '@/components/TaskCard';
 import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import { TaskFilterBar } from '@/components/TaskFilterBar';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { TodayFocusSection } from '@/components/TodayFocusSection';
+import { CATEGORIES } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -24,6 +24,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import { useTasks } from '@/providers/TaskProvider';
+import { useToast } from '@/providers/ToastProvider';
 import type { CategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
@@ -44,6 +45,7 @@ const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 's
 export default function HomeScreen() {
   const router = useRouter();
   const { user, activeHousehold } = useAuth();
+  const { showToast } = useToast();
   const { handleNudge } = useNudge();
   const {
     tasks,
@@ -68,6 +70,8 @@ export default function HomeScreen() {
     undoCompleteTask,
     claimTask,
     refreshTasks,
+    focusTaskId,
+    setFocusTaskId,
   } = useTasks();
   const { language, translate } = useTranslation();
 
@@ -99,13 +103,27 @@ export default function HomeScreen() {
   );
   const { selectedIds, toggleSelect, selectAll, clearSelection, isSelecting } = useTaskSelection();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // Automatically open task when tapped from notification or external focus
+  useEffect(() => {
+    if (focusTaskId) {
+      setSelectedTaskId(focusTaskId);
+      setFocusTaskId(null);
+    }
+  }, [focusTaskId, setFocusTaskId]);
+
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [filterVisible, setFilterVisible] = useState(false);
+  const [filterVisible, setFilterVisible] = useState(true);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [laterExpanded, setLaterExpanded] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
   const userHouseholds = useMemo(() => listHouseholds(user ?? ({} as any)), [user]);
+
+  const isFiltered =
+    filter.group !== 'all' ||
+    filter.category !== 'all' ||
+    (Boolean(filter.householdId) && filter.householdId !== 'all');
 
   const selectedTask = useMemo(() => {
     return tasks.find((t) => t.id === selectedTaskId) || null;
@@ -148,6 +166,18 @@ export default function HomeScreen() {
     }
   }, [isAllSelected, clearSelection, selectAll, visibleTaskIds]);
 
+  const selectedTasks = useMemo(() => {
+    return tasks.filter((t) => selectedIds.has(t.id));
+  }, [tasks, selectedIds]);
+
+  const completableCount = useMemo(() => {
+    return selectedTasks.filter((t) => canCompleteTask(t, { maxEarlyDays: 0 }).allowed).length;
+  }, [selectedTasks]);
+
+  const snoozableCount = useMemo(() => {
+    return selectedTasks.filter((t) => canSnoozeTask(t).allowed).length;
+  }, [selectedTasks]);
+
   // Pinned tasks shown at top (before groups), only when no active filter query
   // Tasks due today are rendered in Today's Focus, so we avoid rendering them twice
   const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
@@ -175,42 +205,6 @@ export default function HomeScreen() {
       else if (d <= 7) upcoming += 1;
     }
     return { today, overdue, upcoming };
-  }, [tasks]);
-
-  const groupCounts = useMemo(() => {
-    let overdue = 0;
-    let today = 0;
-    let upcoming = 0;
-    let week = 0;
-    let month = 0;
-    let later = 0;
-
-    for (const t of tasks) {
-      const d = daysUntilDue(t.nextDueDate);
-      if (d < 0) {
-        overdue += 1;
-      } else if (d === 0) {
-        today += 1;
-        upcoming += 1;
-      } else if (d <= 7) {
-        week += 1;
-        upcoming += 1;
-      } else if (d <= 30) {
-        month += 1;
-      } else {
-        later += 1;
-      }
-    }
-
-    return {
-      all: tasks.length,
-      overdue,
-      today,
-      upcoming,
-      week,
-      month,
-      later,
-    };
   }, [tasks]);
 
   const categoryCounts = useMemo(() => {
@@ -346,144 +340,205 @@ export default function HomeScreen() {
             </Pressable>
 
             <Pressable
-              style={[styles.actionBtnRow, filterVisible && styles.actionBtnActive]}
-              onPress={() => setFilterVisible((v) => !v)}
+              style={[
+                styles.actionBtnRow,
+                (isFiltered || filterVisible) && styles.actionBtnActive,
+              ]}
+              onPress={() => {
+                if (isFiltered && !filterVisible) {
+                  setFilterVisible(true);
+                } else if (isFiltered && filterVisible) {
+                  setFilter({ query: '', group: 'all', category: 'all', householdId: 'all' });
+                } else {
+                  setFilterVisible((v) => !v);
+                }
+              }}
             >
-              <AppIcon name="filter-outline" size={16} color={filterVisible ? Colors.marigoldDeep : Colors.indigo950} />
-              <Text style={[styles.actionBtnRowText, filterVisible && styles.actionBtnActiveText]}>
+              <AppIcon
+                name="filter-outline"
+                size={16}
+                color={(isFiltered || filterVisible) ? Colors.marigoldDeep : Colors.indigo950}
+              />
+              <Text
+                style={[
+                  styles.actionBtnRowText,
+                  (isFiltered || filterVisible) && styles.actionBtnActiveText,
+                ]}
+              >
                 {language === 'hi' ? 'फ़िल्टर' : 'Filters'}
               </Text>
             </Pressable>
           </View>
         )}
 
-        {/* Streamlined Category Filter chips bar */}
-        {hasTasks && (
+        {/* Single Permanent Unified Filter Row */}
+        {hasTasks && filterVisible && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.chipsScroll}
             contentContainerStyle={styles.chipsScrollContent}
           >
+            {/* 1. All Tasks */}
             <Pressable
               style={[
                 styles.chipBtn,
-                filter.group === 'all' && filter.category === 'all' && styles.chipBtnActive
+                filter.group === 'all' && filter.category === 'all' && (!filter.householdId || filter.householdId === 'all') && styles.chipBtnActive,
               ]}
-              onPress={() => setFilter({ query: '', group: 'all', category: 'all' })}
+              onPress={() => setFilter({ query: '', group: 'all', category: 'all', householdId: 'all' })}
             >
               <Text
                 style={[
                   styles.chipText,
-                  filter.group === 'all' && filter.category === 'all' && styles.chipTextActive
+                  filter.group === 'all' && filter.category === 'all' && (!filter.householdId || filter.householdId === 'all') && styles.chipTextActive,
                 ]}
               >
                 {language === 'hi' ? `सभी (${tasks.length})` : `All (${tasks.length})`}
               </Text>
             </Pressable>
 
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.category === 'bills' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                category: prev.category === 'bills' ? 'all' : 'bills',
-                group: 'all'
-              }))}
-            >
-              <View style={styles.chipInner}>
-                <Text style={{ fontSize: 12, marginRight: 2 }}>💵</Text>
-                <Text
-                  style={[
-                    styles.chipText,
-                    filter.category === 'bills' && styles.chipTextActive
-                  ]}
-                >
-                  {language === 'hi' ? `बिल (${categoryCounts.bills || 0})` : `Bills (${categoryCounts.bills || 0})`}
-                </Text>
-              </View>
-            </Pressable>
+            {/* 6. Bills */}
+            {Boolean(categoryCounts.bills) && (
+              <Pressable
+                style={[
+                  styles.chipBtn,
+                  filter.category === 'bills' && styles.chipBtnActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  category: prev.category === 'bills' ? 'all' : 'bills',
+                  group: 'all',
+                }))}
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>💵</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.category === 'bills' && styles.chipTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? `बिल (${categoryCounts.bills})` : `Bills (${categoryCounts.bills})`}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
 
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.category === 'health' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                category: prev.category === 'health' ? 'all' : 'health',
-                group: 'all'
-              }))}
-            >
-              <View style={styles.chipInner}>
-                <Text style={{ fontSize: 12, marginRight: 2 }}>💖</Text>
-                <Text
-                  style={[
-                    styles.chipText,
-                    filter.category === 'health' && styles.chipTextActive
-                  ]}
-                >
-                  {language === 'hi' ? `स्वास्थ्य (${categoryCounts.health || 0})` : `Health (${categoryCounts.health || 0})`}
-                </Text>
-              </View>
-            </Pressable>
+            {/* 7. Health */}
+            {Boolean(categoryCounts.health) && (
+              <Pressable
+                style={[
+                  styles.chipBtn,
+                  filter.category === 'health' && styles.chipBtnActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  category: prev.category === 'health' ? 'all' : 'health',
+                  group: 'all',
+                }))}
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>💖</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.category === 'health' && styles.chipTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? `स्वास्थ्य (${categoryCounts.health})` : `Health (${categoryCounts.health})`}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
 
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.category === 'finance' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                category: prev.category === 'finance' ? 'all' : 'finance',
-                group: 'all'
-              }))}
-            >
-              <View style={styles.chipInner}>
-                <Text style={{ fontSize: 12, marginRight: 2 }}>💳</Text>
-                <Text
-                  style={[
-                    styles.chipText,
-                    filter.category === 'finance' && styles.chipTextActive
-                  ]}
-                >
-                  {language === 'hi' ? `वित्त (${categoryCounts.finance || 0})` : `Finance (${categoryCounts.finance || 0})`}
-                </Text>
-              </View>
-            </Pressable>
+            {/* 8. Finance */}
+            {Boolean(categoryCounts.finance) && (
+              <Pressable
+                style={[
+                  styles.chipBtn,
+                  filter.category === 'finance' && styles.chipBtnActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  category: prev.category === 'finance' ? 'all' : 'finance',
+                  group: 'all',
+                }))}
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>💳</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.category === 'finance' && styles.chipTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? `वित्त (${categoryCounts.finance})` : `Finance (${categoryCounts.finance})`}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
 
-            <Pressable
-              style={[
-                styles.chipBtn,
-                filter.category === 'home' && styles.chipBtnActive
-              ]}
-              onPress={() => setFilter(prev => ({
-                ...prev,
-                category: prev.category === 'home' ? 'all' : 'home',
-                group: 'all'
-              }))}
-            >
-              <View style={styles.chipInner}>
-                <Text style={{ fontSize: 12, marginRight: 2 }}>🏠</Text>
-                <Text
-                  style={[
-                    styles.chipText,
-                    filter.category === 'home' && styles.chipTextActive
-                  ]}
-                >
-                  {language === 'hi' ? `गृहकार्य (${categoryCounts.home || 0})` : `Home (${categoryCounts.home || 0})`}
-                </Text>
-              </View>
-            </Pressable>
+            {/* 9. Home */}
+            {Boolean(categoryCounts.home) && (
+              <Pressable
+                style={[
+                  styles.chipBtn,
+                  filter.category === 'home' && styles.chipBtnActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  category: prev.category === 'home' ? 'all' : 'home',
+                  group: 'all',
+                }))}
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>🏠</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.category === 'home' && styles.chipTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? `गृहकार्य (${categoryCounts.home})` : `Home (${categoryCounts.home})`}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
 
-            {/* Household context quick filter */}
+            {/* Other categories with tasks */}
+            {CATEGORIES.filter(c => !['bills', 'health', 'finance', 'home'].includes(c.key) && (categoryCounts[c.key as CategoryKey] || 0) > 0).map(cat => (
+              <Pressable
+                key={cat.key}
+                style={[
+                  styles.chipBtn,
+                  filter.category === cat.key && styles.chipBtnActive,
+                ]}
+                onPress={() => setFilter(prev => ({
+                  ...prev,
+                  category: prev.category === cat.key ? 'all' : (cat.key as CategoryKey),
+                  group: 'all',
+                }))}
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>{cat.icon}</Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.category === cat.key && styles.chipTextActive,
+                    ]}
+                  >
+                    {(language === 'hi' ? cat.labelHi : cat.labelEn) + ` (${categoryCounts[cat.key as CategoryKey]})`}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+
+            {/* 10. Household Context Filter */}
             {userHouseholds.length > 0 && (
               <Pressable
                 style={[
                   styles.chipBtn,
-                  filter.householdId !== 'all' && styles.chipBtnActive,
+                  filter.householdId && filter.householdId !== 'all' && styles.chipBtnActive,
                 ]}
                 onPress={() =>
                   setFilter((prev) => ({
@@ -498,13 +553,13 @@ export default function HomeScreen() {
                 }
               >
                 <View style={styles.chipInner}>
-                  <Text style={{ fontSize: 12, marginRight: 2 }}>
+                  <Text style={{ fontSize: 12, marginRight: 3 }}>
                     {filter.householdId === 'personal' ? '👤' : '🏠'}
                   </Text>
                   <Text
                     style={[
                       styles.chipText,
-                      filter.householdId !== 'all' && styles.chipTextActive,
+                      filter.householdId && filter.householdId !== 'all' && styles.chipTextActive,
                     ]}
                   >
                     {filter.householdId === 'personal'
@@ -517,26 +572,21 @@ export default function HomeScreen() {
               </Pressable>
             )}
 
-            <Pressable
-              style={styles.chipBtn}
-              onPress={() => setFilterVisible(v => !v)}
-            >
-              <Text style={styles.chipText}>••• {language === 'hi' ? 'अधिक' : 'More'}</Text>
-            </Pressable>
+            {/* 11. Clear Filter Chip */}
+            {isFiltered && (
+              <Pressable
+                style={[styles.chipBtn, styles.chipBtnClear]}
+                onPress={() => setFilter({ query: '', group: 'all', category: 'all', householdId: 'all' })}
+              >
+                <View style={styles.chipInner}>
+                  <AppIcon name="close" size={13} color={Colors.marigoldDeep} />
+                  <Text style={[styles.chipText, { color: Colors.marigoldDeep, marginLeft: 2 }]}>
+                    {language === 'hi' ? 'फ़िल्टर हटाएं' : 'Clear'}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
           </ScrollView>
-        )}
-
-        {/* Filter bar - Shows timeframe & group filters, avoids duplicating inline categories */}
-        {filterVisible && (
-          <TaskFilterBar
-            filter={filter}
-            onChange={setFilter}
-            language={language}
-            hideSearch={true}
-            hideCategories={true}
-            groupCounts={groupCounts}
-            categoryCounts={categoryCounts}
-          />
         )}
 
         {/* Calendar View */}
@@ -613,6 +663,7 @@ export default function HomeScreen() {
                         task={task}
                         language={language}
                         selected={isItemSelected}
+                        selectionMode={isSelecting}
                         style={{ marginBottom: 0 }}
                         onPress={() => {
                           if (isSelecting) {
@@ -678,6 +729,7 @@ export default function HomeScreen() {
                           task={task}
                           language={language}
                           selected={isItemSelected}
+                          selectionMode={isSelecting}
                           style={{ marginBottom: 0 }}
                           onPress={() => {
                             if (isSelecting) {
@@ -704,16 +756,42 @@ export default function HomeScreen() {
         <BulkActionBar
           selectedCount={selectedIds.size}
           totalCount={visibleTaskIds.length}
+          completableCount={completableCount}
+          snoozableCount={snoozableCount}
           isAllSelected={isAllSelected}
           onSelectAll={handleSelectAllToggle}
           onClear={clearSelection}
           onComplete={async () => {
-            await completeTasks(Array.from(selectedIds));
+            const eligible = selectedTasks
+              .filter((t) => canCompleteTask(t, { maxEarlyDays: 0 }).allowed)
+              .map((t) => t.id);
+            if (eligible.length > 0) {
+              await completeTasks(eligible);
+            }
             clearSelection();
           }}
           onSnooze={async () => {
-            await snoozeTasks(Array.from(selectedIds));
+            const eligible = selectedTasks
+              .filter((t) => canSnoozeTask(t).allowed)
+              .map((t) => t.id);
+            if (eligible.length > 0) {
+              await snoozeTasks(eligible);
+            }
             clearSelection();
+          }}
+          onDisabledComplete={() => {
+            showToast(
+              language === 'hi'
+                ? 'केवल आज या बकाया कार्य ही पूरे किए जा सकते हैं'
+                : 'Only tasks due today or overdue can be marked Done'
+            );
+          }}
+          onDisabledSnooze={() => {
+            showToast(
+              language === 'hi'
+                ? 'केवल इस सप्ताह के कार्य ही सणूज़ किए जा सकते हैं'
+                : 'Only tasks due this week can be snoozed'
+            );
           }}
           onSkip={async () => {
             await skipTasks(Array.from(selectedIds));
@@ -1323,5 +1401,24 @@ const styles = StyleSheet.create({
   chipInner: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  chipDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: Colors.ivoryLine,
+    marginHorizontal: 3,
+    alignSelf: 'center',
+  },
+  chipBtnDanger: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  chipBtnDangerActive: {
+    borderColor: '#DC2626',
+    backgroundColor: '#DC2626',
+  },
+  chipBtnClear: {
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232,163,61,0.1)',
   },
 });

@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getFirestoreDb, getFirebaseAuth } from './app';
 import type { RepeatingTask, UserProfile } from '@/types';
@@ -283,4 +283,82 @@ export async function logRecommendationClickRemote(recId: string): Promise<void>
   } catch (err) {
     console.warn('[Repeato] Failed to log click:', err);
   }
+}
+
+/**
+ * Soft-delete a user account in Firestore.
+ * Stamps the user document with isDeleted=true, deletedAt, deletionReason, and purgeAfter.
+ * The Firebase Auth account is NOT deleted — it can be recovered by an admin.
+ */
+export async function softDeleteUserRemote(
+  userId: string,
+  deletionReason = 'user_requested'
+): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
+
+  // purgeAfter = 30 days from now (informational, no auto-purge Cloud Function yet)
+  const purgeAfterDate = new Date();
+  purgeAfterDate.setDate(purgeAfterDate.getDate() + 30);
+
+  await updateDoc(doc(db, 'users', userId), {
+    isDeleted: true,
+    deletedAt: new Date().toISOString(),
+    deletionReason,
+    purgeAfter: purgeAfterDate.toISOString(),
+    // Clear push notification token so no further push messages are sent
+    pushOptIn: false,
+  });
+}
+
+/**
+ * Restore a soft-deleted account.
+ * Clears all deletion stamp fields so the user can sign in and use the app normally.
+ */
+export async function restoreUserRemote(userId: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  await updateDoc(doc(db, 'users', userId), {
+    isDeleted: false,
+    deletedAt: null,
+    deletionReason: null,
+    purgeAfter: null,
+    pushOptIn: true,
+  });
+}
+
+/**
+ * Permanently purge a user's data for a fresh start.
+ * Deletes all sub-collections (tasks, notifications) and overwrites the user doc
+ * with only a minimal "wiped" marker. The Firebase Auth account is kept.
+ */
+export async function purgeUserDataRemote(userId: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+
+  // Delete all personal tasks
+  try {
+    const tasksSnap = await getDocs(collection(db, 'users', userId, 'tasks'));
+    await Promise.all(tasksSnap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.warn('[Repeato] purge: failed to delete tasks sub-collection', err);
+  }
+
+  // Delete all notifications
+  try {
+    const notifsSnap = await getDocs(collection(db, 'users', userId, 'notifications'));
+    await Promise.all(notifsSnap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.warn('[Repeato] purge: failed to delete notifications sub-collection', err);
+  }
+
+  // Overwrite the user doc with a clean slate (only id preserved)
+  await setDoc(doc(db, 'users', userId), {
+    id: userId,
+    isDeleted: false,
+    purgedAt: new Date().toISOString(),
+  });
 }

@@ -223,6 +223,7 @@ export function TodayFocusSection({
                   task={item.task}
                   language={language}
                   selected={isSelected}
+                  selectionMode={isSelecting}
                   style={{ marginBottom: 0 }}
                   onPress={() => {
                     if (isSelecting && onToggleSelect) {

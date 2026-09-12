@@ -12,12 +12,14 @@ vi.mock('expo-notifications', () => ({
   requestPermissionsAsync: vi.fn().mockResolvedValue({ status: 'granted' }),
   scheduleNotificationAsync: vi.fn().mockResolvedValue('notif-id'),
   cancelScheduledNotificationAsync: vi.fn().mockResolvedValue(true),
+  dismissNotificationAsync: vi.fn().mockResolvedValue(undefined),
   SchedulableTriggerInputTypes: {
     DATE: 'date',
     DAILY: 'daily',
     WEEKLY: 'weekly',
     MONTHLY: 'monthly',
     YEARLY: 'yearly',
+    TIME_INTERVAL: 'timeInterval',
   },
   AndroidImportance: {
     HIGH: 4,
@@ -85,5 +87,94 @@ describe('services/notifications', () => {
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-0');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-4');
   });
+
+  it('setupNotificationCategories configures foreground action options', async () => {
+    const { setupNotificationCategories } = await import('@/services/notifications');
+    await setupNotificationCategories(false);
+    expect(Notifications.setNotificationCategoryAsync).toHaveBeenCalledWith(
+      'task-actions',
+      expect.arrayContaining([
+        expect.objectContaining({
+          identifier: 'MARK_DONE',
+          options: { opensAppToForeground: true },
+        }),
+        expect.objectContaining({
+          identifier: 'SNOOZE_2D',
+          options: { opensAppToForeground: true },
+        }),
+      ])
+    );
+  });
+
+  it('dismissNotification calls dismissNotificationAsync', async () => {
+    const { dismissNotification } = await import('@/services/notifications');
+    await dismissNotification('notif-123');
+    expect(Notifications.dismissNotificationAsync).toHaveBeenCalledWith('notif-123');
+  });
+
+  it('scheduleCampaignNotification schedules immediate notification with promo details', async () => {
+    const { scheduleCampaignNotification } = await import('@/services/notifications');
+    const campaign = {
+      id: 'deal-101',
+      title: '20% Off Groceries',
+      description: 'Get fresh groceries delivered at your doorstep.',
+      promoCode: 'FRESH20',
+      imageUrl: 'https://example.com/deal.png',
+      buttonText: 'Order Now',
+      redirectUrl: 'https://example.com/shop',
+      active: true,
+      matchCriteria: { categories: ['home'], keywords: ['grocery'] },
+      impressions: 0,
+      clicks: 0,
+    };
+
+    const res = await scheduleCampaignNotification(campaign, false);
+    expect(res).toBe(true);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: 'campaign-deal-101',
+        content: expect.objectContaining({
+          title: 'Special Offer: 20% Off Groceries',
+          body: 'Get fresh groceries delivered at your doorstep. (Use code: FRESH20)',
+          data: expect.objectContaining({
+            type: 'campaign',
+            campaignId: 'deal-101',
+            redirectUrl: 'https://example.com/shop',
+            promoCode: 'FRESH20',
+          }),
+        }),
+      })
+    );
+  });
+
+  it('scheduleCampaignNotification formats localized Hindi content', async () => {
+    const { scheduleCampaignNotification } = await import('@/services/notifications');
+    const campaign = {
+      id: 'deal-102',
+      title: 'वाटर प्यूरीफायर सर्विस',
+      description: 'सर्विसिंग पर 30% की छूट पाएं',
+      promoCode: 'PURIFY30',
+      imageUrl: 'https://example.com/ro.png',
+      buttonText: 'अभी बुक करें',
+      redirectUrl: 'https://example.com/service',
+      active: true,
+      matchCriteria: { categories: ['appliances'], keywords: ['filter'] },
+      impressions: 0,
+      clicks: 0,
+    };
+
+    const res = await scheduleCampaignNotification(campaign, true);
+    expect(res).toBe(true);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: 'campaign-deal-102',
+        content: expect.objectContaining({
+          title: 'विशेष ऑफर: वाटर प्यूरीफायर सर्विस',
+          body: 'सर्विसिंग पर 30% की छूट पाएं (कोड: PURIFY30)',
+        }),
+      })
+    );
+  });
 });
+
 

@@ -21,9 +21,12 @@ export function validateName(name: string): ValidationResult {
   return { valid: true };
 }
 
-export function validatePhone(phone: string): ValidationResult {
-  if (!phone.trim()) return { valid: true };
-  const digits = phone.replace(/\D/g, '').slice(-10);
+export function validatePhone(phone: string, required = true): ValidationResult {
+  const trimmed = phone.trim();
+  if (!trimmed) {
+    return required ? { valid: false, error: 'phoneRequired' } : { valid: true };
+  }
+  const digits = trimmed.replace(/\D/g, '').slice(-10);
   if (digits.length !== PHONE_DIGITS) {
     return { valid: false, error: 'invalidPhone' };
   }

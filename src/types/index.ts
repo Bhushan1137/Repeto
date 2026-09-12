@@ -145,6 +145,12 @@ export interface UserProfile {
   activeHouseholdId?: string;
   removedBy?: string;
   termsAcceptedAt?: string;
+  /** Soft-delete fields — set when user requests account deletion */
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletionReason?: string;
+  /** ISO timestamp after which a server-side job may permanently purge the data */
+  purgeAfter?: string;
 }
 
 export interface AppState {

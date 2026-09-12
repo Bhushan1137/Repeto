@@ -47,7 +47,7 @@ const paperTheme = {
 };
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
-  const { ready, user } = useAuth();
+  const { ready, user, deletedAccountInfo } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -57,39 +57,70 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     const rootSegment = segments[0];
     const isInsideOnboarding = rootSegment === '(onboarding)';
     const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms';
+    const isStandaloneModal =
+      rootSegment === 'help-support' ||
+      rootSegment === 'notifications' ||
+      rootSegment === 'presets';
     const currentScreen = segments[segments.length - 1];
 
     if (isPrivacyOrTerms) return;
 
+    // 0. Soft-deleted account detected -> MUST be on account-recovery
+    if (deletedAccountInfo) {
+      if (!isInsideOnboarding || currentScreen !== 'account-recovery') {
+        router.replace('/(onboarding)/account-recovery');
+      }
+      return;
+    }
+
+    // 1. Not logged in -> MUST be on sign-in (allow help-support for FAQs)
     if (!user) {
-      // 1. Not logged in: must go to sign-in screen.
+      if (rootSegment === 'help-support') return;
       if (!isInsideOnboarding || currentScreen !== 'sign-in') {
         router.replace('/(onboarding)/sign-in');
       }
-    } else if (!user.languageSelected) {
-      // 2. Logged in, language preference not set: must select language.
-      if (!isInsideOnboarding || currentScreen !== 'language') {
-        router.replace('/(onboarding)/language');
-      }
-    } else if (!user.profileComplete) {
-      // 3. Logged in, language set, profile not complete: must complete profile.
-      if (!isInsideOnboarding || currentScreen !== 'profile') {
-        router.replace('/(onboarding)/profile');
-      }
-    } else if (!user.onboardingComplete) {
-      // 4. Logged in, language set, profile complete, onboarding tasks not complete:
-      // must be on onboarding categories, suggestions, or finish.
-      const allowed = ['categories', 'suggestions', 'finish'];
-      if (!isInsideOnboarding || !allowed.includes(currentScreen)) {
-        router.replace('/(onboarding)/categories');
-      }
-    } else {
-      // 5. Fully onboarded: cannot access onboarding screens.
-      if (isInsideOnboarding) {
+      return;
+    }
+
+    // 2. Fully onboarded -> MUST NOT be in onboarding (go to tabs if not already on tabs or standalone screen)
+    const isFullyOnboarded = !!(user.languageSelected && user.profileComplete && user.onboardingComplete);
+    if (isFullyOnboarded) {
+      if (rootSegment !== '(tabs)' && !isStandaloneModal) {
         router.replace('/(tabs)');
       }
+      return;
     }
-  }, [ready, user, segments]);
+
+    // 3. Logged in, NOT fully onboarded:
+    // A) If outside onboarding (e.g. at root "/" or trying to open tabs):
+    //    route them into onboarding where they left off
+    if (!isInsideOnboarding && !isStandaloneModal) {
+      if (!user.languageSelected) {
+        router.replace('/(onboarding)/language');
+      } else if (!user.profileComplete) {
+        router.replace('/(onboarding)/profile');
+      } else {
+        router.replace('/(onboarding)/categories');
+      }
+      return;
+    }
+
+    // B) If inside onboarding on sign-in or account-recovery, but now logged in:
+    //    route them into onboarding where they left off
+    if (currentScreen === 'sign-in' || currentScreen === 'account-recovery') {
+      if (!user.languageSelected) {
+        router.replace('/(onboarding)/language');
+      } else if (!user.profileComplete) {
+        router.replace('/(onboarding)/profile');
+      } else {
+        router.replace('/(onboarding)/categories');
+      }
+      return;
+    }
+
+    // C) If user is already on an active onboarding screen (language, profile, categories, suggestions, finish):
+    //    Do not interfere — let screen transitions and back buttons work cleanly without double navigation.
+  }, [ready, user, deletedAccountInfo, segments]);
 
   if (!ready) {
     return (
@@ -113,6 +144,7 @@ export default function RootLayout() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
+
   const [splashComplete, setSplashComplete] = useState(false);
 
   useEffect(() => {
@@ -121,7 +153,9 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  if (!loaded) return null;
+  if (!loaded) {
+    return null;
+  }
 
   return (
     <GlobalErrorBoundary>
@@ -135,6 +169,8 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(onboarding)" />
                 <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="help-support" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="notifications" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="presets" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="terms" options={{ presentation: 'modal' }} />

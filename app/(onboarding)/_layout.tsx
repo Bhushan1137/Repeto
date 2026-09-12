@@ -7,6 +7,7 @@ export default function OnboardingLayout() {
       <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <Stack.Screen name="language" />
         <Stack.Screen name="sign-in" />
+        <Stack.Screen name="account-recovery" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="categories" />
         <Stack.Screen name="suggestions" />

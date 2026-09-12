@@ -60,7 +60,7 @@ export default function ProfileScreen() {
       setCtxName(name.trim());
       setCtxPhone(formattedPhone);
       setCtxEmail(user?.email ?? email);
-      router.push('/(onboarding)/categories');
+      router.replace('/(onboarding)/categories');
     } finally {
       setLoading(false);
     }
@@ -115,14 +115,13 @@ export default function ProfileScreen() {
         />
 
         <FormField
-          label={translate('mobileNumberOptional')}
+          label={translate('mobileNumber')}
           value={phone}
           onChangeText={setPhone}
-          placeholder="9876543210"
           keyboardType="phone-pad"
           maxLength={10}
           error={errors.phone}
-          hint={language === 'hi' ? 'व्हाट्सएप / एसएमएस रिमाइंडर्स के लिए (ऐच्छिक)' : 'Optional for SMS & WhatsApp task alerts (+91 10-digit number)'}
+          hint={translate('phoneRequiredHint')}
           testID="profile-phone-input"
         />
 

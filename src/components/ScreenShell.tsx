@@ -1,15 +1,11 @@
-import { ActivityFeed } from '@/components/ActivityFeed';
 import { AppIcon } from '@/components/AppIcon';
 import { Colors, Gradients, Layout, Radius, Typography } from '@/constants/theme';
-import { useAuth } from '@/providers/AuthProvider';
 import { useNotifications } from '@/providers/NotificationProvider';
-import { useTasks } from '@/providers/TaskProvider';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -35,6 +31,7 @@ interface ScreenShellProps {
   onBackPress?: () => void;
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
+  hideNotificationBell?: boolean;
 }
 
 export function ScreenShell({
@@ -51,13 +48,12 @@ export function ScreenShell({
   onBackPress,
   onRefresh,
   refreshing,
+  hideNotificationBell = false,
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, activeHousehold } = useAuth();
-  const { tasks } = useTasks();
+  const pathname = usePathname();
   const { unreadCount } = useNotifications();
-  const [activityVisible, setActivityVisible] = useState(false);
   const [internalRefreshing, setInternalRefreshing] = useState(false);
 
   const isRefreshing = refreshing ?? internalRefreshing;
@@ -348,20 +344,28 @@ export function ScreenShell({
         ) : null}
 
         {/* Bell notification button */}
-        <Animated.View style={{ transform: [{ scale: bellScale }] }}>
-          <Pressable
-            style={styles.bellPressable}
-            onPress={() => router.push('/notifications')}
-            hitSlop={8}
-          >
-            <AppIcon name="notifications-outline" size={21} color={Colors.white} />
-            {unreadCount > 0 && (
-              <View style={styles.bellBadge}>
-                <Text style={styles.bellBadgeText}>{unreadCount}</Text>
-              </View>
-            )}
-          </Pressable>
-        </Animated.View>
+        {!hideNotificationBell && pathname !== '/notifications' ? (
+          <Animated.View style={{ transform: [{ scale: bellScale }] }}>
+            <Pressable
+              style={styles.bellPressable}
+              onPress={() => {
+                if (pathname !== '/notifications') {
+                  router.push('/notifications');
+                }
+              }}
+              hitSlop={8}
+            >
+              <AppIcon name="notifications-outline" size={21} color={Colors.white} />
+              {unreadCount > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
+        ) : (
+          <View style={{ width: 28 }} />
+        )}
       </View>
 
       {/* Hairline glowing border at bottom of collapsed header */}
@@ -432,40 +436,6 @@ export function ScreenShell({
 
       {/* Compact sticky header overlays ScrollView at zIndex 100 */}
       {compactStickyHeader}
-
-      {/* Recent Activity Modal */}
-      <Modal
-        visible={activityVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setActivityVisible(false)}
-      >
-        <Pressable style={styles.activityBackdrop} onPress={() => setActivityVisible(false)} />
-        <Card style={styles.activitySheet} mode="elevated">
-          <Card.Content style={styles.activityContent}>
-            <View style={styles.activityHeader}>
-              <Text style={styles.activityTitle}>
-                {user?.language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}
-              </Text>
-              <Pressable onPress={() => setActivityVisible(false)} hitSlop={12} style={styles.activityCloseBtn}>
-                <AppIcon name="close" size={20} color={Colors.ink} />
-              </Pressable>
-            </View>
-            <Animated.ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 24 }}
-            >
-              <ActivityFeed
-                tasks={tasks}
-                members={activeHousehold?.members ?? user?.householdMembers ?? []}
-                currentUserId={user?.id}
-                currentUserName={user?.name ?? 'You'}
-                language={user?.language ?? 'en'}
-              />
-            </Animated.ScrollView>
-          </Card.Content>
-        </Card>
-      </Modal>
     </View>
   );
 }

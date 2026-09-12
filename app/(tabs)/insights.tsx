@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { HouseholdMemberProfile } from '@/types';
+import type { HouseholdMemberProfile, RepeatingTask } from '@/types';
 import { View, StyleSheet, Pressable, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
@@ -33,6 +33,8 @@ import { AppIcon } from '@/components/AppIcon';
 import { Colors, Radius } from '@/constants/theme';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
+
+const EMPTY_TASKS: RepeatingTask[] = [];
 
 export default function InsightsScreen() {
   const router = useRouter();
@@ -102,19 +104,35 @@ export default function InsightsScreen() {
     return matched?.members ?? [];
   }, [activeScope, households]);
 
+  const habitsTasks = activeSegment === 'habits' ? scopedTasks : EMPTY_TASKS;
+  const financeTasks = activeSegment === 'finances' ? scopedTasks : EMPTY_TASKS;
+
   // Insights derived from scoped tasks
   const insights = useInsights(scopedTasks);
   const { members } = useHousehold(scopedTasks, contextHouseholdMembers);
   const upcomingSlots = useUpcomingStrip(scopedTasks);
-  const forecast = useSpendForecast(scopedTasks);
+  const forecast = useSpendForecast(financeTasks);
   const trend = useMonthTrend(scopedTasks);
-  const consistencyMatrix = useConsistencyMatrix(scopedTasks);
-  const weeklyVelocity = useWeeklyVelocity(scopedTasks);
+  const consistencyMatrix = useConsistencyMatrix(habitsTasks);
+  const weeklyVelocity = useWeeklyVelocity(habitsTasks);
 
-  // Native Detailed Financial Report
+  // Native Detailed Financial Report - only computed when finances tab is active
   const financialReport = useMemo(() => {
+    if (activeSegment !== 'finances') {
+      return {
+        totalFinanceTasks: 0,
+        projectedSpend: 0,
+        paidSoFar: 0,
+        percentPaid: 0,
+        remainingDue: 0,
+        pendingCount: 0,
+        yearlyEstimate: 0,
+        categoryBreakdown: [],
+        itemList: [],
+      };
+    }
     return computeDetailedSpendReport(scopedTasks, language, 'all');
-  }, [scopedTasks, language]);
+  }, [activeSegment, scopedTasks, language]);
 
   const slipLabel = insights.slipCategory
     ? getCategoryLabel(insights.slipCategory, language)
@@ -357,6 +375,7 @@ export default function InsightsScreen() {
                         color={Colors.marigold}
                         size={106}
                         stroke={9}
+                        animated
                       />
                       <View style={styles.ringTextCenter}>
                         <Text style={styles.ringPctText}>{insights.overallPercent}%</Text>

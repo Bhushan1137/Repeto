@@ -17,16 +17,24 @@ import {
 } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
+import { mergeTasksLocalAndRemote } from '@/domain/task';
 
 function remoteEnabled(): boolean {
   return isFirebaseConfigured() && initFirebase();
 }
 
 export const taskRepository = {
-  async load(userId: string | null, isOnline = true): Promise<RepeatingTask[]> {
+  async load(
+    userId: string | null,
+    isOnline = true,
+    inMemoryTasks?: RepeatingTask[]
+  ): Promise<RepeatingTask[]> {
     if (!userId) return [];
 
-    const local = await loadTasksForUser(userId);
+    let local = await loadTasksForUser(userId);
+    if (inMemoryTasks && inMemoryTasks.length > 0) {
+      local = mergeTasksLocalAndRemote(inMemoryTasks, local).merged;
+    }
 
     if (!remoteEnabled() || !isOnline) {
       return local;
@@ -35,16 +43,29 @@ export const taskRepository = {
     try {
       const remote = await Promise.race([
         loadTasksRemote(userId),
-        new Promise<RepeatingTask[]>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1500))
+        new Promise<RepeatingTask[]>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2500))
       ]);
       if (remote && Array.isArray(remote) && remote.length > 0) {
-        await saveTasksForUser(userId, remote);
-        return remote;
+        const { merged, newerLocalTasks } = mergeTasksLocalAndRemote(local, remote);
+        await saveTasksForUser(userId, merged);
+
+        if (newerLocalTasks.length > 0) {
+          Promise.all(newerLocalTasks.map((t) => saveTaskRemote(userId, t))).catch((err) => {
+            console.warn('[Repeato] Background sync of newer local tasks failed:', err);
+          });
+        }
+
+        return merged;
       }
       return local;
     } catch {
       return local;
     }
+  },
+
+  async saveSingleLocal(task: RepeatingTask, userId: string): Promise<void> {
+    if (!userId || !task) return;
+    await saveSingleTaskLocal(userId, task);
   },
 
   async saveAll(tasks: RepeatingTask[], userId: string | null): Promise<void> {

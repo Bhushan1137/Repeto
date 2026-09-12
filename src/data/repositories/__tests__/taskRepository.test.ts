@@ -53,9 +53,27 @@ describe('data/repositories/taskRepository', () => {
     expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'create', task: dummyTask });
   });
 
+  it('saveSingleLocal delegates to saveSingleTaskLocal', async () => {
+    await taskRepository.saveSingleLocal(dummyTask, 'u1');
+    expect(localSource.saveSingleTaskLocal).toHaveBeenCalledWith('u1', dummyTask);
+  });
+
   it('deleteOne deletes from local SQLite and enqueues sync for task deletion when remote is disabled', async () => {
     await taskRepository.deleteOne('t1', 'u1');
     expect(localSource.deleteSingleTaskLocal).toHaveBeenCalledWith('u1', 't1');
     expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'delete', taskId: 't1' });
+  });
+
+  it('load merges inMemoryTasks with SQLite tasks when provided', async () => {
+    const memoryTask: RepeatingTask = {
+      ...dummyTask,
+      id: 't2',
+      title: 'Water Bill',
+      updatedAt: '2026-09-12T12:00:00.000Z',
+    };
+    vi.spyOn(localSource, 'loadTasksForUser').mockResolvedValue([dummyTask]);
+    const res = await taskRepository.load('u1', false, [memoryTask]);
+    expect(res).toHaveLength(2);
+    expect(res.map((t) => t.id)).toEqual(['t2', 't1']);
   });
 });

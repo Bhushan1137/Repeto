@@ -10,6 +10,7 @@ interface NotificationContextValue {
   addNotification: (type: AppNotification['type'], title: string, body: string, metadata?: AppNotification['metadata']) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -99,6 +100,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     [user?.id]
   );
 
+  const clearAllNotifications = useCallback(async () => {
+    if (!user?.id) {
+      setNotifications([]);
+      return;
+    }
+
+    const snapshot = [...notificationsRef.current];
+    setNotifications([]);
+
+    if (snapshot.length > 0) {
+      await Promise.allSettled(
+        snapshot.map((n) => userRepository.deleteNotification(user.id, n.id))
+      );
+    }
+  }, [user?.id]);
+
   const value = useMemo(
     () => ({
       notifications,
@@ -106,8 +123,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       addNotification,
       markAllAsRead,
       deleteNotification,
+      clearAllNotifications,
     }),
-    [notifications, unreadCount, addNotification, markAllAsRead, deleteNotification]
+    [notifications, unreadCount, addNotification, markAllAsRead, deleteNotification, clearAllNotifications]
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

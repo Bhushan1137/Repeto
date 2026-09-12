@@ -25,6 +25,7 @@ interface TaskFilterBarProps {
   hideSearchAndGroups?: boolean;
   groupCounts?: Partial<Record<FilterGroup, number>>;
   categoryCounts?: Partial<Record<CategoryKey, number>>;
+  onToggleCategories?: () => void;
 }
 
 const GROUP_CHIPS: { key: FilterGroup; labelEn: string; labelHi: string }[] = [
@@ -47,6 +48,7 @@ export function TaskFilterBar({
   hideSearchAndGroups = false,
   groupCounts,
   categoryCounts,
+  onToggleCategories,
 }: TaskFilterBarProps) {
   const shouldHideSearch = hideSearch || hideSearchAndGroups;
   const shouldHideGroups = hideGroups || hideSearchAndGroups;
@@ -88,8 +90,11 @@ export function TaskFilterBar({
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-          style={{ marginBottom: shouldHideCategories ? 6 : 0 }}
+          contentContainerStyle={[
+            styles.chipRow,
+            shouldHideSearch && { paddingHorizontal: 0, paddingRight: 16 },
+          ]}
+          style={{ marginBottom: shouldHideCategories ? 12 : 0 }}
         >
           {GROUP_CHIPS.map((chip) => {
             const active = filter.group === chip.key;
@@ -107,6 +112,16 @@ export function TaskFilterBar({
               </Pressable>
             );
           })}
+          {onToggleCategories && (
+            <Pressable
+              style={styles.chip}
+              onPress={onToggleCategories}
+            >
+              <Text style={styles.chipText}>
+                {language === 'hi' ? '🏷️ श्रेणियाँ' : '🏷️ Categories'}
+              </Text>
+            </Pressable>
+          )}
         </ScrollView>
       )}
 
@@ -194,11 +209,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: Colors.white,
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: Radius.full,
+    borderWidth: 1.2,
     borderColor: Colors.ivoryLine,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
   chipActive: {
     backgroundColor: Colors.indigo950,
@@ -209,9 +224,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.marigoldDeep,
   },
   chipText: {
-    ...Typography.caption,
-    color: Colors.inkSoft,
     fontSize: 12,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.indigo950,
   },
   chipTextActive: {
     color: Colors.white,

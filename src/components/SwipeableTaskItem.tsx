@@ -147,7 +147,7 @@ function RightActionContent({
   );
 }
 
-export function SwipeableTaskItem({
+function SwipeableTaskItemComponent({
   children,
   language,
   onComplete,
@@ -281,6 +281,8 @@ export function SwipeableTaskItem({
     </Animated.View>
   );
 }
+
+export const SwipeableTaskItem = React.memo(SwipeableTaskItemComponent);
 
 const styles = StyleSheet.create({
   wrapper: {

@@ -1,14 +1,16 @@
 import type { Language, UserProfile } from '@/types';
 import type { User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { signInWithGoogleNative, getAuthErrorMessage } from '@/services/firebase/auth';
-import { loadUserRemote } from '@/services/firebase/firestore';
+import { signInWithGoogleNative, getAuthErrorMessage, signOutFirebase } from '@/services/firebase/auth';
+import { loadUserRemote, softDeleteUserRemote } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { normalizeHouseholdProfile } from '@/domain/household';
 
 export interface SignInResult {
   ok: boolean;
   user?: UserProfile;
+  isDeleted?: boolean;
+  deletedAccountInfo?: { deletedAt: string; purgeAfter: string | null; userId: string };
   error?: 'auth_unavailable' | 'cancelled' | 'failed' | 'redirect_pending';
   message?: string;
 }
@@ -54,6 +56,18 @@ export async function signInWithGoogle(language: Language): Promise<SignInResult
 
   try {
     const fbUser = await signInWithGoogleNative();
+    const remote = await loadUserRemote(fbUser.uid);
+    if (remote?.isDeleted === true) {
+      return {
+        ok: true,
+        isDeleted: true,
+        deletedAccountInfo: {
+          deletedAt: remote.deletedAt ?? new Date().toISOString(),
+          purgeAfter: remote.purgeAfter ?? null,
+          userId: fbUser.uid,
+        },
+      };
+    }
     const user = await buildProfile(fbUser, language);
     return { ok: true, user };
   } catch (err: unknown) {
@@ -92,6 +106,18 @@ export async function signInWithEmail(
   try {
     const { signInWithEmailPassword } = await import('@/services/firebase/auth');
     const fbUser = await signInWithEmailPassword(email.trim(), pass);
+    const remote = await loadUserRemote(fbUser.uid);
+    if (remote?.isDeleted === true) {
+      return {
+        ok: true,
+        isDeleted: true,
+        deletedAccountInfo: {
+          deletedAt: remote.deletedAt ?? new Date().toISOString(),
+          purgeAfter: remote.purgeAfter ?? null,
+          userId: fbUser.uid,
+        },
+      };
+    }
     const user = await buildProfile(fbUser, language);
     return { ok: true, user };
   } catch (err: unknown) {
@@ -100,5 +126,29 @@ export async function signInWithEmail(
         ? getAuthErrorMessage(err.code)
         : 'Sign-in failed. Please check your connection and try again.';
     return { ok: false, error: 'failed', message };
+  }
+}
+
+/**
+ * Soft-delete a user account.
+ * Stamps the Firestore user document as deleted, then signs out.
+ * The Firebase Auth account is NOT deleted — admins can recover it.
+ */
+export async function deleteAccountSoft(
+  userId: string,
+  deletionReason = 'user_requested'
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isFirebaseConfigured()) {
+    // Offline / no Firebase — just return ok so local cleanup can proceed
+    return { ok: true };
+  }
+  try {
+    await softDeleteUserRemote(userId, deletionReason);
+    await signOutFirebase();
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[Repeato] Soft-delete account failed:', message);
+    return { ok: false, error: message };
   }
 }

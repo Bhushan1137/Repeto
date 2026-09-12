@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { ParsedTaskInput, RepeatingTask, SharedMember } from '@/types';
 import { taskRepository } from '@/data/repositories/taskRepository';
@@ -10,6 +10,7 @@ import type { AppNotification } from '@/types/notification';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useNetworkStatus } from '@/providers/NetworkProvider';
+import { logRecommendationClickRemote } from '@/services/firebase/firestore';
 
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
@@ -35,8 +36,10 @@ import {
   duplicateTask,
   cleanupTasksOnRemoval,
   claimTaskInstance,
+  mergeTasksLocalAndRemote,
 } from '@/domain/task';
-import { cancelTaskReminder, scheduleTaskReminder } from '@/services/notifications';
+import { cancelTaskReminder, scheduleTaskReminder, setupNotificationCategories } from '@/services/notifications';
+import { useRouter } from 'expo-router';
 import { subscribeToUserTasksAndHouseholds } from '@/services/firebase/taskListener';
 import { computePreviousDueDate } from '@/domain/recurrence';
 import { removeHouseholdMember, normalizeHouseholdProfile, mergeHouseholds as domainMergeHouseholds } from '@/domain/household';
@@ -85,6 +88,8 @@ interface TaskContextValue {
   mergeHouseholds: (sourceHhId: string, targetHhId: string) => Promise<void>;
   claimTask: (taskId: string) => Promise<void>;
   refreshTasks: () => Promise<void>;
+  focusTaskId: string | null;
+  setFocusTaskId: (id: string | null) => void;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -95,11 +100,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const { translate } = useTranslation();
   const { addNotification } = useNotifications();
   const { isOnline } = useNetworkStatus();
+  const router = useRouter();
   const [tasks, setTasks] = useState<RepeatingTask[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const pendingNotificationResponseRef = useRef<Notifications.NotificationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const userIdRef = useRef<string | null>(null);
   const wasOfflineRef = useRef<boolean>(false);
+  const tasksRef = useRef<RepeatingTask[]>(tasks);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
 
   useEffect(() => {
     if (!isOnline) {
@@ -163,10 +176,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         householdIds,
         async (remoteTasks) => {
           if (!cancelled && userIdRef.current === user.id) {
-            await taskRepository.saveAll(remoteTasks, user.id);
-            setTasks(remoteTasks);
+            const currentLocal = tasksRef.current;
+            const { merged, newerLocalTasks } = mergeTasksLocalAndRemote(currentLocal, remoteTasks);
+            await taskRepository.saveAll(merged, user.id);
+            setTasks(merged);
+            tasksRef.current = merged;
             setHydrated(true);
             setLoading(false);
+
+            if (newerLocalTasks.length > 0) {
+              Promise.all(newerLocalTasks.map((t) => taskRepository.saveOne(t, user.id, 'update'))).catch(() => {});
+            }
           }
         },
         async (error) => {
@@ -213,7 +233,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await taskRepository.saveOneHousehold(task, task.householdId, user.id, op);
       }
 
-      if (user.pushOptIn !== false || task.reminderTime) {
+      if (task.archived) {
+        await cancelTaskReminder(task.id);
+      } else if (user.pushOptIn !== false || task.reminderTime) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
       }
@@ -226,7 +248,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       parsed: ParsedTaskInput,
       opts: { finance: boolean; shared: SharedMember[]; householdId?: string | null }
     ): Promise<boolean> => {
-      if (!canAddTask(user, tasks.length)) {
+      const currentTasks = tasksRef.current;
+      if (!canAddTask(user, currentTasks.length)) {
         showToast(translate('freeTierLimit'));
         return false;
       }
@@ -246,16 +269,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           ...created,
           householdId: resolvedHouseholdId,
         };
-        const next = [task, ...tasks];
+        const next = [task, ...currentTasks];
+        setTasks(next);
+        tasksRef.current = next;
         await persistAll(next);
-        await syncTask(task, 'create');
+        syncTask(task, 'create').catch(() => {});
         return true;
       } catch {
         showToast(translate('saveError'));
         return false;
       }
     },
-    [user, tasks, activeHousehold?.id, persistAll, syncTask, showToast, translate]
+    [user, activeHousehold?.id, persistAll, syncTask, showToast, translate]
   );
 
   const applyMutation = useCallback(
@@ -264,94 +289,102 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       updater: (t: RepeatingTask) => RepeatingTask,
       toastKey: Parameters<typeof translate>[0]
     ) => {
-      const existing = tasks.find((t) => t.id === taskId);
+      const currentTasks = tasksRef.current;
+      const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing) return;
       try {
         const mutated = updater(existing);
-        const next = updateTaskInList(tasks, taskId, () => mutated);
-        await persistAll(next);
-        await syncTask(mutated, 'update');
+        const next = updateTaskInList(currentTasks, taskId, () => mutated);
+        setTasks(next);
+        tasksRef.current = next;
+
         showToast(translate(toastKey));
 
-        // Trigger in-app notification logs
-        try {
-          const lastHistory = mutated.history[mutated.history.length - 1];
-          if (lastHistory && lastHistory.completedAt) {
-            // Determine action type
-            let actionType: AppNotification['type'] = 'system';
-            let title = '';
-            let body = '';
-            
-            if (mutated.category === 'bills' || mutated.category === 'finance') {
-              actionType = 'payment';
-            } else if (mutated.sharedWith.length > 0) {
-              actionType = 'household';
-            }
+        if (user?.id) {
+          await taskRepository.saveSingleLocal(mutated, user.id).catch((err) => {
+            console.warn('[Repeato] Local save error:', err);
+          });
+        }
 
-            const userName = user?.name || 'A household member';
+        // Asynchronously sync remote, schedule reminders & send notifications
+        (async () => {
+          try {
+            await syncTask(mutated, 'update');
 
-            if (lastHistory.status === 'snoozed') {
-              title = user?.language === 'hi' ? 'कार्य आगे बढ़ाया गया' : 'Task Snoozed';
-              body = user?.language === 'hi'
-                ? `"${mutated.title}" को सणूज़ किया गया।`
-                : `"${mutated.title}" has been snoozed.`;
-            } else if (lastHistory.status === 'skipped') {
-              title = user?.language === 'hi' ? 'कार्य छोड़ा गया' : 'Task Skipped';
-              body = user?.language === 'hi'
-                ? `"${mutated.title}" का यह चक्र छोड़ दिया गया।`
-                : `"${mutated.title}" occurrence was skipped.`;
-            } else {
-              // Completion
-              title = user?.language === 'hi' ? 'कार्य पूरा हुआ' : 'Task Completed';
-              body = user?.language === 'hi'
-                ? `"${mutated.title}" को पूरा किया गया।`
-                : `"${mutated.title}" was marked complete.`;
-            }
+            const lastHistory = mutated.history[mutated.history.length - 1];
+            if (lastHistory && lastHistory.completedAt) {
+              let actionType: AppNotification['type'] = 'system';
+              let title = '';
+              let body = '';
+              
+              if (mutated.category === 'bills' || mutated.category === 'finance') {
+                actionType = 'payment';
+              } else if (mutated.sharedWith.length > 0) {
+                actionType = 'household';
+              }
 
-            // 1. Add notification for You locally/remotely
-            await addNotification(actionType, title, body, { taskId: mutated.id });
+              const userName = user?.name || 'A household member';
 
-            // 2. Add notification for other shared members in remote Firestore
-            for (const member of mutated.sharedWith) {
-              if (member.userId && member.userId !== user?.id) {
-                const peerTitle = lastHistory.status === 'snoozed'
-                  ? `${userName} snoozed task`
-                  : lastHistory.status === 'skipped'
-                  ? `${userName} skipped task`
-                  : `${userName} completed task`;
-                
-                const peerBody = lastHistory.status === 'snoozed'
-                  ? `"${mutated.title}" has been snoozed.`
-                  : lastHistory.status === 'skipped'
-                  ? `"${mutated.title}" occurrence was skipped.`
-                  : `"${mutated.title}" is complete.`;
+              if (lastHistory.status === 'snoozed') {
+                title = user?.language === 'hi' ? 'कार्य आगे बढ़ाया गया' : 'Task Snoozed';
+                body = user?.language === 'hi'
+                  ? `"${mutated.title}" को सणूज़ किया गया।`
+                  : `"${mutated.title}" has been snoozed.`;
+              } else if (lastHistory.status === 'skipped') {
+                title = user?.language === 'hi' ? 'कार्य छोड़ा गया' : 'Task Skipped';
+                body = user?.language === 'hi'
+                  ? `"${mutated.title}" का यह चक्र छोड़ दिया गया।`
+                  : `"${mutated.title}" occurrence was skipped.`;
+              } else {
+                title = user?.language === 'hi' ? 'कार्य पूरा हुआ' : 'Task Completed';
+                body = user?.language === 'hi'
+                  ? `"${mutated.title}" को पूरा किया गया।`
+                  : `"${mutated.title}" was marked complete.`;
+              }
 
-                const peerNotif: AppNotification = {
-                  id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                  type: actionType,
-                  title: peerTitle,
-                  body: peerBody,
-                  timestamp: new Date().toISOString(),
-                  read: false,
-                  metadata: { taskId: mutated.id },
-                };
-                await userRepository.saveNotification(member.userId, peerNotif);
+              await addNotification(actionType, title, body, { taskId: mutated.id });
+
+              for (const member of mutated.sharedWith) {
+                if (member.userId && member.userId !== user?.id) {
+                  const peerTitle = lastHistory.status === 'snoozed'
+                    ? `${userName} snoozed task`
+                    : lastHistory.status === 'skipped'
+                    ? `${userName} skipped task`
+                    : `${userName} completed task`;
+                  
+                  const peerBody = lastHistory.status === 'snoozed'
+                    ? `"${mutated.title}" has been snoozed.`
+                    : lastHistory.status === 'skipped'
+                    ? `"${mutated.title}" occurrence was skipped.`
+                    : `"${mutated.title}" is complete.`;
+
+                  const peerNotif: AppNotification = {
+                    id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    type: actionType,
+                    title: peerTitle,
+                    body: peerBody,
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                    metadata: { taskId: mutated.id },
+                  };
+                  await userRepository.saveNotification(member.userId, peerNotif);
+                }
               }
             }
+          } catch (err) {
+            console.warn('[Repeato] Failed to dispatch task sync or notifications:', err);
           }
-        } catch (err) {
-          console.warn('[Repeato] Failed to dispatch task notifications:', err);
-        }
+        })();
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, persistAll, syncTask, showToast, translate, addNotification, user]
+    [syncTask, showToast, translate, addNotification, user]
   );
 
   const completeTask = useCallback(
     async (taskId: string, note?: string, options?: { maxEarlyDays?: number }) => {
-      const existing = tasks.find((t) => t.id === taskId);
+      const existing = tasksRef.current.find((t) => t.id === taskId);
       if (!existing) return;
       const eligibility = canCompleteTask(existing, { maxEarlyDays: options?.maxEarlyDays ?? 0 });
       if (!eligibility.allowed) {
@@ -372,19 +405,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       await applyMutation(taskId, (t) => completeTaskInstance(t, note, user?.id), 'markedDone');
     },
-    [tasks, applyMutation, user?.id, user?.language, showToast]
+    [applyMutation, user?.id, user?.language, showToast]
   );
 
   const snoozeTask = useCallback(
     (taskId: string, days = 2) => {
-      const existing = tasks.find((t) => t.id === taskId);
+      const existing = tasksRef.current.find((t) => t.id === taskId);
       if (existing && !canSnoozeTask(existing).allowed) {
         showToast(translate('snoozeRestricted'));
         return Promise.resolve();
       }
       return applyMutation(taskId, (t) => snoozeTaskInstance(t, days, user?.id), 'snoozed');
     },
-    [tasks, applyMutation, user?.id, showToast, translate]
+    [applyMutation, user?.id, showToast, translate]
   );
 
   const refreshTasks = useCallback(async () => {
@@ -394,10 +427,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await taskRepository.flushSyncQueue(user.id).catch(() => {});
       }
       const [loaded] = await Promise.all([
-        taskRepository.load(user.id, isOnline),
+        taskRepository.load(user.id, isOnline, tasksRef.current),
         new Promise((resolve) => setTimeout(resolve, 400)),
       ]);
       setTasks(loaded);
+      tasksRef.current = loaded;
       setHydrated(true);
     } catch (err) {
       console.warn('[Repeato] Failed to refresh tasks:', err);
@@ -411,7 +445,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const addPresetTask = useCallback(
     async (values: TaskFormValues, shared?: SharedMember[]): Promise<boolean> => {
-      if (!canAddTask(user, tasks.length)) {
+      const currentTasks = tasksRef.current;
+      if (!canAddTask(user, currentTasks.length)) {
         showToast(translate('freeTierLimit'));
         return false;
       }
@@ -424,17 +459,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           ...created,
           householdId,
         };
-        const next = [task, ...tasks];
-        await persistAll(next);
-        await syncTask(task, 'create');
+        const next = [task, ...currentTasks];
+        setTasks(next);
+        tasksRef.current = next;
         showToast(translate('taskCreated'));
+        await persistAll(next);
+        syncTask(task, 'create').catch(() => {});
         return true;
       } catch {
         showToast(translate('saveError'));
         return false;
       }
     },
-    [user, tasks, activeHousehold?.id, persistAll, syncTask, showToast, translate]
+    [user, activeHousehold?.id, persistAll, syncTask, showToast, translate]
   );
 
   const updateTask = useCallback(
@@ -461,38 +498,39 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback(
     async (taskId: string) => {
       if (!user?.id) return;
-      const targetTask = tasks.find((t) => t.id === taskId);
+      const currentTasks = tasksRef.current;
+      const targetTask = currentTasks.find((t) => t.id === taskId);
       try {
-        const next = tasks.filter((t) => t.id !== taskId);
-        await persistAll(next);
-        await taskRepository.deleteOne(taskId, user.id);
+        const next = currentTasks.filter((t) => t.id !== taskId);
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('taskDeleted'));
+
+        taskRepository.deleteOne(taskId, user.id).catch((err) => {
+          console.warn('[Repeato] Local delete error:', err);
+        });
 
         if (targetTask) {
           if (targetTask.householdId) {
-            try {
-              await taskRepository.deleteOneHousehold(taskId, targetTask.householdId, user.id);
-            } catch (err) {
+            taskRepository.deleteOneHousehold(taskId, targetTask.householdId, user.id).catch((err) => {
               console.warn('[Repeato] Failed to delete household task copy:', err);
-            }
+            });
           }
           for (const member of targetTask.sharedWith) {
             if (member.userId && member.userId !== user.id) {
-              try {
-                await taskRepository.deleteOne(taskId, member.userId);
-              } catch (err) {
+              taskRepository.deleteOne(taskId, member.userId).catch((err) => {
                 console.warn('[Repeato] Failed to delete shared task copy for member:', member.userId, err);
-              }
+              });
             }
           }
         }
 
-        await cancelTaskReminder(taskId);
-        showToast(translate('taskDeleted'));
+        cancelTaskReminder(taskId).catch(() => {});
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, tasks, persistAll, showToast, translate]
+    [user?.id, showToast, translate]
   );
 
   const completeOnboarding = useCallback(
@@ -544,30 +582,34 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const duplicateTaskCb = useCallback(
     async (taskId: string): Promise<boolean> => {
-      if (!canAddTask(user, tasks.length)) {
+      const currentTasks = tasksRef.current;
+      if (!canAddTask(user, currentTasks.length)) {
         showToast(translate('freeTierLimit'));
         return false;
       }
-      const existing = tasks.find((t) => t.id === taskId);
+      const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing) return false;
       try {
         const copy = duplicateTask(existing);
-        const next = [copy, ...tasks];
-        await persistAll(next);
-        await syncTask(copy, 'create');
+        const next = [copy, ...currentTasks];
+        setTasks(next);
+        tasksRef.current = next;
         showToast(translate('taskCreated'));
+        await persistAll(next);
+        syncTask(copy, 'create').catch(() => {});
         return true;
       } catch {
         showToast(translate('saveError'));
         return false;
       }
     },
-    [user, tasks, persistAll, syncTask, showToast, translate]
+    [user, persistAll, syncTask, showToast, translate]
   );
 
   const completeTasks = useCallback(
     async (taskIds: string[]) => {
-      let next = [...tasks];
+      const currentTasks = tasksRef.current;
+      let next = [...currentTasks];
       const completedTasksList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
@@ -586,21 +628,24 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('markedDone'));
         await persistAll(next);
         for (const t of completedTasksList) {
-          await syncTask(t, 'update');
+          syncTask(t, 'update').catch(() => {});
         }
-        showToast(translate('markedDone'));
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, user?.id, user?.language, persistAll, syncTask, showToast, translate]
+    [user?.id, user?.language, persistAll, syncTask, showToast, translate]
   );
 
   const snoozeTasks = useCallback(
     async (taskIds: string[], days = 2) => {
-      let next = [...tasks];
+      const currentTasks = tasksRef.current;
+      let next = [...currentTasks];
       const snoozedList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
@@ -615,21 +660,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('snoozed'));
         await persistAll(next);
         for (const t of snoozedList) {
-          await syncTask(t, 'update');
+          syncTask(t, 'update').catch(() => {});
         }
-        showToast(translate('snoozed'));
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, user?.id, persistAll, syncTask, showToast, translate]
+    [user?.id, persistAll, syncTask, showToast, translate]
   );
 
   const skipTasks = useCallback(
     async (taskIds: string[]) => {
-      let next = [...tasks];
+      let next = [...tasksRef.current];
       const skippedList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
@@ -641,21 +688,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       if (skippedList.length === 0) return;
       try {
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('skippedToast'));
         await persistAll(next);
         for (const t of skippedList) {
-          await syncTask(t, 'update');
+          syncTask(t, 'update').catch(() => {});
         }
-        showToast(translate('skippedToast'));
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, user?.id, persistAll, syncTask, showToast, translate]
+    [user?.id, persistAll, syncTask, showToast, translate]
   );
 
   const undoCompleteTasks = useCallback(
     async (taskIds: string[]) => {
-      let next = [...tasks];
+      let next = [...tasksRef.current];
       const undoneList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
@@ -667,51 +716,53 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       if (undoneList.length === 0) return;
       try {
-        await persistAll(next);
-        for (const t of undoneList) {
-          await syncTask(t, 'update');
-        }
+        setTasks(next);
+        tasksRef.current = next;
         showToast(
           user?.language === 'hi'
             ? 'कार्य पूर्ववत किए गए'
             : 'Completions undone'
         );
+        await persistAll(next);
+        for (const t of undoneList) {
+          syncTask(t, 'update').catch(() => {});
+        }
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, user?.language, persistAll, syncTask, showToast, translate]
+    [user?.language, persistAll, syncTask, showToast, translate]
   );
 
   const deleteTasks = useCallback(
     async (taskIds: string[]) => {
       if (!user?.id) return;
-      const tasksToDelete = tasks.filter((t) => taskIds.includes(t.id));
-      const next = tasks.filter((t) => !taskIds.includes(t.id));
+      const currentTasks = tasksRef.current;
+      const tasksToDelete = currentTasks.filter((t) => taskIds.includes(t.id));
+      const next = currentTasks.filter((t) => !taskIds.includes(t.id));
       try {
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('taskDeleted'));
         await persistAll(next);
         for (const t of tasksToDelete) {
-          await taskRepository.deleteOne(t.id, user.id);
+          taskRepository.deleteOne(t.id, user.id).catch(() => {});
           if (t.householdId) {
-            try {
-              await taskRepository.deleteOneHousehold(t.id, t.householdId, user.id);
-            } catch (err) {
-              console.warn('[Repeato] Failed to delete household task copy:', err);
-            }
+            taskRepository.deleteOneHousehold(t.id, t.householdId, user.id).catch(() => {});
           }
-          await cancelTaskReminder(t.id);
+          cancelTaskReminder(t.id).catch(() => {});
         }
-        showToast(translate('taskDeleted'));
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, tasks, persistAll, showToast, translate]
+    [user?.id, persistAll, showToast, translate]
   );
 
   const archiveTasks = useCallback(
     async (taskIds: string[]) => {
-      let next = [...tasks];
+      const currentTasks = tasksRef.current;
+      let next = [...currentTasks];
       const archivedList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
@@ -722,23 +773,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
       }
       try {
+        setTasks(next);
+        tasksRef.current = next;
+        showToast(translate('taskDeleted'));
         await persistAll(next);
         for (const t of archivedList) {
-          await syncTask(t, 'update');
+          syncTask(t, 'update').catch(() => {});
         }
-        showToast(translate('taskDeleted'));
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, persistAll, syncTask, showToast, translate]
+    [persistAll, syncTask, showToast, translate]
   );
 
   const resetTasks = useCallback(() => setTasks([]), []);
 
   const deleteHistoryEntry = useCallback(
     async (taskId: string, entryIndex: number) => {
-      const existing = tasks.find((t) => t.id === taskId);
+      const currentTasks = tasksRef.current;
+      const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing) return;
       try {
         const nextHistory = existing.history.filter((_, idx) => idx !== entryIndex);
@@ -752,36 +806,41 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           nextDueDate,
           updatedAt: new Date().toISOString(),
         };
-        const next = updateTaskInList(tasks, taskId, () => mutated);
-        await persistAll(next);
-        await syncTask(mutated, 'update');
+        const next = updateTaskInList(currentTasks, taskId, () => mutated);
+        setTasks(next);
+        tasksRef.current = next;
         showToast(user?.language === 'hi' ? 'इतिहास प्रविष्टि हटा दी गई' : 'History entry deleted');
+        await persistAll(next);
+        syncTask(mutated, 'update').catch(() => {});
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, persistAll, syncTask, showToast, translate, user?.language]
+    [persistAll, syncTask, showToast, translate, user?.language]
   );
 
   const undoCompleteTask = useCallback(
     async (taskId: string, historyIndex?: number) => {
-      const existing = tasks.find((t) => t.id === taskId);
+      const currentTasks = tasksRef.current;
+      const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing || !existing.history || existing.history.length === 0) return;
       try {
         const mutated = undoCompleteTaskInstance(existing, historyIndex);
-        const next = updateTaskInList(tasks, taskId, () => mutated);
-        await persistAll(next);
-        await syncTask(mutated, 'update');
+        const next = updateTaskInList(currentTasks, taskId, () => mutated);
+        setTasks(next);
+        tasksRef.current = next;
         showToast(
           user?.language === 'hi'
             ? 'कार्य वापस आज की सूची में जोड़ा गया'
             : 'Task restored to Today'
         );
+        await persistAll(next);
+        syncTask(mutated, 'update').catch(() => {});
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [tasks, persistAll, syncTask, showToast, translate, user?.language]
+    [persistAll, syncTask, showToast, translate, user?.language]
   );
 
   const removeHouseholdMemberAndCleanup = useCallback(
@@ -845,11 +904,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const nextTasks = cleanupTasksOnRemoval(tasks, memberCode, member.userId, removeSharedTasks);
+      const currentTasks = tasksRef.current;
+      const nextTasks = cleanupTasksOnRemoval(currentTasks, memberCode, member.userId, removeSharedTasks);
+      setTasks(nextTasks);
+      tasksRef.current = nextTasks;
       await persistAll(nextTasks);
 
       if (firebaseReady && member.userId) {
-        const sharedTasks = tasks.filter((t) =>
+        const sharedTasks = currentTasks.filter((t) =>
           t.sharedWith.some((m) => m.code === memberCode || m.userId === member.userId)
         );
 
@@ -874,12 +936,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
       showToast(user?.language === 'hi' ? 'सदस्य को हटा दिया गया' : 'Member removed');
     },
-    [user, tasks, firebaseReady, updateUser, persistAll, showToast, translate]
+    [user, activeHousehold, firebaseReady, updateUser, persistAll, showToast]
   );
 
   const unshareAllLocalTasks = useCallback(async () => {
     if (!user?.id) return;
-    const cleanedTasks = tasks.map((t) => {
+    const currentTasks = tasksRef.current;
+    const cleanedTasks = currentTasks.map((t) => {
       if (t.sharedWith && t.sharedWith.length > 0) {
         return {
           ...t,
@@ -890,6 +953,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return t;
     });
+    setTasks(cleanedTasks);
+    tasksRef.current = cleanedTasks;
     await persistAll(cleanedTasks);
     if (firebaseReady) {
       for (const t of cleanedTasks) {
@@ -900,12 +965,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [user?.id, tasks, persistAll, firebaseReady]);
+  }, [user?.id, persistAll, firebaseReady]);
 
   const mergeHouseholdsCb = useCallback(
     async (sourceHhId: string, targetHhId: string) => {
       if (!user) return;
-      const { updatedUser, updatedTasks } = domainMergeHouseholds(user, sourceHhId, targetHhId, tasks);
+      const currentTasks = tasksRef.current;
+      const { updatedUser, updatedTasks } = domainMergeHouseholds(user, sourceHhId, targetHhId, currentTasks);
+      setTasks(updatedTasks);
+      tasksRef.current = updatedTasks;
       await persistAll(updatedTasks);
       await updateUser(updatedUser);
 
@@ -919,47 +987,147 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await userRepository.deleteHousehold(sourceHhId);
       }
     },
-    [user, tasks, persistAll, updateUser, firebaseReady]
+    [user, persistAll, updateUser, firebaseReady]
   );
 
   const claimTaskCb = useCallback(
     async (taskId: string) => {
       if (!user?.id) return;
-      const target = tasks.find((t) => t.id === taskId);
+      const currentTasks = tasksRef.current;
+      const target = currentTasks.find((t) => t.id === taskId);
       if (!target) return;
 
       const updated = claimTaskInstance(target, user.id);
-      const nextTasks = updateTaskInList(tasks, taskId, () => updated);
-      await persistAll(nextTasks);
-      await syncTask(updated, 'update');
-
+      const nextTasks = updateTaskInList(currentTasks, taskId, () => updated);
+      setTasks(nextTasks);
+      tasksRef.current = nextTasks;
       showToast(user.language === 'hi' ? 'कार्य आपके नाम पर दर्ज हो गया!' : 'Task claimed!');
+      await persistAll(nextTasks);
+      syncTask(updated, 'update').catch(() => {});
     },
-    [user, tasks, persistAll, syncTask, showToast]
+    [user, persistAll, syncTask, showToast]
   );
+
+  // Setup notification categories (with localized button titles)
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      setupNotificationCategories(user?.language === 'hi');
+    }
+  }, [user?.language]);
+
+  const processNotificationResponse = useCallback(
+    async (response: Notifications.NotificationResponse) => {
+      const { actionIdentifier, notification } = response;
+      const identifier = notification?.request?.identifier;
+      const data = notification?.request?.content?.data;
+      const taskId = data?.taskId as string | undefined;
+
+      // 1. Immediately clear / dismiss the notification from the tray
+      if (Platform.OS !== 'web') {
+        if (identifier) {
+          Notifications.dismissNotificationAsync(identifier).catch(() => {});
+        }
+        if (taskId) {
+          Notifications.dismissNotificationAsync(`task-${taskId}`).catch(() => {});
+          for (let i = 0; i < 5; i++) {
+            Notifications.dismissNotificationAsync(`task-${taskId}-${i}`).catch(() => {});
+          }
+        }
+      }
+
+      // 2. Handle campaign notification response
+      if (data?.type === 'campaign') {
+        const campaignId = data.campaignId as string | undefined;
+        const redirectUrl = data.redirectUrl as string | undefined;
+        if (campaignId) {
+          logRecommendationClickRemote(campaignId).catch(() => {});
+        }
+        if (redirectUrl) {
+          Linking.openURL(redirectUrl).catch(() => {});
+        } else {
+          try {
+            router.navigate('/notifications');
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+
+      if (!taskId) return;
+
+      // 2. Perform requested action (completeTask and snoozeTask already show appropriate feedback toasts)
+      if (actionIdentifier === 'MARK_DONE') {
+        await completeTask(taskId, undefined, { maxEarlyDays: 1 });
+      } else if (actionIdentifier === 'SNOOZE_2D') {
+        await snoozeTask(taskId, 2);
+      } else {
+        // User tapped the notification body itself
+        setFocusTaskId(taskId);
+        try {
+          router.navigate('/(tabs)');
+        } catch {
+          // ignore navigation errors during mount
+        }
+      }
+    },
+    [completeTask, snoozeTask, router]
+  );
+
+  const handleNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      // Dismiss from device tray immediately
+      const identifier = response.notification?.request?.identifier;
+      if (identifier && Platform.OS !== 'web') {
+        Notifications.dismissNotificationAsync(identifier).catch(() => {});
+      }
+
+      if (!hydrated) {
+        pendingNotificationResponseRef.current = response;
+      } else {
+        processNotificationResponse(response);
+      }
+    },
+    [hydrated, processNotificationResponse]
+  );
+
+  // When tasks finish hydrating from SQLite, process any pending cold-start response
+  useEffect(() => {
+    if (hydrated && pendingNotificationResponseRef.current) {
+      const pending = pendingNotificationResponseRef.current;
+      pendingNotificationResponseRef.current = null;
+      processNotificationResponse(pending);
+    }
+  }, [hydrated, processNotificationResponse]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const { actionIdentifier, notification } = response;
-      const taskId = notification.request.content.data?.taskId as string;
-      if (!taskId) return;
+    // Check cold-start notification response
+    Notifications.getLastNotificationResponseAsync()
+      .then((lastResponse) => {
+        if (lastResponse) {
+          handleNotificationResponse(lastResponse);
+          Notifications.clearLastNotificationResponseAsync().catch(() => {});
+        }
+      })
+      .catch(() => {});
 
-      if (actionIdentifier === 'MARK_DONE') {
-        completeTask(taskId);
-      } else if (actionIdentifier === 'SNOOZE_2D') {
-        snoozeTask(taskId, 2);
-      }
+    // Listen for responses while running
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationResponse(response);
     });
 
     return () => subscription.remove();
-  }, [completeTask, snoozeTask]);
+  }, [handleNotificationResponse]);
+
+  const activeTasks = useMemo(() => (hydrated ? tasks.filter((t) => !t.archived) : []), [hydrated, tasks]);
+  const archivedTasks = useMemo(() => (hydrated ? tasks.filter((t) => t.archived) : []), [hydrated, tasks]);
 
   const value = useMemo(
     () => ({
-      tasks: hydrated ? tasks.filter((t) => !t.archived) : [],
-      archivedTasks: hydrated ? tasks.filter((t) => t.archived) : [],
+      tasks: activeTasks,
+      archivedTasks,
       loading,
       addTask,
       completeTask,
@@ -989,8 +1157,43 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       mergeHouseholds: mergeHouseholdsCb,
       claimTask: claimTaskCb,
       refreshTasks,
+      focusTaskId,
+      setFocusTaskId,
     }),
-    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, undoSkipTaskCb, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, skipTasks, undoCompleteTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, undoCompleteTask, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, mergeHouseholdsCb, claimTaskCb, refreshTasks]
+    [
+      activeTasks,
+      archivedTasks,
+      loading,
+      addTask,
+      completeTask,
+      snoozeTask,
+      skipTask,
+      undoSkipTaskCb,
+      deleteTask,
+      archiveTaskCb,
+      restoreTaskCb,
+      pinTask,
+      duplicateTaskCb,
+      setTaskDueDate,
+      completeTasks,
+      snoozeTasks,
+      skipTasks,
+      undoCompleteTasks,
+      deleteTasks,
+      archiveTasks,
+      addPresetTask,
+      updateTask,
+      completeOnboarding,
+      resetTasks,
+      deleteHistoryEntry,
+      undoCompleteTask,
+      removeHouseholdMemberAndCleanup,
+      unshareAllLocalTasks,
+      mergeHouseholdsCb,
+      claimTaskCb,
+      refreshTasks,
+      focusTaskId,
+    ]
   );
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
