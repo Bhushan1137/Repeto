@@ -60,7 +60,23 @@ export default function SignInScreen() {
   const [emailError, setEmailError] = useState('');
   const [resetSent, setResetSent] = useState(false);
 
+  const navigateAfterAuth = (authUser: import('@/types').UserProfile) => {
+    if (!authUser.languageSelected) {
+      router.replace('/(onboarding)/language');
+    } else if (!authUser.profileComplete) {
+      router.replace('/(onboarding)/profile');
+    } else if (!authUser.onboardingComplete) {
+      router.replace('/(onboarding)/categories');
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleEmailSignIn = async () => {
+    if (!agreed) {
+      setEmailError(translate('agreeRequired'));
+      return;
+    }
     if (!emailVal || !passwordVal) {
       setEmailError('Please enter your email and password.');
       return;
@@ -72,7 +88,7 @@ export default function SignInScreen() {
       const res = await signInWithEmail(emailVal.trim(), passwordVal, language as any);
       if (res.ok && res.user) {
         setUser(res.user);
-        router.replace('/(tabs)');
+        navigateAfterAuth(res.user);
       } else if (res.message) {
         setEmailError(res.message);
       }
@@ -141,6 +157,10 @@ export default function SignInScreen() {
       }
       setError(result.message ?? translate('signInFailed'));
       return;
+    }
+
+    if (result.user) {
+      navigateAfterAuth(result.user);
     }
   };
 

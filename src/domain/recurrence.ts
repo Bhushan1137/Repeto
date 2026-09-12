@@ -148,6 +148,139 @@ export function computeNextDueDate(rule: RecurrenceRule, from: Date = new Date()
   }
 }
 
+/**
+ * Checks if a given calendar date matches the recurrence constraints.
+ */
+export function matchesRecurrenceOnDate(rule: RecurrenceRule, date: Date): boolean {
+  switch (rule.type) {
+    case 'daily':
+      return true;
+    case 'weekly':
+      return rule.weekday === undefined || rule.weekday === date.getDay();
+    case 'monthly':
+      return true;
+    case 'monthDay':
+      return rule.dayOfMonth === undefined || rule.dayOfMonth === date.getDate();
+    case 'yearly':
+      return true;
+    case 'interval':
+      return true;
+    case 'nthWeekday': {
+      if (rule.weekday !== undefined && rule.weekday !== date.getDay()) return false;
+      const nth = Math.ceil(date.getDate() / 7);
+      return rule.nthWeekday === undefined || rule.nthWeekday === nth;
+    }
+    default:
+      return true;
+  }
+}
+
+/**
+ * Finds the earliest date on or after `from` that satisfies the recurrence rule constraints.
+ */
+export function alignToRuleOnOrAfter(rule: RecurrenceRule, from: Date): string {
+  const base = startOfDay(from);
+  switch (rule.type) {
+    case 'daily':
+    case 'monthly':
+    case 'yearly':
+    case 'interval':
+      return base.toISOString();
+    case 'weekly': {
+      if (rule.weekday === undefined || rule.weekday === base.getDay()) {
+        return base.toISOString();
+      }
+      const diff = (rule.weekday - base.getDay() + 7) % 7;
+      return addDays(base, diff).toISOString();
+    }
+    case 'monthDay': {
+      const targetDay = rule.dayOfMonth ?? 1;
+      if (base.getDate() === targetDay) {
+        return base.toISOString();
+      }
+      if (base.getDate() < targetDay) {
+        return setDayOfMonth(base, targetDay).toISOString();
+      }
+      return setDayOfMonth(addMonths(base, 1), targetDay).toISOString();
+    }
+    case 'nthWeekday': {
+      const weekday = rule.weekday ?? 6;
+      const nth = rule.nthWeekday ?? 1;
+      const currentNth = Math.ceil(base.getDate() / 7);
+      if (base.getDay() === weekday && currentNth === nth) {
+        return base.toISOString();
+      }
+      return nextNthWeekday(base, weekday, nth).toISOString();
+    }
+    default:
+      return base.toISOString();
+  }
+}
+
+/**
+ * Computes the initial due date for a newly created, scheduled, or updated task.
+ * If the selected date & time is in the future relative to `now`, the first occurrence
+ * is scheduled on that date (e.g. today if the reminder time has not yet passed).
+ * If the time has already passed on that date, it advances to the next occurrence.
+ */
+export function computeInitialDueDate(
+  rule: RecurrenceRule,
+  startDate?: string | null,
+  reminderTime?: string | null,
+  now: Date = new Date()
+): string {
+  let base: Date;
+  if (startDate) {
+    const parts = startDate.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      base = new Date(parts[0], parts[1] - 1, parts[2]);
+    } else {
+      base = new Date(startDate);
+    }
+  } else {
+    base = new Date(now);
+  }
+  base = startOfDay(base);
+
+  let hour = 9;
+  let minute = 0;
+  if (reminderTime) {
+    const [h, m] = reminderTime.split(':').map(Number);
+    if (!isNaN(h)) hour = h;
+    if (!isNaN(m)) minute = m;
+  }
+
+  const targetWithTime = new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    hour,
+    minute,
+    0,
+    0
+  );
+
+  const todayStart = startOfDay(now);
+
+  // If start date is in the future (> today), find first valid occurrence on or after base
+  if (base.getTime() > todayStart.getTime()) {
+    return alignToRuleOnOrAfter(rule, base);
+  }
+
+  // If start date is today:
+  if (base.getTime() === todayStart.getTime()) {
+    // If target reminder time is later than now, today is valid!
+    if (targetWithTime.getTime() > now.getTime() && matchesRecurrenceOnDate(rule, base)) {
+      return base.toISOString();
+    }
+    // Target time already passed today (or today doesn't match rule): advance to next occurrence
+    return computeNextDueDate(rule, base);
+  }
+
+  // If start date is in the past (< today), advance from base until on/after today or next due
+  return computeNextDueDate(rule, base);
+}
+
 export function parseFrequencyLabel(label: string): RecurrenceRule {
   const lower = label.toLowerCase().trim();
 

@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask } from '@/types';
@@ -331,7 +332,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 48 : 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 12 : (Platform.OS === 'ios' ? 48 : 16),
     paddingBottom: 12,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,

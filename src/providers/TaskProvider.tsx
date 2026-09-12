@@ -211,7 +211,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await taskRepository.saveOneHousehold(task, task.householdId, user.id, op);
       }
 
-      if (user.pushOptIn) {
+      if (user.pushOptIn !== false || task.reminderTime) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
       }

@@ -11,6 +11,7 @@ import {
   Platform,
   SafeAreaView,
   Keyboard,
+  StatusBar,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -110,7 +111,17 @@ function TaskRowCard({
   const cat = CATEGORY_MAP[task.category] ?? CATEGORY_MAP['home'];
   const accent = AccentHex[getCategoryAccent(task.category)];
   const theme = getStatusTheme(status);
-  const barWidth = onTimePercent === -1 ? 0 : onTimePercent;
+  const isLateDone = onTimePercent === 0 && row.totalDone > 0;
+  const barWidth = onTimePercent === -1 ? 0 : isLateDone ? 60 : onTimePercent;
+  const percentText =
+    onTimePercent === -1
+      ? '—'
+      : isLateDone
+      ? language === 'hi'
+        ? 'विलंबित'
+        : 'Late'
+      : `${onTimePercent}%`;
+
   const days = daysUntilDue(task.nextDueDate);
 
   const dueStyle = days < 0
@@ -155,8 +166,14 @@ function TaskRowCard({
           </View>
 
           <View style={styles.rowRight}>
-            <Text style={[styles.rowPercent, { color: theme.color }]}>
-              {onTimePercent === -1 ? '—' : `${onTimePercent}%`}
+            <Text
+              style={[
+                styles.rowPercent,
+                { color: isLateDone ? '#D97706' : theme.color },
+                isLateDone && { fontSize: 13, fontFamily: 'Manrope_700Bold' },
+              ]}
+            >
+              {percentText}
             </Text>
             <View style={[styles.dueBadge, { backgroundColor: dueStyle.bg }]}>
               <Text style={[styles.rowDueText, { color: dueStyle.text }]}>{dueLabel}</Text>
@@ -486,7 +503,7 @@ const styles = StyleSheet.create({
   // Hero Banner Header
   headerHero: {
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 12 : 12,
     paddingBottom: 16,
     borderBottomLeftRadius: Radius.lg,
     borderBottomRightRadius: Radius.lg,

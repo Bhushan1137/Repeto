@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseFrequencyLabel,
   computeNextDueDate,
+  computeInitialDueDate,
   daysUntilDue,
   getTaskGroup,
 } from '@/domain/recurrence';
@@ -77,6 +78,55 @@ describe('computeNextDueDate', () => {
     const rule = parseFrequencyLabel('Every 6 months');
     const next = new Date(computeNextDueDate(rule, from));
     expect(next.getMonth()).toBe(6); // July (0-indexed)
+  });
+});
+
+describe('computeInitialDueDate', () => {
+  it('considers task due today when scheduled time is in the future today', () => {
+    // Current time is 12:00 PM on 2026-09-12
+    const now = new Date(2026, 8, 12, 12, 0, 0);
+    const rule = { type: 'daily' as const };
+    // Task scheduled for 1:00 PM (13:00) today
+    const res = computeInitialDueDate(rule, '2026-09-12', '13:00', now);
+    const dueDate = new Date(res);
+    expect(dueDate.getFullYear()).toBe(2026);
+    expect(dueDate.getMonth()).toBe(8);
+    expect(dueDate.getDate()).toBe(12);
+  });
+
+  it('rolls over to tomorrow when scheduled time has already passed today', () => {
+    // Current time is 1:30 PM on 2026-09-12
+    const now = new Date(2026, 8, 12, 13, 30, 0);
+    const rule = { type: 'daily' as const };
+    // Task scheduled for 1:00 PM (13:00) today
+    const res = computeInitialDueDate(rule, '2026-09-12', '13:00', now);
+    const dueDate = new Date(res);
+    expect(dueDate.getDate()).toBe(13);
+  });
+
+  it('preserves future start dates', () => {
+    const now = new Date(2026, 8, 12, 12, 0, 0);
+    const rule = { type: 'daily' as const };
+    const res = computeInitialDueDate(rule, '2026-09-15', '10:00', now);
+    const dueDate = new Date(res);
+    expect(dueDate.getDate()).toBe(15);
+  });
+
+  it('considers weekly task due today when today matches weekday and time is future', () => {
+    // 2026-09-12 is Saturday (getDay() === 6)
+    const now = new Date(2026, 8, 12, 12, 0, 0);
+    const rule = { type: 'weekly' as const, weekday: 6 };
+    const res = computeInitialDueDate(rule, '2026-09-12', '13:00', now);
+    const dueDate = new Date(res);
+    expect(dueDate.getDate()).toBe(12);
+  });
+
+  it('advances weekly task by 7 days when today matches weekday but time has passed', () => {
+    const now = new Date(2026, 8, 12, 14, 0, 0);
+    const rule = { type: 'weekly' as const, weekday: 6 };
+    const res = computeInitialDueDate(rule, '2026-09-12', '13:00', now);
+    const dueDate = new Date(res);
+    expect(dueDate.getDate()).toBe(19);
   });
 });
 

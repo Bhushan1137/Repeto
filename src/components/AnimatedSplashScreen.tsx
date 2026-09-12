@@ -109,22 +109,22 @@ export function AnimatedSplashScreen({ onAnimationFinish }: AnimatedSplashScreen
     SplashScreen.hideAsync().catch(() => { });
 
     // Logo scale-up and fade-in
-    logoScale.value = withTiming(1.0, { duration: 1200 });
-    logoOpacity.value = withTiming(1.0, { duration: 1000 });
+    logoScale.value = withTiming(1.0, { duration: 800 });
+    logoOpacity.value = withTiming(1.0, { duration: 600 });
 
     // Glow pulsing animation
     glowScale.value = withRepeat(
       withSequence(
-        withTiming(1.25, { duration: 3000 }),
-        withTiming(0.85, { duration: 3000 })
+        withTiming(1.2, { duration: 1500 }),
+        withTiming(0.85, { duration: 1500 })
       ),
       -1,
       true
     );
     glowOpacity.value = withRepeat(
       withSequence(
-        withTiming(0.24, { duration: 3000 }),
-        withTiming(0.12, { duration: 3000 })
+        withTiming(0.24, { duration: 1500 }),
+        withTiming(0.12, { duration: 1500 })
       ),
       -1,
       true
@@ -132,12 +132,12 @@ export function AnimatedSplashScreen({ onAnimationFinish }: AnimatedSplashScreen
 
     // Loop the gold shimmer sweep across the logo
     shimmerTranslate.value = withDelay(
-      800,
+      500,
       withRepeat(
         withSequence(
-          withTiming(180, { duration: 1400 }),
+          withTiming(180, { duration: 1000 }),
           withTiming(-180, { duration: 0 }),
-          withDelay(2200, withTiming(-180, { duration: 0 }))
+          withDelay(1200, withTiming(-180, { duration: 0 }))
         ),
         -1,
         false
@@ -145,13 +145,13 @@ export function AnimatedSplashScreen({ onAnimationFinish }: AnimatedSplashScreen
     );
 
     // Staggered text label reveal
-    textOpacity.value = withDelay(800, withTiming(1.0, { duration: 900 }));
-    subtextOpacity.value = withDelay(1400, withTiming(0.8, { duration: 900 }));
+    textOpacity.value = withDelay(400, withTiming(1.0, { duration: 600 }));
+    subtextOpacity.value = withDelay(700, withTiming(0.8, { duration: 600 }));
 
-    // Seamless cinematic fade exit
+    // Seamless cinematic fade exit (1400ms delay + 400ms fade = 1.8s total)
     screenOpacity.value = withDelay(
-      3200,
-      withTiming(0, { duration: 700 }, (isFinished) => {
+      1400,
+      withTiming(0, { duration: 400 }, (isFinished) => {
         if (isFinished) {
           runOnJS(onAnimationFinish)();
         }

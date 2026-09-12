@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateStreak,
+  calculateDailyStreak,
   getWeeklyActivity,
   initials,
   groupTasksByDue,
@@ -8,6 +9,10 @@ import {
   computeUpcomingStrip,
   computeSpendForecast,
   computeMonthTrend,
+  computeConsistencyMatrix,
+  computeWeeklyVelocity,
+  frequencyMultiplier,
+  filterTasksByScope,
   calculateMemberOnTime,
   deriveHouseholdMembers,
   getHouseholdStats,
@@ -92,11 +97,72 @@ describe('insights domain module', () => {
     expect(slotsHi.length).toBeGreaterThan(0);
   });
 
-  it('computes spend forecast', () => {
+  it('computes frequency multiplier correctly', () => {
+    expect(frequencyMultiplier({ type: 'daily' })).toBe(30);
+    expect(frequencyMultiplier({ type: 'weekly' })).toBe(4.33);
+    expect(frequencyMultiplier({ type: 'monthly' })).toBe(1);
+    expect(frequencyMultiplier({ type: 'yearly' })).toBeCloseTo(1 / 12);
+    expect(frequencyMultiplier({ type: 'interval', interval: 2, intervalUnit: 'days' })).toBe(15);
+  });
+
+  it('computes normalized spend forecast with paid vs upcoming split', () => {
     const forecast = computeSpendForecast([mockTask], 'en');
     expect(forecast.thisMonthTotal).toBe(15000);
     expect(forecast.yearlyEstimate).toBe(180000);
     expect(forecast.currency).toBe('₹');
+    expect(forecast.spentSoFarThisMonth).toBe(15000); // completed history in current month
+    expect(forecast.upcomingThisMonth).toBe(0);
+  });
+
+  it('calculates true daily streak across multiple days', () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const streakTask: RepeatingTask = {
+      ...mockTask,
+      history: [
+        {
+          completedAt: yesterday.toISOString(),
+          status: 'on_time',
+          month: getMonthLabel(),
+        },
+        {
+          completedAt: today.toISOString(),
+          status: 'on_time',
+          month: getMonthLabel(),
+        },
+      ],
+    };
+
+    const streak = calculateDailyStreak([streakTask], today);
+    expect(streak).toBe(2);
+  });
+
+  it('computes 28-day habit consistency matrix', () => {
+    const matrix = computeConsistencyMatrix([mockTask]);
+    expect(matrix).toHaveLength(28);
+    const todayEntry = matrix.find((d) => d.isToday);
+    expect(todayEntry).toBeDefined();
+    expect([0, 1, 2, 3]).toContain(todayEntry?.intensity);
+  });
+
+  it('computes weekly velocity stats', () => {
+    const velocity = computeWeeklyVelocity([mockTask]);
+    expect(velocity).toHaveProperty('completedThisWeek');
+    expect(velocity).toHaveProperty('skippedThisWeek');
+    expect(velocity).toHaveProperty('topHabitTitle');
+  });
+
+  it('filters tasks by scope correctly', () => {
+    const personalTask: RepeatingTask = { ...mockTask, id: 't-p', householdId: undefined };
+    const householdTask: RepeatingTask = { ...mockTask, id: 't-h', householdId: 'hh-1' };
+    const all = [personalTask, householdTask];
+
+    expect(filterTasksByScope(all, 'all')).toHaveLength(2);
+    expect(filterTasksByScope(all, 'personal')).toEqual([personalTask]);
+    expect(filterTasksByScope(all, 'hh-1')).toEqual([householdTask]);
+    expect(filterTasksByScope(all, 'hh-other')).toHaveLength(0);
   });
 
   it('computes month trend', () => {

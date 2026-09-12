@@ -110,28 +110,35 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
     const values = formStateToValues(formState, language);
 
     setLoading(true);
-    const ok = await addTask(
-      {
-        title: values.title,
-        frequencyLabel: values.freq,
-        recurrence: values.recurrence,
-        amount: values.amount,
-        category: values.category,
-        reminderTime: values.reminderTime,
-        assignedTo: values.assignedTo,
-        isRotating: values.isRotating,
-        rotationMembers: values.rotationMembers,
-      },
-      {
-        finance: values.finance,
-        shared,
-        householdId: formState.householdId ?? (shared.length > 0 ? (activeHousehold?.id ?? null) : null),
+    try {
+      const ok = await addTask(
+        {
+          title: values.title,
+          frequencyLabel: values.freq,
+          recurrence: values.recurrence,
+          amount: values.amount,
+          category: values.category,
+          reminderTime: values.reminderTime,
+          startDate: values.startDate,
+          assignedTo: values.assignedTo,
+          isRotating: values.isRotating,
+          rotationMembers: values.rotationMembers,
+        },
+        {
+          finance: values.finance,
+          shared,
+          householdId: formState.householdId ?? (shared.length > 0 ? (activeHousehold?.id ?? null) : null),
+        }
+      );
+      if (ok) {
+        showToast(translate('taskCreated'));
+        onClose();
       }
-    );
-    setLoading(false);
-    if (ok) {
-      showToast(translate('taskCreated'));
-      onClose();
+    } catch (err) {
+      console.warn('[Repeato] AddTaskSheet save failed:', err);
+      showToast(translate('saveError'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -276,7 +283,11 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
             </View>
 
             <Button
-              title={language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task'}
+              title={
+                loading
+                  ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
+                  : (language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task')
+              }
               style={{ marginTop: 24, marginBottom: 10 }}
               loading={loading}
               disabled={loading}

@@ -283,7 +283,11 @@ export function TaskFormSheet({
             ) : null}
 
             <Button
-              title={saveLabel ?? (mode === 'edit' ? translate('savePreset') : translate('addFromPreset'))}
+              title={
+                saving
+                  ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
+                  : (saveLabel ?? (mode === 'edit' ? translate('savePreset') : translate('addFromPreset')))
+              }
               onPress={handleSave}
               loading={saving}
               disabled={saving}

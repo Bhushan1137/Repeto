@@ -640,13 +640,14 @@ const styles = StyleSheet.create({
 
   // ── Scroll / content ──
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 120 },
+  scrollContent: { paddingBottom: 140 },
   content: {
     backgroundColor: Colors.surfaceMuted,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     paddingHorizontal: Layout.screenPadding,
     paddingTop: Layout.screenPadding,
+    paddingBottom: 48,
     minHeight: 200,
   },
   contentFlat: {

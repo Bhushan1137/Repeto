@@ -90,25 +90,32 @@ export default function AddTaskScreen() {
     const values = formStateToValues(formState, language);
 
     setLoading(true);
-    const ok = await addTask(
-      {
-        title: values.title,
-        frequencyLabel: values.freq,
-        recurrence: values.recurrence,
-        amount: values.amount,
-        category: values.category,
-        reminderTime: values.reminderTime,
-        assignedTo: values.assignedTo,
-      },
-      { finance: values.finance, shared }
-    );
-    setLoading(false);
-    if (ok) {
-      showToast(translate('taskCreated'));
-      setFormState(defaultFormState('bills'));
-      setShared([]);
-      setErrors({});
-      router.push('/(tabs)');
+    try {
+      const ok = await addTask(
+        {
+          title: values.title,
+          frequencyLabel: values.freq,
+          recurrence: values.recurrence,
+          amount: values.amount,
+          category: values.category,
+          reminderTime: values.reminderTime,
+          startDate: values.startDate,
+          assignedTo: values.assignedTo,
+        },
+        { finance: values.finance, shared }
+      );
+      if (ok) {
+        showToast(translate('taskCreated'));
+        setFormState(defaultFormState('bills'));
+        setShared([]);
+        setErrors({});
+        router.push('/(tabs)');
+      }
+    } catch (err) {
+      console.warn('[Repeato] add.tsx save failed:', err);
+      showToast(translate('saveError'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -149,7 +156,11 @@ export default function AddTaskScreen() {
       </View>
 
       <Button
-        title={language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task'}
+        title={
+          loading
+            ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
+            : (language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task')
+        }
         style={{ marginTop: 24, marginBottom: 40 }}
         loading={loading}
         disabled={loading}

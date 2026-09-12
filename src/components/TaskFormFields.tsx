@@ -7,7 +7,8 @@ import { FormField } from '@/components/FormField';
 import { DateField } from '@/components/DateField';
 import { TimeField } from '@/components/TimeField';
 import { Colors, Radius } from '@/constants/theme';
-import { computeNextDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
+import { computeInitialDueDate, computeNextDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
+import { formatTime } from '@/components/timeFieldShared';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
@@ -132,16 +133,15 @@ export function TaskFormFields({
     };
 
     const rule = buildRecurrenceRule({ ...state, ...patch });
-    const nextDueIso = computeNextDueDate(rule, new Date());
+    const nextDueIso = computeInitialDueDate(rule, state.startDate, config.reminderTime);
     patch.startDate = nextDueIso.slice(0, 10);
 
     onChange(patch);
   };
 
   const calculatedNextDue = useMemo(() => {
-    const baseDate = state.startDate ? new Date(state.startDate) : new Date();
-    return computeNextDueDate(previewRule, baseDate);
-  }, [previewRule, state.startDate]);
+    return computeInitialDueDate(previewRule, state.startDate, state.reminderTime);
+  }, [previewRule, state.startDate, state.reminderTime]);
 
   const formattedNextDue = useMemo(() => {
     try {
@@ -342,20 +342,20 @@ export function TaskFormFields({
         </Card>
 
         {/* Schedule Summary Box */}
-        <Card style={styles.summaryCard} mode="elevated">
-          <View style={styles.summaryContent}>
-            <AppIcon name="checkmark-done-outline" size={18} color={Colors.tealDeep} />
-            <View style={styles.summaryTextWrapper}>
-              <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
-              <Text style={styles.summarySub}>
-                {language === 'hi' 
-                  ? `आपको ${previewLabel} पर ${state.reminderTime || '09:00'} बजे याद दिलाया जाएगा।` 
-                  : `You'll be reminded ${previewLabel} at ${state.reminderTime || '09:00'}.`}
-                {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
-              </Text>
-            </View>
+        <View style={styles.summaryBox}>
+          <View style={styles.summaryIconWrapper}>
+            <AppIcon name="checkmark-done-outline" size={16} color={Colors.tealDeep} />
           </View>
-        </Card>
+          <View style={styles.summaryTextWrapper}>
+            <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
+            <Text style={styles.summarySub}>
+              {language === 'hi' 
+                ? `आपको ${previewLabel} पर ${formatTime(state.reminderTime || '09:00')} बजे याद दिलाया जाएगा।` 
+                : `You'll be reminded ${previewLabel} at ${formatTime(state.reminderTime || '09:00')}.`}
+              {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
+            </Text>
+          </View>
+        </View>
 
         {/* Quick Presets Strip */}
         <RepeatExamplesStrip language={language} onSelect={handleSelectExample} />
@@ -610,31 +610,36 @@ const styles = StyleSheet.create({
     color: Colors.tealDeep,
   },
 
-  // Schedule Summary Card
-  summaryCard: {
-    backgroundColor: 'rgba(62,124,106,0.04)',
+  // Schedule Summary Card / Box
+  summaryBox: {
+    backgroundColor: 'rgba(62, 124, 106, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(62,124,106,0.18)',
-    borderRadius: Radius.sm,
-    marginBottom: 10,
-    overflow: 'hidden',
-  },
-  summaryContent: {
+    borderColor: 'rgba(62, 124, 106, 0.2)',
+    borderRadius: Radius.md,
+    marginBottom: 12,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    gap: 10,
+    gap: 12,
+  },
+  summaryIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(62, 124, 106, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryTextWrapper: { flex: 1, gap: 2 },
   summaryTitle: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontFamily: 'Manrope_700Bold',
     color: Colors.tealDeep,
   },
   summarySub: {
-    fontSize: 11.5,
+    fontSize: 12,
     color: Colors.inkSoft,
-    lineHeight: 16,
+    lineHeight: 17,
     fontFamily: 'Manrope_500Medium',
   },
 

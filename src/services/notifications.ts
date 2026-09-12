@@ -84,9 +84,15 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   if (Platform.OS === 'web') return;
 
-  // Query notification permission dynamically to handle restarts correctly
+  // Query notification permission dynamically and auto-request if not yet determined
   const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') return;
+  if (status !== 'granted') {
+    const granted = await requestNotificationPermission();
+    if (!granted) {
+      console.warn(`[Repeato] Cannot schedule reminder for "${task.title}": notification permission not granted`);
+      return;
+    }
+  }
 
   // Always cancel previous scheduled reminders for this task first
   await cancelTaskReminder(task.id);
@@ -99,11 +105,12 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     minute = Number.isNaN(m) ? 0 : m;
   }
 
-  const content = {
+  const content: Notifications.NotificationContentInput = {
     title: 'Repeato Reminder',
     body: `Reminder for "${task.title}"`,
     data: { taskId: task.id },
     categoryIdentifier: 'task-actions',
+    sound: true,
   };
 
   const recType = task.recurrence?.type;
@@ -116,6 +123,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour,
           minute,
+          channelId: 'default',
         },
         identifier: `task-${task.id}`,
       });
@@ -129,6 +137,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           weekday: expoWeekday,
           hour,
           minute,
+          channelId: 'default',
         },
         identifier: `task-${task.id}`,
       });
@@ -141,6 +150,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           day: dayOfMonth,
           hour,
           minute,
+          channelId: 'default',
         },
         identifier: `task-${task.id}`,
       });
@@ -156,6 +166,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           day,
           hour,
           minute,
+          channelId: 'default',
         },
         identifier: `task-${task.id}`,
       });
@@ -173,6 +184,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: triggerDate,
+              channelId: 'default',
             },
             identifier: `task-${task.id}-${i}`,
           });
@@ -185,6 +197,43 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     }
   } catch (error) {
     console.warn(`[Repeato] Failed to schedule reminder for task ${task.id}:`, error);
+  }
+}
+
+/** Immediately schedule a test notification firing in 2 seconds */
+export async function sendTestNotification(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  const granted = await requestNotificationPermission();
+  if (!granted) return false;
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Repeato Reminder 🔔',
+        body: 'Notifications are working properly on your device!',
+        categoryIdentifier: 'task-actions',
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 2,
+        channelId: 'default',
+      },
+    });
+    return true;
+  } catch (error) {
+    console.warn('[Repeato] Failed to send test notification:', error);
+    return false;
+  }
+}
+
+/** List all scheduled notifications */
+export async function getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+  if (Platform.OS === 'web') return [];
+  try {
+    return await Notifications.getAllScheduledNotificationsAsync();
+  } catch {
+    return [];
   }
 }
 

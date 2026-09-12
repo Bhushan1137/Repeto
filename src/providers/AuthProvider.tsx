@@ -5,7 +5,7 @@ import { userRepository } from '@/data/repositories/userRepository';
 import { signInWithGoogle as authSignIn, profileFromFirebaseUser, profileFromSignedInUser } from '@/services/authService';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
-import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn } from '@/services/firebase/auth';
+import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
 import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain } from '@/domain/household';
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '@/services/firebase/app';
@@ -112,6 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!firebaseUser) {
+          // If offline and we have an existing local user session, retain it
+          if (!isOnline && localUser) {
+            setUser(localUser);
+            setReady(true);
+            return;
+          }
           if (localUser) {
             localUser = null;
             userRepository.clear().catch(() => {});
@@ -327,6 +333,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     await userRepository.clear(userId);
     await cancelAllNotifications();
+    try {
+      await signOutFirebase();
+    } catch (err) {
+      console.warn('[Repeato] Firebase sign out error:', err);
+    }
   }, [user?.id]);
 
   const activeHousehold = useMemo(() => {

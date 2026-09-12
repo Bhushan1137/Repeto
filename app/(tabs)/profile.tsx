@@ -12,7 +12,7 @@ import { SettingRow, LanguagePicker } from '@/components/SettingRow';
 import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
 import { Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { initials } from '@/domain/insights';
-import { requestNotificationPermission } from '@/services/notifications';
+import { requestNotificationPermission, sendTestNotification } from '@/services/notifications';
 import { AppIcon } from '@/components/AppIcon';
 import { Button } from '@/components/Button';
 import { FormField } from '@/components/FormField';
@@ -148,6 +148,26 @@ export default function ProfileScreen() {
           updateUser({ pushOptIn: v });
         }}
         testID="settings-push-toggle"
+      />
+      <LinkRow
+        label={userLang === 'hi' ? '🔔 टेस्ट नोटिफिकेशन भेजें (2 सेकंड)' : '🔔 Send Test Notification (in 2s)'}
+        onPress={async () => {
+          const sent = await sendTestNotification();
+          if (sent) {
+            showToast(
+              userLang === 'hi'
+                ? 'टेस्ट नोटिफिकेशन 2 सेकंड में आएगी!'
+                : 'Test reminder arriving in 2 seconds!'
+            );
+          } else {
+            showToast(
+              userLang === 'hi'
+                ? 'कृपया नोटिफिकेशन की अनुमति दें।'
+                : 'Please enable notification permissions in system settings.'
+            );
+          }
+        }}
+        testID="settings-test-notification"
       />
 
       <SectionHeader label={translate('more')} />

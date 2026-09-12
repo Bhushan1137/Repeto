@@ -33,18 +33,8 @@ export interface DetailedSpendReport {
   itemList: FinanceItem[];
 }
 
-import { getMonthLabel } from '@/domain/recurrence';
-
-function isCurrentMonth(monthLabel?: string): boolean {
-  if (!monthLabel) return false;
-  const currentLabel = getMonthLabel();
-  const isoCurrent = new Date().toISOString().slice(0, 7);
-  return (
-    monthLabel === currentLabel ||
-    monthLabel.startsWith(isoCurrent) ||
-    monthLabel.includes(String(new Date().getFullYear()))
-  );
-}
+import { isCurrentMonth } from '@/domain/recurrence';
+import { frequencyMultiplier } from '@/domain/insights';
 
 export function computeDetailedSpendReport(
   tasks: RepeatingTask[],
@@ -53,7 +43,7 @@ export function computeDetailedSpendReport(
 ): DetailedSpendReport {
   const financeTasks = tasks.filter((t) => {
     if (t.archived) return false;
-    if (!t.finance && (!t.amount || t.amount <= 0)) return false;
+    if (!t.finance && (!t.amount || Number(t.amount) <= 0)) return false;
     if (scopeFilter === 'personal') return !t.householdId;
     if (scopeFilter !== 'all') return t.householdId === scopeFilter;
     return true;
@@ -72,45 +62,66 @@ export function computeDetailedSpendReport(
   const itemList: FinanceItem[] = [];
 
   for (const t of financeTasks) {
-    const amt = t.amount || 0;
-    projectedSpend += amt;
+    const rawAmt = Number(t.amount) || 0;
+    const mult = frequencyMultiplier(t.recurrence);
+    const monthlyAmt = Math.round(rawAmt * mult);
+    projectedSpend += monthlyAmt;
 
     if (!categoryMap[t.category]) {
       categoryMap[t.category] = { projected: 0, paid: 0, remaining: 0 };
     }
-    categoryMap[t.category].projected += amt;
+    categoryMap[t.category].projected += monthlyAmt;
 
-    // Check if paid in current month
-    const currentMonthEntry = t.history.find(
-      (h) => (h.status === 'on_time' || h.status === 'late') && isCurrentMonth(h.month)
+    // Check completions in current month
+    const currentMonthEntries = (t.history ?? []).filter(
+      (h) =>
+        (h.status === 'on_time' || h.status === 'late') &&
+        (isCurrentMonth(h.month ?? '') || (h.completedAt ? isCurrentMonth(h.completedAt.slice(0, 7)) : false))
     );
+    const completionsCountThisMonth = currentMonthEntries.length;
 
-    if (currentMonthEntry) {
-      paidSoFar += amt;
+    const isHighFrequency =
+      t.recurrence?.type === 'daily' ||
+      t.recurrence?.type === 'weekly' ||
+      (t.recurrence?.type === 'interval' && t.recurrence?.intervalUnit === 'days');
+
+    const paidAmt = isHighFrequency
+      ? Math.min(monthlyAmt, rawAmt * completionsCountThisMonth)
+      : completionsCountThisMonth > 0
+      ? monthlyAmt
+      : 0;
+
+    paidSoFar += paidAmt;
+    categoryMap[t.category].paid += paidAmt;
+
+    const days = daysUntilDue(t.nextDueDate);
+    const isOverdue = days < 0;
+    const isPaid = isHighFrequency ? paidAmt >= monthlyAmt : completionsCountThisMonth > 0;
+
+    if (isPaid) {
       paidCount += 1;
-      categoryMap[t.category].paid += amt;
-
       itemList.push({
         task: t,
-        amount: amt,
+        amount: rawAmt,
         status: 'paid',
         dueDate: t.nextDueDate,
-        paidAt: currentMonthEntry.completedAt,
+        paidAt: currentMonthEntries[currentMonthEntries.length - 1]?.completedAt,
       });
     } else {
       pendingCount += 1;
-      const days = daysUntilDue(t.nextDueDate);
-      const isOverdue = days < 0;
-      categoryMap[t.category].remaining += amt;
-
       itemList.push({
         task: t,
-        amount: amt,
+        amount: rawAmt,
         status: isOverdue ? 'overdue' : 'due',
         dueDate: t.nextDueDate,
       });
     }
   }
+
+  // Ensure remaining in categories strictly reflects projected - paid
+  Object.values(categoryMap).forEach((cat) => {
+    cat.remaining = Math.max(0, cat.projected - cat.paid);
+  });
 
   const remainingDue = Math.max(0, projectedSpend - paidSoFar);
   const percentPaid = projectedSpend > 0 ? Math.round((paidSoFar / projectedSpend) * 100) : 0;

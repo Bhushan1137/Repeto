@@ -8,6 +8,7 @@ import type {
 } from '@/types';
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
+  computeInitialDueDate,
   computeNextDueDate,
   computePreviousDueDate,
   getMonthLabel,
@@ -47,7 +48,6 @@ export function createTaskFromFormValues(
   creatorName?: string
 ): RepeatingTask {
   const now = new Date().toISOString();
-  const baseDate = values.startDate ? new Date(values.startDate) : new Date();
   return {
     id: createTaskId(),
     householdId: values.householdId ?? null,
@@ -55,7 +55,7 @@ export function createTaskFromFormValues(
     category: values.category,
     recurrence: values.recurrence,
     frequencyLabel: values.freq,
-    nextDueDate: computeNextDueDate(values.recurrence, baseDate),
+    nextDueDate: computeInitialDueDate(values.recurrence, values.startDate, values.reminderTime),
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
@@ -115,10 +115,11 @@ export function createTaskFromParsed(
     category: parsed.category,
     recurrence: parsed.recurrence,
     frequencyLabel: parsed.frequencyLabel,
-    nextDueDate: computeNextDueDate(parsed.recurrence),
+    nextDueDate: computeInitialDueDate(parsed.recurrence, parsed.startDate, parsed.reminderTime),
     amount: parsed.amount,
     finance: opts.finance || !!parsed.amount,
     reminderTime: parsed.reminderTime,
+    startDate: parsed.startDate,
     sharedWith: opts.shared,
     assignedTo: parsed.assignedTo,
     isRotating: parsed.isRotating,
@@ -364,10 +365,12 @@ function recurrenceChanged(a: RepeatingTask['recurrence'], b: TaskFormValues['re
 }
 
 export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): RepeatingTask {
-  // Recalculate nextDueDate when the recurrence rule or start date changes.
+  // Recalculate nextDueDate when the recurrence rule, start date, or reminder time changes.
   const startChanged = task.startDate !== values.startDate;
-  const nextDueDate = (recurrenceChanged(task.recurrence, values.recurrence) || startChanged)
-    ? computeNextDueDate(values.recurrence, values.startDate ? new Date(values.startDate) : new Date())
+  const timeChanged = task.reminderTime !== values.reminderTime;
+  const recChanged = recurrenceChanged(task.recurrence, values.recurrence);
+  const nextDueDate = (recChanged || startChanged || timeChanged)
+    ? computeInitialDueDate(values.recurrence, values.startDate, values.reminderTime)
     : task.nextDueDate;
 
   return {

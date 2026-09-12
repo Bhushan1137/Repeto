@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { View, Platform } from 'react-native';
+import { View, Platform, StyleSheet } from 'react-native';
 import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
 
 import { AppProviders, useAuth } from '@/providers/AppProviders';
@@ -123,22 +123,6 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
-  if (!splashComplete) {
-    return (
-      <AnimatedSplashScreen
-        onAnimationFinish={() => {
-          if (Platform.OS === 'web' && typeof document !== 'undefined') {
-            document.fonts.ready.then(() => {
-              setSplashComplete(true);
-            });
-          } else {
-            setSplashComplete(true);
-          }
-        }}
-      />
-    );
-  }
-
   return (
     <GlobalErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -158,6 +142,22 @@ export default function RootLayout() {
             </NavigationGuard>
           </PaperProvider>
         </AppProviders>
+
+        {!splashComplete && (
+          <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={splashComplete ? 'none' : 'auto'}>
+            <AnimatedSplashScreen
+              onAnimationFinish={() => {
+                if (Platform.OS === 'web' && typeof document !== 'undefined') {
+                  document.fonts.ready.then(() => {
+                    setSplashComplete(true);
+                  });
+                } else {
+                  setSplashComplete(true);
+                }
+              }}
+            />
+          </View>
+        )}
       </GestureHandlerRootView>
     </GlobalErrorBoundary>
   );

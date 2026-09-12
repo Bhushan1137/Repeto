@@ -160,6 +160,7 @@ export interface ParsedTaskInput {
   amount?: number;
   category: CategoryKey;
   reminderTime?: string;
+  startDate?: string;
   assignedTo?: string;
   isRotating?: boolean;
   rotationMembers?: string[];

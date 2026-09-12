@@ -49,13 +49,15 @@ export function Button({
     <PaperButton
       mode={mode}
       loading={loading}
-      disabled={disabled}
+      textColor={textColor}
+      disabled={disabled || loading}
       onPress={onPress}
       contentStyle={styles.content}
       style={[
         styles.button,
         !isOutline && { backgroundColor: buttonColor },
         isOutline && styles.outlinedBorder,
+        (disabled || loading) && { opacity: 0.8 },
         style,
       ]}
       labelStyle={[

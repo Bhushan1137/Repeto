@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
-import type { RepeatingTask } from '@/types';
+import type { HouseholdMemberProfile, RepeatingTask } from '@/types';
 import {
   computeInsights,
   computeUpcomingStrip,
   computeSpendForecast,
   computeMonthTrend,
+  computeConsistencyMatrix,
+  computeWeeklyVelocity,
   deriveHouseholdMembers,
   getHouseholdStats,
 } from '@/domain/insights';
@@ -34,20 +36,34 @@ export function useMonthTrend(tasks: RepeatingTask[]) {
   return useMemo(() => computeMonthTrend(tasks, language), [tasks, language]);
 }
 
-export function useHousehold(tasks: RepeatingTask[]) {
+/** P5 — 28-day Habit consistency matrix */
+export function useConsistencyMatrix(tasks: RepeatingTask[]) {
+  return useMemo(() => computeConsistencyMatrix(tasks), [tasks]);
+}
+
+/** P6 — Weekly habit velocity stats */
+export function useWeeklyVelocity(tasks: RepeatingTask[]) {
+  return useMemo(() => computeWeeklyVelocity(tasks), [tasks]);
+}
+
+export function useHousehold(
+  tasks: RepeatingTask[],
+  customMembers?: HouseholdMemberProfile[]
+) {
   const { user, activeHousehold } = useAuth();
   const { language } = useTranslation();
 
   return useMemo(() => {
     const stats = getHouseholdStats(tasks);
-    // Use active household members so leaderboard reflects the current context
+    // Use scoped custom members if provided, else fallback to active context
+    const rawMembers = customMembers ?? activeHousehold?.members ?? user?.householdMembers ?? [];
     const members = deriveHouseholdMembers(
       tasks,
       user?.name ?? 'You',
-      activeHousehold?.members ?? user?.householdMembers ?? [],
+      rawMembers,
       user?.id,
       user?.userCode
     );
     return { stats, members, language };
-  }, [tasks, user?.name, activeHousehold, user?.householdMembers, user?.id, user?.userCode, language]);
+  }, [tasks, customMembers, user?.name, activeHousehold, user?.householdMembers, user?.id, user?.userCode, language]);
 }

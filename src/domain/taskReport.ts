@@ -82,7 +82,11 @@ export function computeTaskStats(task: RepeatingTask): {
 function classifyStatus(task: RepeatingTask, onTimePercent: number): TaskRowStatus {
   if (daysUntilDue(task.nextDueDate) < 0) return 'overdue';
   if (onTimePercent === -1) return 'no_history';
-  if (onTimePercent >= 75) return 'on_track';
+  if (onTimePercent >= 60) return 'on_track';
+  const hasMissed = (task.history ?? []).some(h => h.status === 'missed');
+  if (!hasMissed && (task.history ?? []).some(h => h.status === 'late' || h.status === 'on_time')) {
+    return 'on_track';
+  }
   return 'slipping';
 }
 
