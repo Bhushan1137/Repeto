@@ -88,6 +88,8 @@ export interface TaskHistoryEntry {
   completedAt?: string;
   note?: string;
   completedBy?: string;
+  previousAssignee?: string;
+  rotatedTo?: string;
 }
 
 export interface RepeatingTask {
@@ -105,6 +107,8 @@ export interface RepeatingTask {
   startDate?: string;
   sharedWith: SharedMember[];
   assignedTo?: string;
+  isRotating?: boolean;
+  rotationMembers?: string[];
   history: TaskHistoryEntry[];
   createdAt: string;
   updatedAt: string;
@@ -157,4 +161,6 @@ export interface ParsedTaskInput {
   category: CategoryKey;
   reminderTime?: string;
   assignedTo?: string;
+  isRotating?: boolean;
+  rotationMembers?: string[];
 }

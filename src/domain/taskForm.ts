@@ -16,6 +16,8 @@ export interface TaskFormValues {
   householdId?: string;
   icon?: string;
   note?: string;
+  isRotating?: boolean;
+  rotationMembers?: string[];
 }
 
 export interface TaskFormState {
@@ -35,6 +37,8 @@ export interface TaskFormState {
   householdId: string | null;
   icon: string | null;
   note: string;
+  isRotating: boolean;
+  rotationMembers: string[];
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -126,6 +130,8 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
     householdId: null,
     icon: null,
     note: '',
+    isRotating: false,
+    rotationMembers: [],
   };
 }
 
@@ -143,6 +149,8 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     householdId: values.householdId ?? null,
     icon: values.icon ?? null,
     note: values.note ?? '',
+    isRotating: !!values.isRotating,
+    rotationMembers: values.rotationMembers ?? [],
   };
 }
 
@@ -163,6 +171,8 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     householdId: null,
     icon: parsed.icon ?? null,
     note: '',
+    isRotating: false,
+    rotationMembers: [],
   };
 }
 
@@ -180,6 +190,8 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     householdId: task.householdId ?? null,
     icon: task.icon ?? null,
     note: '',
+    isRotating: !!task.isRotating,
+    rotationMembers: task.rotationMembers ?? [],
   };
 }
 
@@ -221,6 +233,8 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     householdId: state.householdId || undefined,
     icon: state.icon || undefined,
     note: state.note.trim() || undefined,
+    isRotating: state.isRotating,
+    rotationMembers: state.rotationMembers.length > 0 ? state.rotationMembers : undefined,
   };
 }
 

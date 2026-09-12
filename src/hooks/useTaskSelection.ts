@@ -15,6 +15,10 @@ export function useTaskSelection() {
     });
   }, []);
 
+  const selectAll = useCallback((allIds: string[]) => {
+    setSelectedIds(new Set(allIds));
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
@@ -24,6 +28,7 @@ export function useTaskSelection() {
   return {
     selectedIds,
     toggleSelect,
+    selectAll,
     clearSelection,
     isSelecting,
   };

@@ -9,6 +9,7 @@ import type {
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
   computeNextDueDate,
+  computePreviousDueDate,
   getMonthLabel,
   parseFrequencyLabel,
 } from '@/domain/recurrence';
@@ -60,6 +61,9 @@ export function createTaskFromFormValues(
     reminderTime: values.reminderTime,
     startDate: values.startDate,
     sharedWith: shared,
+    assignedTo: values.assignedTo,
+    isRotating: values.isRotating,
+    rotationMembers: values.rotationMembers,
     history: [],
     createdAt: now,
     updatedAt: now,
@@ -101,12 +105,12 @@ export function createTaskFromPreset(
 
 export function createTaskFromParsed(
   parsed: ParsedTaskInput,
-  opts: { finance: boolean; shared: SharedMember[] },
+  opts: { finance: boolean; shared: SharedMember[]; householdId?: string | null },
   creatorName?: string
 ): RepeatingTask {
   return {
     id: createTaskId(),
-    householdId: opts.shared && opts.shared.length > 0 ? undefined : null,
+    householdId: opts.householdId !== undefined ? opts.householdId : (opts.shared && opts.shared.length > 0 ? undefined : null),
     title: parsed.title,
     category: parsed.category,
     recurrence: parsed.recurrence,
@@ -117,6 +121,8 @@ export function createTaskFromParsed(
     reminderTime: parsed.reminderTime,
     sharedWith: opts.shared,
     assignedTo: parsed.assignedTo,
+    isRotating: parsed.isRotating,
+    rotationMembers: parsed.rotationMembers,
     history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -124,6 +130,52 @@ export function createTaskFromParsed(
     icon: parsed.icon,
     creatorName,
   };
+}
+
+export function isSameDay(d1: Date, d2: Date): boolean {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+export function hasCompletedToday(task: RepeatingTask, today: Date = new Date()): boolean {
+  if (!task.history || task.history.length === 0) return false;
+  return task.history.some((h) => {
+    if (h.status === 'skipped' || h.status === 'snoozed') return false;
+    if (!h.completedAt) return false;
+    return isSameDay(new Date(h.completedAt), today);
+  });
+}
+
+export interface TaskCompletionEligibility {
+  allowed: boolean;
+  reason?: 'already_completed_today' | 'future_task' | 'archived';
+  daysUntilDue: number;
+}
+
+export function canCompleteTask(
+  task: RepeatingTask,
+  options?: { maxEarlyDays?: number; today?: Date }
+): TaskCompletionEligibility {
+  const today = options?.today ?? new Date();
+  const days = daysUntilDue(task.nextDueDate, today);
+
+  if (task.archived) {
+    return { allowed: false, reason: 'archived', daysUntilDue: days };
+  }
+
+  if (hasCompletedToday(task, today)) {
+    return { allowed: false, reason: 'already_completed_today', daysUntilDue: days };
+  }
+
+  const maxEarlyDays = options?.maxEarlyDays ?? 0;
+  if (days > maxEarlyDays) {
+    return { allowed: false, reason: 'future_task', daysUntilDue: days };
+  }
+
+  return { allowed: true, daysUntilDue: days };
 }
 
 export function statusForCompletion(dueDateIso: string, completedAt: Date = new Date()): CompletionStatus {
@@ -135,11 +187,30 @@ export function completeTaskInstance(task: RepeatingTask, note?: string, complet
   const base = new Date(task.nextDueDate);
   const today = new Date();
   const baseDate = base >= today ? base : today;
+
+  let nextAssignee = task.assignedTo;
+  let rotatedTo: string | undefined = undefined;
+  if (task.isRotating && task.rotationMembers && task.rotationMembers.length > 1) {
+    const currentIdx = task.rotationMembers.findIndex((m) => m === task.assignedTo);
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % task.rotationMembers.length;
+    nextAssignee = task.rotationMembers[nextIdx];
+    rotatedTo = nextAssignee;
+  }
+
   return {
     ...task,
+    assignedTo: nextAssignee,
     history: [
       ...(task.history ?? []).slice(-12),
-      { month: getMonthLabel(), status, completedAt: new Date().toISOString(), note, completedBy },
+      {
+        month: getMonthLabel(),
+        status,
+        completedAt: new Date().toISOString(),
+        note,
+        completedBy,
+        previousAssignee: task.assignedTo,
+        rotatedTo,
+      },
     ],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
@@ -165,10 +236,62 @@ export function undoSkipTask(task: RepeatingTask): RepeatingTask {
   const lastIndex = history.map((h) => h.status).lastIndexOf('skipped');
   if (lastIndex === -1) return task;
 
+  const isLastEntry = lastIndex === history.length - 1;
   history.splice(lastIndex, 1);
+  const nextDueDate = isLastEntry
+    ? computePreviousDueDate(task.recurrence, task.nextDueDate)
+    : task.nextDueDate;
+
   return {
     ...task,
     history,
+    nextDueDate,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function undoCompleteTaskInstance(task: RepeatingTask, historyIndex?: number): RepeatingTask {
+  if (!task.history || task.history.length === 0) return task;
+  const history = [...task.history];
+  const targetIdx =
+    historyIndex !== undefined
+      ? historyIndex
+      : (() => {
+          for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].status === 'on_time' || history[i].status === 'late') return i;
+          }
+          return history.length - 1;
+        })();
+
+  if (targetIdx < 0 || targetIdx >= history.length) return task;
+
+  const targetEntry = history[targetIdx];
+  const isLastEntry = targetIdx === history.length - 1;
+  const nextHistory = history.filter((_, idx) => idx !== targetIdx);
+  const nextDueDate = isLastEntry
+    ? computePreviousDueDate(task.recurrence, task.nextDueDate)
+    : task.nextDueDate;
+  const nextAssignee =
+    isLastEntry && targetEntry.previousAssignee !== undefined
+      ? targetEntry.previousAssignee
+      : task.assignedTo;
+
+  return {
+    ...task,
+    assignedTo: nextAssignee,
+    history: nextHistory,
+    nextDueDate,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function claimTaskInstance(
+  task: RepeatingTask,
+  claimantUserId: string
+): RepeatingTask {
+  return {
+    ...task,
+    assignedTo: claimantUserId,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -224,6 +347,7 @@ export function skipTaskInstance(task: RepeatingTask, userId?: string): Repeatin
     history: [...(task.history ?? []).slice(-12), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
+    snoozedUntil: undefined,
     updatedAt: now,
   };
 }
@@ -256,6 +380,9 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
     startDate: values.startDate,
+    assignedTo: values.assignedTo !== undefined ? values.assignedTo : task.assignedTo,
+    isRotating: values.isRotating !== undefined ? values.isRotating : task.isRotating,
+    rotationMembers: values.rotationMembers !== undefined ? values.rotationMembers : task.rotationMembers,
     householdId: values.householdId !== undefined ? values.householdId : task.householdId,
     icon: values.icon,
     nextDueDate,

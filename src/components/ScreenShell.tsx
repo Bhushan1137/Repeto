@@ -49,7 +49,7 @@ export function ScreenShell({
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
   const { tasks } = useTasks();
   const { unreadCount } = useNotifications();
   const [activityVisible, setActivityVisible] = useState(false);
@@ -428,7 +428,7 @@ export function ScreenShell({
             >
               <ActivityFeed
                 tasks={tasks}
-                members={user?.householdMembers ?? []}
+                members={activeHousehold?.members ?? user?.householdMembers ?? []}
                 currentUserId={user?.id}
                 currentUserName={user?.name ?? 'You'}
                 language={user?.language ?? 'en'}

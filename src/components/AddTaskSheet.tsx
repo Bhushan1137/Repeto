@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import type { HouseholdMemberProfile } from '@/types';
 import {
   Modal,
   View,
@@ -20,6 +21,8 @@ import { canShareWith } from '@/domain/task';
 import { initials } from '@/domain/insights';
 import { toSharedMember, listHouseholds } from '@/domain/household';
 import { Button } from '@/components/Button';
+import { SelectField } from '@/components/SelectField';
+import { Toggle } from '@/components/Toggle';
 import {
   defaultFormState,
   applyCategoryChange,
@@ -64,9 +67,13 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
     setFormState((prev) => applyCategoryChange(prev, category));
   };
 
+  const availableMembers = useMemo(() => {
+    return activeHousehold?.members ?? user?.householdMembers ?? [];
+  }, [activeHousehold, user]);
+
   const addContact = () => {
     const nextShared = [...shared];
-    const members = user?.householdMembers ?? [];
+    const members = availableMembers;
     if (members.length === 0) {
       showToast(translate('addHouseholdFirst'));
       onClose();
@@ -74,7 +81,7 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
       return;
     }
     const used = nextShared.map((s) => s.code ?? s.phone);
-    const nextMember = members.find((m) => !used.includes(m.code));
+    const nextMember = members.find((m: HouseholdMemberProfile) => !used.includes(m.code));
     const next = nextMember ? toSharedMember(nextMember) : null;
     if (!next) {
       showToast(translate('allContactsAdded'));
@@ -112,8 +119,14 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
         category: values.category,
         reminderTime: values.reminderTime,
         assignedTo: values.assignedTo,
+        isRotating: values.isRotating,
+        rotationMembers: values.rotationMembers,
       },
-      { finance: values.finance, shared }
+      {
+        finance: values.finance,
+        shared,
+        householdId: formState.householdId ?? (shared.length > 0 ? (activeHousehold?.id ?? null) : null),
+      }
     );
     setLoading(false);
     if (ok) {
@@ -203,6 +216,60 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
                         </Pressable>
                       );
                     })}
+                  </View>
+                </View>
+              )}
+
+              {/* Member Assignment Section */}
+              {/* Assign to — Shown ONLY if shared with household member(s) */}
+              {shared.length > 0 && (
+                <View style={{ marginTop: 10 }}>
+                  <SelectField
+                    label={language === 'hi' ? 'किसे सौंपा गया' : 'Assign To'}
+                    value={formState.assignedTo ?? ''}
+                    options={[
+                      { value: '', label: language === 'hi' ? 'किसी को नहीं (सामान्य)' : 'Unassigned (Shared)' },
+                      { value: user?.id ?? 'me', label: language === 'hi' ? `आप (${user?.name})` : `You (${user?.name})` },
+                      ...shared.map((s) => ({
+                        value: s.userId || s.code || s.phone,
+                        label: s.name,
+                      })),
+                    ]}
+                    onChange={(assignedTo) => patchForm({ assignedTo: assignedTo || null })}
+                    testID="add-task-assigned-picker"
+                  />
+                </View>
+              )}
+
+              {/* Chore Rotation Toggle — Shown if shared with members */}
+              {shared.length > 0 && (
+                <View style={{ marginTop: 14, padding: 12, backgroundColor: Colors.surfaceMuted, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.ivoryLine }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 13, color: Colors.ink }}>
+                        {language === 'hi' ? 'बारी-बारी से घुमाएं (Rotation) 🔄' : 'Rotate Turn (Round-Robin) 🔄'}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: Colors.inkSoft, marginTop: 2 }}>
+                        {language === 'hi'
+                          ? 'प्रत्येक पूर्णता के बाद अगला कार्य दूसरे सदस्य को सौंपा जाएगा।'
+                          : 'Automatically advances to the next roommate/member on completion.'}
+                      </Text>
+                    </View>
+                    <Toggle
+                      value={formState.isRotating}
+                      onValueChange={(v) => {
+                        const allMemberIds = [
+                          user?.id ?? 'me',
+                          ...shared.map((s) => s.userId || s.code || s.phone),
+                        ];
+                        patchForm({
+                          isRotating: v,
+                          rotationMembers: v ? (formState.rotationMembers.length ? formState.rotationMembers : allMemberIds) : [],
+                          assignedTo: v && !formState.assignedTo ? (user?.id ?? allMemberIds[0]) : formState.assignedTo,
+                        });
+                      }}
+                      testID="add-task-rotation-toggle"
+                    />
                   </View>
                 </View>
               )}

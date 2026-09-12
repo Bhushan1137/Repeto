@@ -1,8 +1,10 @@
-﻿import React from "react";
+import React from "react";
 import { View, ScrollView, Pressable, StyleSheet } from "react-native";
 import { Text } from "react-native-paper";
 import type { HouseholdContext } from "@/types";
 import { Colors, Radius } from "@/constants/theme";
+
+import { getHouseholdDisplayName } from "@/domain/household";
 
 interface HouseholdContextSwitcherProps {
   households: HouseholdContext[];
@@ -10,6 +12,7 @@ interface HouseholdContextSwitcherProps {
   onSwitch: (id: string) => void;
   onCreateNew: () => void;
   language: "en" | "hi";
+  currentUserId?: string;
 }
 
 export function HouseholdContextSwitcher({
@@ -18,6 +21,7 @@ export function HouseholdContextSwitcher({
   onSwitch,
   onCreateNew,
   language,
+  currentUserId,
 }: HouseholdContextSwitcherProps) {
   const isHi = language === "hi";
   const newLabel = isHi ? "+ नया" : "+ New";
@@ -33,6 +37,7 @@ export function HouseholdContextSwitcher({
       >
         {households.map((hh) => {
           const isActive = hh.id === activeHouseholdId || (!activeHouseholdId && households[0]?.id === hh.id);
+          const displayName = getHouseholdDisplayName(hh, currentUserId, households);
           return (
             <Pressable
               key={hh.id}
@@ -50,7 +55,7 @@ export function HouseholdContextSwitcher({
                 ]}
                 numberOfLines={1}
               >
-                {hh.name}
+                {displayName}
               </Text>
               {isActive && <View style={[styles.activeDot, { backgroundColor: "#fff" }]} />}
             </Pressable>

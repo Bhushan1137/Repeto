@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getFirestoreDb, getFirebaseAuth } from './app';
 import type { RepeatingTask, UserProfile } from '@/types';
@@ -131,6 +131,31 @@ export async function loadHouseholdRemote(householdId: string): Promise<import('
   await waitForAuthUid();
   const snap = await getDoc(doc(db, 'households', householdId));
   return snap.exists() ? (snap.data() as import('@/types').HouseholdContext) : null;
+}
+
+export function listenUserHouseholdsRemote(
+  userId: string,
+  callback: (households: import('@/types').HouseholdContext[]) => void
+): () => void {
+  const db = getFirestoreDb();
+  if (!db || !userId) return () => {};
+
+  const colRef = collection(db, 'households');
+  const q = query(colRef, where('memberUids', 'array-contains', userId));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list: import('@/types').HouseholdContext[] = [];
+      snap.forEach((docSnap) => {
+        list.push(docSnap.data() as import('@/types').HouseholdContext);
+      });
+      callback(list);
+    },
+    (err) => {
+      console.warn('[Repeato] Households query listener failed', err);
+    }
+  );
 }
 
 export async function saveHouseholdTaskRemote(householdId: string, task: RepeatingTask): Promise<void> {

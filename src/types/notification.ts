@@ -1,6 +1,6 @@
 export interface AppNotification {
   id: string;
-  type: 'household' | 'payment' | 'streak' | 'system';
+  type: 'household' | 'payment' | 'streak' | 'system' | 'nudge';
   title: string;
   body: string;
   timestamp: string;
@@ -9,5 +9,7 @@ export interface AppNotification {
     taskId?: string;
     amount?: number;
     memberCode?: string;
+    fromUserId?: string;
+    fromUserName?: string;
   };
 }

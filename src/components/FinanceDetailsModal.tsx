@@ -283,8 +283,8 @@ export function FinanceDetailsModal({
             language={language}
             translate={translate}
             onClose={() => setSelectedTaskId(null)}
-            onComplete={async (id, note) => {
-              await completeTask(id, note);
+            onComplete={async (id, note, options) => {
+              await completeTask(id, note, options);
               setSelectedTaskId(null);
             }}
             onSnooze={async (id, days) => {

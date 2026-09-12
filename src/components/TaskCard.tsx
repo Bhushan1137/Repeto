@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { View, StyleSheet, Pressable, StyleProp, ViewStyle } from 'react-native';
+import { Text, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius, Typography } from '@/constants/theme';
@@ -16,6 +16,7 @@ interface TaskCardProps {
   selected?: boolean;
   onLongPress?: () => void;
   testID?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function TaskCard({
@@ -26,6 +27,7 @@ export function TaskCard({
   selected,
   onLongPress,
   testID,
+  style,
 }: TaskCardProps) {
   const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋', accent: 'marigold' };
   const days = daysUntilDue(task.nextDueDate);
@@ -79,14 +81,14 @@ export function TaskCard({
   const defaultId = testID ?? `task-card-${task.id}`;
 
   return (
-    <Card
-      style={[styles.card, selected && styles.cardSelected]}
-      mode="elevated"
+    <Pressable
+      style={[styles.card, selected && styles.cardSelected, style]}
       onPress={onPress}
       onLongPress={onLongPress}
+      android_ripple={{ color: 'rgba(0, 0, 0, 0.04)' }}
       testID={defaultId}
     >
-      <Card.Content style={styles.cardContent} testID={`${defaultId}-content`}>
+      <View style={styles.cardContent} testID={`${defaultId}-content`}>
         <View style={[styles.accentBar, { backgroundColor: overdue ? Colors.clay : catColor }]} testID={`${defaultId}-accent-bar`} />
         
         {selected ? (
@@ -159,8 +161,8 @@ export function TaskCard({
             <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
           )}
         </View>
-      </Card.Content>
-    </Card>
+      </View>
+    </Pressable>
   );
 }
 
@@ -170,7 +172,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: 10,
     overflow: 'hidden',
-    elevation: 1.5,
+    elevation: 2,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.04)',
   },
   cardSelected: {
     borderWidth: 1.5,

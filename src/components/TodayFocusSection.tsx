@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { Text, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
+import { hasCompletedToday } from '@/domain/task';
 import { TaskCard } from '@/components/TaskCard';
+import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
 import { AppIcon } from '@/components/AppIcon';
 
 interface TodayFocusSectionProps {
@@ -13,6 +15,7 @@ interface TodayFocusSectionProps {
   language: Language;
   onSelectTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
+  onSnoozeTask?: (taskId: string, days?: number) => void;
   onToggleSelect?: (taskId: string) => void;
   selectedIds?: Set<string>;
   isSelecting?: boolean;
@@ -23,6 +26,7 @@ export function TodayFocusSection({
   language,
   onSelectTask,
   onCompleteTask,
+  onSnoozeTask,
   onToggleSelect,
   selectedIds,
   isSelecting,
@@ -35,26 +39,36 @@ export function TodayFocusSection({
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
-  // Pending tasks needing focus today (due today or overdue)
+  // Pending tasks needing focus today (strictly due today and not yet completed today)
   const pendingTodayTasks = useMemo(() => {
-    return tasks.filter((t) => daysUntilDue(t.nextDueDate) <= 0);
+    return tasks.filter((t) => daysUntilDue(t.nextDueDate) === 0 && !hasCompletedToday(t));
   }, [tasks]);
 
   // Tasks completed today from task.history
   const completedTodayEntries = useMemo(() => {
     const today = new Date();
-    const list: { task: RepeatingTask; completedAt: string; note?: string }[] = [];
+    const list: {
+      task: RepeatingTask;
+      completedAt: string;
+      note?: string;
+      historyIndex: number;
+    }[] = [];
 
     for (const t of tasks) {
-      for (const h of t.history) {
-        if (h.completedAt && isSameDay(new Date(h.completedAt), today)) {
+      t.history.forEach((h, idx) => {
+        if (
+          h.completedAt &&
+          (h.status === 'on_time' || h.status === 'late') &&
+          isSameDay(new Date(h.completedAt), today)
+        ) {
           list.push({
             task: t,
             completedAt: h.completedAt,
             note: h.note,
+            historyIndex: idx,
           });
         }
-      }
+      });
     }
     return list;
   }, [tasks]);
@@ -70,7 +84,7 @@ export function TodayFocusSection({
   // Items to display based on selected tab
   const itemsToDisplay = useMemo(() => {
     if (activeTab === 'pending') {
-      return pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t }));
+      return pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined }));
     }
     if (activeTab === 'completed') {
       return completedTodayEntries.map((e) => ({
@@ -78,16 +92,18 @@ export function TodayFocusSection({
         task: e.task,
         completedAt: e.completedAt,
         note: e.note,
+        historyIndex: e.historyIndex,
       }));
     }
     // 'all' tab shows pending first, then completed today
     return [
-      ...pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t })),
+      ...pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined })),
       ...completedTodayEntries.map((e) => ({
         type: 'completed' as const,
         task: e.task,
         completedAt: e.completedAt,
         note: e.note,
+        historyIndex: e.historyIndex,
       })),
     ];
   }, [activeTab, pendingTodayTasks, completedTodayEntries]);
@@ -99,7 +115,7 @@ export function TodayFocusSection({
   // When all today tasks are finished and collapsed, render compact celebration pill
   if (pendingCount === 0 && completedCount > 0 && collapsed) {
     return (
-      <Card style={styles.celebrationCard} mode="elevated">
+      <View style={styles.celebrationCard}>
         <TouchableRipple style={styles.celebrationRipple} onPress={() => setCollapsed(false)} borderless>
           <View style={styles.celebrationRow}>
             <View style={styles.celebrationLeft}>
@@ -111,7 +127,7 @@ export function TodayFocusSection({
                 <Text style={styles.celebrationSub}>
                   {language === 'hi'
                     ? `${completedCount} कार्य संपन्न • विवरण देखें`
-                    : `${completedCount} task done today • Tap to view activity`}
+                    : `${completedCount} ${completedCount === 1 ? 'task' : 'tasks'} done today • Tap to view activity`}
                 </Text>
               </View>
             </View>
@@ -120,12 +136,12 @@ export function TodayFocusSection({
             </View>
           </View>
         </TouchableRipple>
-      </Card>
+      </View>
     );
   }
 
   return (
-    <Card style={styles.todayCard} mode="elevated">
+    <View style={styles.todayCard}>
       {/* 1. Header Banner & Daily Progress Bar */}
       <View style={styles.headerBlock}>
         <View style={styles.titleRow}>
@@ -195,21 +211,29 @@ export function TodayFocusSection({
           if (item.type === 'pending') {
             const isSelected = selectedIds?.has(item.task.id);
             return (
-              <TaskCard
-                key={`pending-${item.task.id}-${idx}`}
-                task={item.task}
+              <SwipeableTaskItem
+                key={`pending-swipe-${item.task.id}-${idx}`}
                 language={language}
-                selected={isSelected}
-                onPress={() => {
-                  if (isSelecting && onToggleSelect) {
-                    onToggleSelect(item.task.id);
-                  } else {
-                    onSelectTask(item.task.id);
-                  }
-                }}
-                onLongPress={() => onToggleSelect?.(item.task.id)}
-                onCompletePress={isSelecting ? undefined : () => onCompleteTask(item.task.id)}
-              />
+                enabled={!isSelecting}
+                onComplete={() => onCompleteTask(item.task.id)}
+                onSnooze={(days) => onSnoozeTask?.(item.task.id, days)}
+              >
+                <TaskCard
+                  task={item.task}
+                  language={language}
+                  selected={isSelected}
+                  style={{ marginBottom: 0 }}
+                  onPress={() => {
+                    if (isSelecting && onToggleSelect) {
+                      onToggleSelect(item.task.id);
+                    } else {
+                      onSelectTask(item.task.id);
+                    }
+                  }}
+                  onLongPress={() => onToggleSelect?.(item.task.id)}
+                  onCompletePress={isSelecting ? undefined : () => onCompleteTask(item.task.id)}
+                />
+              </SwipeableTaskItem>
             );
           }
 
@@ -227,9 +251,9 @@ export function TodayFocusSection({
             >
               <TouchableRipple style={styles.completedRipple} onPress={() => onSelectTask(item.task.id)} borderless>
                 <View style={styles.completedContent}>
-                  {/* Left Success Icon Badge */}
-                  <View style={styles.successIconBadge}>
-                    <AppIcon name="checkmark-done-outline" size={14} color={Colors.white} />
+                  {/* Left Faded Icon Badge: neutral/subtle circle instead of loud green */}
+                  <View style={styles.fadedIconBadge}>
+                    <AppIcon name="checkmark" size={13} color={Colors.inkFaint} />
                   </View>
 
                   {/* Body Text */}
@@ -266,7 +290,7 @@ export function TodayFocusSection({
           );
         })}
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -387,11 +411,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  successIconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.tealDeep,
+  fadedIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F1F5F9', // Soft subtle slate 100
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0', // Slate 200 border
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -415,7 +441,7 @@ const styles = StyleSheet.create({
   completedTimeText: {
     fontFamily: 'Manrope_500Medium',
     fontSize: 11,
-    color: Colors.tealDeep,
+    color: Colors.inkSoft,
   },
   completedNoteText: {
     fontFamily: 'Manrope_500Medium',
@@ -424,7 +450,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   doneBadge: {
-    backgroundColor: 'rgba(62, 124, 106, 0.12)',
+    backgroundColor: 'rgba(5, 150, 105, 0.1)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Radius.xs,
@@ -432,7 +458,7 @@ const styles = StyleSheet.create({
   doneBadgeText: {
     fontFamily: 'Manrope_700Bold',
     fontSize: 10.5,
-    color: Colors.tealDeep,
+    color: '#059669',
   },
 
   // Celebration Collapsed Styles

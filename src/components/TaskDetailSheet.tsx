@@ -41,7 +41,7 @@ interface TaskDetailSheetProps {
   language: Language;
   translate: (key: TranslationKey, params?: Record<string, string | number>) => string;
   onClose: () => void;
-  onComplete: (taskId: string, note?: string) => void;
+  onComplete: (taskId: string, note?: string, options?: { maxEarlyDays?: number }) => void;
   onSnooze: (taskId: string, days?: number) => void;
   onSkip: (taskId: string) => void;
   onDelete: (taskId: string) => void;
@@ -52,6 +52,9 @@ interface TaskDetailSheetProps {
   onSetDueDate?: (taskId: string, date: Date) => void;
   onDeleteHistoryEntry?: (taskId: string, entryIndex: number) => void;
   onUndoSkip?: (taskId: string) => void;
+  onUndoComplete?: (taskId: string) => void;
+  onClaim?: (taskId: string) => void;
+  onNudge?: (taskId: string) => void;
 }
 
 export function TaskDetailSheet({
@@ -64,6 +67,9 @@ export function TaskDetailSheet({
   onSnooze,
   onSkip,
   onUndoSkip,
+  onUndoComplete,
+  onClaim,
+  onNudge,
   onDelete,
   onArchive,
   onPin,
@@ -113,6 +119,39 @@ export function TaskDetailSheet({
     }
   };
 
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  const todayCompletion = useMemo(() => {
+    if (!task?.history || task.history.length === 0) return null;
+    const today = new Date();
+    for (let i = task.history.length - 1; i >= 0; i--) {
+      const h = task.history[i];
+      if (
+        h.completedAt &&
+        (h.status === 'on_time' || h.status === 'late') &&
+        isSameDay(new Date(h.completedAt), today)
+      ) {
+        return h;
+      }
+    }
+    return null;
+  }, [task]);
+
+  const isCompletedToday = !!todayCompletion;
+
+  const assigneeDisplayName = useMemo(() => {
+    if (!task?.assignedTo) return language === 'hi' ? 'कोई नहीं (साझा)' : 'Unassigned (Open)';
+    if (task.assignedTo === user?.id || task.assignedTo === user?.userCode) {
+      return language === 'hi' ? 'आप (You)' : 'You';
+    }
+    const allMembers = hhContext?.members ?? user?.householdMembers ?? [];
+    const member = allMembers.find((m) => m.userId === task.assignedTo || m.code === task.assignedTo);
+    return member ? member.name : (language === 'hi' ? 'अन्य सदस्य' : 'Other Member');
+  }, [task?.assignedTo, user, hhContext, language]);
+
   if (!task) return null;
 
   const cat = CATEGORY_MAP[task.category];
@@ -130,6 +169,8 @@ export function TaskDetailSheet({
 
   const handleDateChange = handleNativeDateChange;
   const historyToShow = showAllHistory ? task.history : task.history.slice(-5);
+  const isFutureTask = days > 2;
+  const isEarlyAllowed = days > 0 && days <= 2;
 
   const handleMarkDone = () => {
     if (!noteExpanded) {
@@ -137,14 +178,14 @@ export function TaskDetailSheet({
       return;
     }
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined);
+    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
     setNoteText('');
     setNoteExpanded(false);
   };
 
   const handleMarkDoneDirectly = () => {
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined);
+    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
     setNoteText('');
     setNoteExpanded(false);
   };
@@ -161,11 +202,11 @@ export function TaskDetailSheet({
 
         <LinearGradient colors={[...Gradients.hero]} style={styles.heroBand}>
           <ProgressRing
-            percent={daysPercent(days)}
-            color={overdue ? AccentHex.clay : hex}
+            percent={isCompletedToday ? 100 : daysPercent(days)}
+            color={isCompletedToday ? '#059669' : (overdue ? AccentHex.clay : hex)}
             size={72}
             stroke={6}
-            label={dayLabel(days, language)}
+            label={isCompletedToday ? (language === 'hi' ? 'पूर्ण' : 'Done') : dayLabel(days, language)}
           />
           <View style={styles.heroText}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -236,6 +277,50 @@ export function TaskDetailSheet({
             </Card>
           )}
 
+          {/* Assignee Information */}
+          {(task.assignedTo || (task.householdId && hhContext)) && (
+            <Card style={[styles.sharedCard, { marginTop: 10 }]} mode="elevated">
+              <Card.Content style={{ paddingVertical: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <AppIcon name="person-circle-outline" size={22} color={Colors.tealDeep} />
+                    <View>
+                      <Text style={{ fontSize: 11, color: Colors.inkSoft }}>
+                        {language === 'hi' ? 'किसे सौंपा गया' : 'Assigned To'}
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.ink }}>
+                        {assigneeDisplayName}
+                      </Text>
+                    </View>
+                  </View>
+                  {!task.assignedTo && onClaim && (
+                    <Button
+                      title={language === 'hi' ? 'कार्य लें' : 'Claim Task'}
+                      variant="outline"
+                      onPress={() => onClaim(task.id)}
+                      style={{ minWidth: 90, height: 34, marginVertical: 0 }}
+                    />
+                  )}
+                  {task.assignedTo && task.assignedTo !== user?.id && task.assignedTo !== user?.userCode && onNudge && (
+                    <Button
+                      title={language === 'hi' ? '👉 नज़ करें' : '👉 Nudge'}
+                      variant="outline"
+                      onPress={() => onNudge(task.id)}
+                      style={{ minWidth: 80, height: 34, marginVertical: 0, borderColor: '#F59E0B' }}
+                    />
+                  )}
+                </View>
+                {task.isRotating && (
+                  <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: Colors.ivoryLine, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontSize: 12, color: Colors.tealDeep, fontFamily: 'Manrope_700Bold' }}>
+                      🔄 {language === 'hi' ? 'बारी-बारी से घुमाएं सक्रिय (Round-Robin)' : 'Round-Robin Turn Rotation Active'}
+                    </Text>
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          )}
+
           {/* Contextual Affiliate Promo */}
           {match && (
             <Card style={styles.promoCard} mode="elevated">
@@ -272,186 +357,335 @@ export function TaskDetailSheet({
             </Card>
           )}
 
-          {/* Action card */}
-          <Card style={styles.actionCard} mode="elevated">
-            <Card.Content style={styles.actionContent}>
-              {noteExpanded ? (
-                <>
-                  <TextInput
-                    style={styles.noteInput}
-                    placeholder={
-                      language === 'hi'
-                        ? 'एक नोट जोड़ें (वैकल्पिक)...'
-                        : 'Add a note (optional)...'
-                    }
-                    placeholderTextColor={Colors.inkFaint}
-                    value={noteText}
-                    onChangeText={setNoteText}
-                    multiline
-                    maxLength={200}
-                    autoFocus
+          {/* If occurrence is marked done today, show completed status & undo option only */}
+          {isCompletedToday ? (
+            <Card style={styles.completedOccurrenceCard} mode="elevated">
+              <Card.Content style={styles.completedOccurrenceContent}>
+                <View style={styles.completedOccurrenceHeader}>
+                  <View style={styles.completedOccurrenceIconCircle}>
+                    <AppIcon name="checkmark-done-outline" size={20} color="#059669" />
+                  </View>
+                  <View style={styles.completedOccurrenceTextCol}>
+                    <Text style={styles.completedOccurrenceTitle}>
+                      {language === 'hi' ? 'आज का कार्य संपन्न है' : 'Completed for Today'}
+                    </Text>
+                    <Text style={styles.completedOccurrenceSub}>
+                      {todayCompletion?.completedAt
+                        ? `${language === 'hi' ? 'आज' : 'Completed at'} ${new Date(todayCompletion.completedAt).toLocaleTimeString(language === 'hi' ? 'hi-IN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
+                        : (language === 'hi' ? 'यह कार्य पूरा कर लिया गया है' : 'This occurrence is marked done')}
+                    </Text>
+                  </View>
+                </View>
+
+                {todayCompletion?.note ? (
+                  <View style={styles.completedOccurrenceNoteBox}>
+                    <Text style={styles.completedOccurrenceNoteText}>
+                      📝 {todayCompletion.note}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {onUndoComplete && (
+                  <TouchableRipple
+                    style={styles.undoOccurrenceBtn}
+                    onPress={() => {
+                      onClose();
+                      onUndoComplete(task.id);
+                    }}
+                    borderless
+                  >
+                    <View style={styles.undoOccurrenceBtnInner}>
+                      <AppIcon name="arrow-undo-outline" size={16} color="#B45309" />
+                      <Text style={styles.undoOccurrenceBtnText}>
+                        {language === 'hi' ? 'कार्य पूर्ववत करें (आज की सूची में लाएं)' : "Undo Today's Completion"}
+                      </Text>
+                    </View>
+                  </TouchableRipple>
+                )}
+              </Card.Content>
+            </Card>
+          ) : isFutureTask ? (
+            <Card style={styles.futureTaskCard} mode="elevated">
+              <Card.Content style={styles.futureTaskContent}>
+                <View style={styles.futureTaskHeader}>
+                  <View style={styles.futureTaskIconCircle}>
+                    <AppIcon name="calendar-outline" size={20} color="#2563EB" />
+                  </View>
+                  <View style={styles.futureTaskTextCol}>
+                    <Text style={styles.futureTaskTitle}>
+                      {language === 'hi' ? 'भविष्य का कार्य' : 'Scheduled Future Task'}
+                    </Text>
+                    <Text style={styles.futureTaskSub}>
+                      {language === 'hi'
+                        ? `यह कार्य ${days} दिन बाद नियत है। समय पूर्व पूरा करने का विकल्प नियत तिथि से 2 दिन पहले खुलेगा।`
+                        : `Due in ${days} days. Completion unlocks 2 days before due date.`}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.futureActionsRow}>
+                  <ActionChip
+                    icon="calendar-outline"
+                    label={language === 'hi' ? 'तारीख बदलें' : 'Reschedule'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      setShowDatePicker(true);
+                    }}
                   />
-                  <View style={styles.noteActions}>
-                    <Button
-                      title={language === 'hi' ? 'छोड़ें' : 'Skip note'}
-                      onPress={handleMarkDoneDirectly}
-                      variant="ghost"
-                      style={styles.noteSkipBtn}
+                  <ActionChip
+                    icon="create-outline"
+                    label={language === 'hi' ? 'संपादित करें' : 'Edit Task'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      onEdit?.(task.id);
+                    }}
+                  />
+                  <ActionChip
+                    icon="time-outline"
+                    label={translate('snooze2d')}
+                    onPress={() => setSnoozeOptionsVisible((v) => !v)}
+                  />
+                </View>
+
+                {snoozeOptionsVisible && (
+                  <View style={styles.snoozeOptionsRow}>
+                    <TouchableRipple
+                      style={styles.snoozeOptBtn}
+                      onPress={() => {
+                        onSnooze(task.id, 1);
+                        setSnoozeOptionsVisible(false);
+                      }}
+                      borderless
+                    >
+                      <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'दिन' : 'Day'}</Text>
+                    </TouchableRipple>
+                    <TouchableRipple
+                      style={styles.snoozeOptBtn}
+                      onPress={() => {
+                        onSnooze(task.id, 2);
+                        setSnoozeOptionsVisible(false);
+                      }}
+                      borderless
+                    >
+                      <Text style={styles.snoozeOptText}>+2 {language === 'hi' ? 'दिन' : 'Days'}</Text>
+                    </TouchableRipple>
+                    <TouchableRipple
+                      style={styles.snoozeOptBtn}
+                      onPress={() => {
+                        onSnooze(task.id, 7);
+                        setSnoozeOptionsVisible(false);
+                      }}
+                      borderless
+                    >
+                      <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'हफ्ता' : 'Week'}</Text>
+                    </TouchableRipple>
+                    <TouchableRipple
+                      style={[styles.snoozeOptBtn, styles.snoozeCancelBtn]}
+                      onPress={() => setSnoozeOptionsVisible(false)}
+                      borderless
+                    >
+                      <Text style={[styles.snoozeOptText, { color: Colors.clay }]}>{language === 'hi' ? 'रद्द करें' : 'Cancel'}</Text>
+                    </TouchableRipple>
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          ) : (
+            <>
+              {/* Action card */}
+              <Card style={styles.actionCard} mode="elevated">
+                <Card.Content style={styles.actionContent}>
+                  {noteExpanded ? (
+                    <>
+                      <TextInput
+                        style={styles.noteInput}
+                        placeholder={
+                          language === 'hi'
+                            ? 'एक नोट जोड़ें (वैकल्पिक)...'
+                            : 'Add a note (optional)...'
+                        }
+                        placeholderTextColor={Colors.inkFaint}
+                        value={noteText}
+                        onChangeText={setNoteText}
+                        multiline
+                        maxLength={200}
+                        autoFocus
+                      />
+                      <View style={styles.noteActions}>
+                        <Button
+                          title={language === 'hi' ? 'छोड़ें' : 'Skip note'}
+                          onPress={handleMarkDoneDirectly}
+                          variant="ghost"
+                          style={styles.noteSkipBtn}
+                        />
+                        <Button
+                          title={
+                            isEarlyAllowed
+                              ? language === 'hi'
+                                ? `समय पूर्व पूरा करें (${days}d)`
+                                : `Mark Done Early (${days}d early)`
+                              : translate('markDone')
+                          }
+                          onPress={handleMarkDoneDirectly}
+                          style={styles.noteConfirmBtn}
+                        />
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.doneButtonsRow}>
+                      <Button
+                        title={
+                          isEarlyAllowed
+                            ? language === 'hi'
+                              ? `समय पूर्व पूरा करें (${days}d)`
+                              : `Mark Done Early (${days}d early)`
+                            : translate('markDone')
+                        }
+                        onPress={handleMarkDoneDirectly}
+                        style={styles.donePrimaryBtn}
+                      />
+                      <Button
+                        title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
+                        variant="outline"
+                        onPress={handleMarkDone}
+                        style={styles.doneSecondaryBtn}
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.secondaryRow}>
+                    <ActionChip
+                      icon="time-outline"
+                      label={translate('snooze2d')}
+                      onPress={() => setSnoozeOptionsVisible((v) => !v)}
                     />
-                    <Button
-                      title={translate('markDone')}
-                      onPress={handleMarkDoneDirectly}
-                      style={styles.noteConfirmBtn}
+                    <ActionChip
+                      icon="play-skip-forward-outline"
+                      label={translate('skipOccurrence')}
+                      onPress={() => {
+                        setSnoozeOptionsVisible(false);
+                        onSkip(task.id);
+                      }}
+                    />
+                    <ActionChip
+                      icon="calendar-outline"
+                      label={language === 'hi' ? 'तारीख बदलें' : 'Change Date'}
+                      onPress={() => {
+                        setSnoozeOptionsVisible(false);
+                        setShowDatePicker(true);
+                      }}
                     />
                   </View>
-                </>
-              ) : (
-                <View style={styles.doneButtonsRow}>
-                  <Button
-                    title={translate('markDone')}
-                    onPress={handleMarkDoneDirectly}
-                    style={styles.donePrimaryBtn}
-                  />
-                  <Button
-                    title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
-                    variant="outline"
-                    onPress={handleMarkDone}
-                    style={styles.doneSecondaryBtn}
-                  />
-                </View>
-              )}
 
-              <View style={styles.secondaryRow}>
-                <ActionChip
-                  icon="time-outline"
-                  label={translate('snooze2d')}
-                  onPress={() => setSnoozeOptionsVisible((v) => !v)}
-                />
-                <ActionChip
-                  icon="play-skip-forward-outline"
-                  label={translate('skipOccurrence')}
+                  {snoozeOptionsVisible && (
+                    <View style={styles.snoozeOptionsRow}>
+                      <TouchableRipple
+                        style={styles.snoozeOptBtn}
+                        onPress={() => {
+                          onSnooze(task.id, 1);
+                          setSnoozeOptionsVisible(false);
+                        }}
+                        borderless
+                      >
+                        <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'दिन' : 'Day'}</Text>
+                      </TouchableRipple>
+                      <TouchableRipple
+                        style={styles.snoozeOptBtn}
+                        onPress={() => {
+                          onSnooze(task.id, 2);
+                          setSnoozeOptionsVisible(false);
+                        }}
+                        borderless
+                      >
+                        <Text style={styles.snoozeOptText}>+2 {language === 'hi' ? 'दिन' : 'Days'}</Text>
+                      </TouchableRipple>
+                      <TouchableRipple
+                        style={styles.snoozeOptBtn}
+                        onPress={() => {
+                          onSnooze(task.id, 7);
+                          setSnoozeOptionsVisible(false);
+                        }}
+                        borderless
+                      >
+                        <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'हफ्ता' : 'Week'}</Text>
+                      </TouchableRipple>
+                      <TouchableRipple
+                        style={[styles.snoozeOptBtn, styles.snoozeCancelBtn]}
+                        onPress={() => setSnoozeOptionsVisible(false)}
+                        borderless
+                      >
+                        <Text style={[styles.snoozeOptText, { color: Colors.clay }]}>{language === 'hi' ? 'रद्द करें' : 'Cancel'}</Text>
+                      </TouchableRipple>
+                    </View>
+                  )}
+                </Card.Content>
+              </Card>
+
+              {/* Extra actions row */}
+              <View style={styles.extraActionsRow}>
+                <TouchableRipple
+                  style={styles.extraActionBtn}
+                  onPress={() => onPin?.(task.id)}
+                  borderless
+                >
+                  <View style={styles.extraActionInner}>
+                    <AppIcon
+                      name={task.pinned ? 'bookmark' : 'bookmark-outline'}
+                      size={16}
+                      color={task.pinned ? Colors.marigoldDeep : Colors.inkSoft}
+                    />
+                    <Text style={[styles.extraActionText, task.pinned && styles.extraActionActive]}>
+                      {task.pinned
+                        ? language === 'hi' ? 'अनपिन' : 'Unpin'
+                        : language === 'hi' ? 'पिन करें' : 'Pin'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
+
+                <TouchableRipple
+                  style={styles.extraActionBtn}
+                  onPress={() => onDuplicate?.(task.id)}
+                  borderless
+                >
+                  <View style={styles.extraActionInner}>
+                    <AppIcon name="documents-outline" size={16} color={Colors.inkSoft} />
+                    <Text style={styles.extraActionText}>
+                      {language === 'hi' ? 'डुप्लिकेट' : 'Duplicate'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
+
+                <TouchableRipple
+                  style={styles.extraActionBtn}
+                  onPress={() => onArchive?.(task.id)}
+                  borderless
+                >
+                  <View style={styles.extraActionInner}>
+                    <AppIcon name="archive-outline" size={16} color={Colors.inkSoft} />
+                    <Text style={styles.extraActionText}>
+                      {language === 'hi' ? 'आर्काइव' : 'Archive'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
+
+                <TouchableRipple
+                  style={styles.extraActionBtn}
                   onPress={() => {
                     setSnoozeOptionsVisible(false);
-                    onSkip(task.id);
+                    onEdit?.(task.id);
                   }}
-                />
-                <ActionChip
-                  icon="calendar-outline"
-                  label={language === 'hi' ? 'तारीख बदलें' : 'Change Date'}
-                  onPress={() => {
-                    setSnoozeOptionsVisible(false);
-                    setShowDatePicker(true);
-                  }}
-                />
+                  borderless
+                >
+                  <View style={styles.extraActionInner}>
+                    <AppIcon name="create-outline" size={16} color={Colors.inkSoft} />
+                    <Text style={styles.extraActionText}>
+                      {language === 'hi' ? 'संपादित करें' : 'Edit'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
               </View>
-
-              {snoozeOptionsVisible && (
-                <View style={styles.snoozeOptionsRow}>
-                  <TouchableRipple
-                    style={styles.snoozeOptBtn}
-                    onPress={() => {
-                      onSnooze(task.id, 1);
-                      setSnoozeOptionsVisible(false);
-                    }}
-                    borderless
-                  >
-                    <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'दिन' : 'Day'}</Text>
-                  </TouchableRipple>
-                  <TouchableRipple
-                    style={styles.snoozeOptBtn}
-                    onPress={() => {
-                      onSnooze(task.id, 2);
-                      setSnoozeOptionsVisible(false);
-                    }}
-                    borderless
-                  >
-                    <Text style={styles.snoozeOptText}>+2 {language === 'hi' ? 'दिन' : 'Days'}</Text>
-                  </TouchableRipple>
-                  <TouchableRipple
-                    style={styles.snoozeOptBtn}
-                    onPress={() => {
-                      onSnooze(task.id, 7);
-                      setSnoozeOptionsVisible(false);
-                    }}
-                    borderless
-                  >
-                    <Text style={styles.snoozeOptText}>+1 {language === 'hi' ? 'हफ्ता' : 'Week'}</Text>
-                  </TouchableRipple>
-                  <TouchableRipple
-                    style={[styles.snoozeOptBtn, styles.snoozeCancelBtn]}
-                    onPress={() => setSnoozeOptionsVisible(false)}
-                    borderless
-                  >
-                    <Text style={[styles.snoozeOptText, { color: Colors.clay }]}>{language === 'hi' ? 'रद्द करें' : 'Cancel'}</Text>
-                  </TouchableRipple>
-                </View>
-              )}
-            </Card.Content>
-          </Card>
-
-          {/* Extra actions row */}
-          <View style={styles.extraActionsRow}>
-            <TouchableRipple
-              style={styles.extraActionBtn}
-              onPress={() => onPin?.(task.id)}
-              borderless
-            >
-              <View style={styles.extraActionInner}>
-                <AppIcon
-                  name={task.pinned ? 'bookmark' : 'bookmark-outline'}
-                  size={16}
-                  color={task.pinned ? Colors.marigoldDeep : Colors.inkSoft}
-                />
-                <Text style={[styles.extraActionText, task.pinned && styles.extraActionActive]}>
-                  {task.pinned
-                    ? language === 'hi' ? 'अनपिन' : 'Unpin'
-                    : language === 'hi' ? 'पिन करें' : 'Pin'}
-                </Text>
-              </View>
-            </TouchableRipple>
-
-            <TouchableRipple
-              style={styles.extraActionBtn}
-              onPress={() => onDuplicate?.(task.id)}
-              borderless
-            >
-              <View style={styles.extraActionInner}>
-                <AppIcon name="documents-outline" size={16} color={Colors.inkSoft} />
-                <Text style={styles.extraActionText}>
-                  {language === 'hi' ? 'डुप्लिकेट' : 'Duplicate'}
-                </Text>
-              </View>
-            </TouchableRipple>
-
-            <TouchableRipple
-              style={styles.extraActionBtn}
-              onPress={() => onArchive?.(task.id)}
-              borderless
-            >
-              <View style={styles.extraActionInner}>
-                <AppIcon name="archive-outline" size={16} color={Colors.inkSoft} />
-                <Text style={styles.extraActionText}>
-                  {language === 'hi' ? 'आर्काइव' : 'Archive'}
-                </Text>
-              </View>
-            </TouchableRipple>
-
-            <TouchableRipple
-              style={styles.extraActionBtn}
-              onPress={() => {
-                setSnoozeOptionsVisible(false);
-                onEdit?.(task.id);
-              }}
-              borderless
-            >
-              <View style={styles.extraActionInner}>
-                <AppIcon name="create-outline" size={16} color={Colors.inkSoft} />
-                <Text style={styles.extraActionText}>
-                  {language === 'hi' ? 'संपादित करें' : 'Edit'}
-                </Text>
-              </View>
-            </TouchableRipple>
-          </View>
+            </>
+          )}
 
           {Platform.OS === 'web' && showDatePicker && (
             <View style={styles.webDatePickerContainer}>
@@ -757,6 +991,54 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 10, color: Colors.white, fontFamily: 'Manrope_800ExtraBold' },
 
+  futureTaskCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 12,
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  futureTaskContent: {
+    padding: 16,
+    gap: 12,
+  },
+  futureTaskHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  futureTaskIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  futureTaskTextCol: {
+    flex: 1,
+  },
+  futureTaskTitle: {
+    ...Typography.bodySm,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.ink,
+    fontSize: 14,
+  },
+  futureTaskSub: {
+    ...Typography.caption,
+    color: Colors.inkSoft,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  futureActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+
   actionCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.lg,
@@ -1043,5 +1325,79 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.inkFaint,
     marginTop: 2,
+  },
+  completedOccurrenceCard: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  completedOccurrenceContent: {
+    padding: 16,
+    gap: 12,
+  },
+  completedOccurrenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  completedOccurrenceIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  completedOccurrenceTextCol: {
+    flex: 1,
+  },
+  completedOccurrenceTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 15,
+    color: '#065F46',
+  },
+  completedOccurrenceSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 12,
+    color: '#047857',
+    marginTop: 2,
+  },
+  completedOccurrenceNoteBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: Radius.sm,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  completedOccurrenceNoteText: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 12.5,
+    color: '#065F46',
+    fontStyle: 'italic',
+  },
+  undoOccurrenceBtn: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: Radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  undoOccurrenceBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  undoOccurrenceBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: '#92400E',
   },
 });

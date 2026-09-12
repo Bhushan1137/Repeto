@@ -8,6 +8,7 @@ import {
   saveHouseholdRemote,
   deleteHouseholdRemote,
   loadHouseholdRemote,
+  listenUserHouseholdsRemote,
   loadHouseholdInviteRemote,
   saveOtherUserRemote,
   saveNotificationRemote,
@@ -120,6 +121,16 @@ export const userRepository = {
     } catch (err) {
       console.warn('[Repeato] loadHousehold failed:', err);
       return null;
+    }
+  },
+
+  listenHouseholds(userId: string, callback: (households: HouseholdContext[]) => void): () => void {
+    if (!remoteEnabled()) return () => {};
+    try {
+      return listenUserHouseholdsRemote(userId, callback);
+    } catch (err) {
+      console.warn('[Repeato] listenHouseholds failed:', err);
+      return () => {};
     }
   },
 

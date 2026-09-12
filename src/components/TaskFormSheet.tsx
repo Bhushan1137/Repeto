@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -23,7 +23,7 @@ import { Button } from '@/components/Button';
 import { Colors, Radius, Typography, AccentHex } from '@/constants/theme';
 import { getCategoryAccent } from '@/constants/categoryHelpers';
 import type { TranslationKey } from '@/i18n';
-import type { Language, SharedMember } from '@/types';
+import type { Language, SharedMember, HouseholdMemberProfile } from '@/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { canShareWith } from '@/domain/task';
@@ -31,6 +31,7 @@ import { initials } from '@/domain/insights';
 import { toSharedMember, listHouseholds } from '@/domain/household';
 
 import { Toast } from '@/components/Toast';
+import { Toggle } from '@/components/Toggle';
 
 interface TaskFormSheetProps {
   visible: boolean;
@@ -79,6 +80,14 @@ export function TaskFormSheet({
     setSaving(false);
   }, [initial, visible, initialShared, mode, activeHousehold?.id]);
 
+  const availableMembers = useMemo(() => {
+    if (formState?.householdId) {
+      const hh = listHouseholds(user ?? ({} as any)).find((h) => h.id === formState.householdId);
+      if (hh?.members && hh.members.length > 0) return hh.members;
+    }
+    return activeHousehold?.members ?? user?.householdMembers ?? [];
+  }, [formState?.householdId, user, activeHousehold]);
+
   if (!formState) return null;
 
   const patchForm = (patch: Partial<TaskFormState>) => {
@@ -91,13 +100,13 @@ export function TaskFormSheet({
 
   const addContact = () => {
     const nextShared = [...shared];
-    const members = user?.householdMembers ?? [];
+    const members = availableMembers;
     if (members.length === 0) {
       showToast(translate('addHouseholdFirst'));
       return;
     }
     const used = nextShared.map((s) => s.code ?? s.phone);
-    const nextMember = members.find((m) => !used.includes(m.code));
+    const nextMember = members.find((m: HouseholdMemberProfile) => !used.includes(m.code));
     const next = nextMember ? toSharedMember(nextMember) : null;
     if (!next) {
       showToast(translate('allContactsAdded'));
@@ -192,12 +201,12 @@ export function TaskFormSheet({
                 </View>
 
                 {/* Member Sharing Section */}
-                {user?.householdMembers && user.householdMembers.length > 0 && (
+                {availableMembers && availableMembers.length > 0 && (
                   <View style={{ marginTop: 12 }}>
                     <Text style={styles.label}>{translate('shareHousehold')}</Text>
                     <View style={styles.chips}>
                       {shared.map((s) => (
-                        <Card key={s.phone} style={styles.chipCard} mode="elevated">
+                        <Card key={s.phone || s.code} style={styles.chipCard} mode="elevated">
                           <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
                             <View style={styles.chipContent}>
                               <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
@@ -228,13 +237,46 @@ export function TaskFormSheet({
                         { value: '', label: language === 'hi' ? 'किसी को नहीं (सामान्य)' : 'Unassigned (Shared)' },
                         { value: user?.id ?? 'me', label: language === 'hi' ? `आप (${user?.name})` : `You (${user?.name})` },
                         ...shared.map((s) => ({
-                          value: s.code ?? s.phone,
+                          value: s.userId || s.code || s.phone,
                           label: s.name,
                         })),
                       ]}
                       onChange={(assignedTo) => patchForm({ assignedTo: assignedTo || null })}
                       testID="task-assigned-picker"
                     />
+                  </View>
+                )}
+
+                {/* Chore Rotation Toggle — Shown if shared with members */}
+                {shared.length > 0 && (
+                  <View style={{ marginTop: 14, padding: 12, backgroundColor: Colors.surfaceMuted, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.ivoryLine }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, paddingRight: 10 }}>
+                        <Text style={{ fontFamily: 'Manrope_700Bold', fontSize: 13, color: Colors.ink }}>
+                          {language === 'hi' ? 'बारी-बारी से घुमाएं (Rotation) 🔄' : 'Rotate Turn (Round-Robin) 🔄'}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: Colors.inkSoft, marginTop: 2 }}>
+                          {language === 'hi'
+                            ? 'प्रत्येक पूर्णता के बाद अगला कार्य दूसरे सदस्य को सौंपा जाएगा।'
+                            : 'Automatically advances to the next roommate/member on completion.'}
+                        </Text>
+                      </View>
+                      <Toggle
+                        value={formState.isRotating}
+                        onValueChange={(v) => {
+                          const allMemberIds = [
+                            user?.id ?? 'me',
+                            ...shared.map((s) => s.userId || s.code || s.phone),
+                          ];
+                          patchForm({
+                            isRotating: v,
+                            rotationMembers: v ? (formState.rotationMembers.length ? formState.rotationMembers : allMemberIds) : [],
+                            assignedTo: v && !formState.assignedTo ? (user?.id ?? allMemberIds[0]) : formState.assignedTo,
+                          });
+                        }}
+                        testID="task-rotation-toggle"
+                      />
+                    </View>
                   </View>
                 )}
               </View>

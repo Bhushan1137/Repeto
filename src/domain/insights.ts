@@ -1,6 +1,7 @@
 import type { CategoryKey, CompletionStatus, HouseholdMemberProfile, RepeatingTask, TaskGroup } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { daysUntilDue, getTaskGroup, isCurrentMonth, getMonthLabel } from '@/domain/recurrence';
+import { hasCompletedToday } from '@/domain/task';
 
 export interface CategoryInsight {
   label: string;
@@ -147,19 +148,17 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-export function groupTasksByDue(tasks: RepeatingTask[]): Record<TaskGroup, RepeatingTask[]> {
+export function groupTasksByDue(
+  tasks: RepeatingTask[],
+  today: Date = new Date()
+): Record<TaskGroup, RepeatingTask[]> {
+  const todayDate = today || new Date();
   const groups: Record<TaskGroup, RepeatingTask[]> = {
     overdue: [],
     today: [],
     week: [],
     month: [],
   };
-  const today = new Date();
-  const isSameDay = (d1: Date, d2: Date) =>
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate();
-
   tasks.forEach((task) => {
     // Filter out invalid/empty tasks
     if (!task || !task.title || !task.title.trim()) return;
@@ -171,8 +170,8 @@ export function groupTasksByDue(tasks: RepeatingTask[]): Record<TaskGroup, Repea
   // Sort each group: pending tasks first, completed today tasks at the bottom
   (Object.keys(groups) as TaskGroup[]).forEach((key) => {
     groups[key].sort((a, b) => {
-      const aDoneToday = a.history?.some((h) => h.completedAt && isSameDay(new Date(h.completedAt), today));
-      const bDoneToday = b.history?.some((h) => h.completedAt && isSameDay(new Date(h.completedAt), today));
+      const aDoneToday = hasCompletedToday(a, todayDate);
+      const bDoneToday = hasCompletedToday(b, todayDate);
 
       if (aDoneToday !== bDoneToday) {
         return aDoneToday ? 1 : -1; // Move completed to bottom

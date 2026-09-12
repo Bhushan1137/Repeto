@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
-import type { CategoryKey, TaskGroup } from '@/types';
-import type { FilterState } from '@/hooks/useFilteredTasks';
+import type { CategoryKey } from '@/types';
+import type { FilterGroup, FilterState } from '@/hooks/useFilteredTasks';
 import { CATEGORIES } from '@/constants/categories';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';
@@ -20,17 +20,27 @@ interface TaskFilterBarProps {
   onChange: (next: FilterState) => void;
   language: 'en' | 'hi';
   hideSearchAndGroups?: boolean;
+  groupCounts?: Partial<Record<FilterGroup, number>>;
+  categoryCounts?: Partial<Record<CategoryKey, number>>;
 }
 
-const GROUP_CHIPS: { key: TaskGroup | 'all'; labelEn: string; labelHi: string }[] = [
-  { key: 'all',     labelEn: 'All',     labelHi: 'सभी' },
-  { key: 'overdue', labelEn: 'Overdue', labelHi: 'देर' },
-  { key: 'today',   labelEn: 'Today',   labelHi: 'आज' },
-  { key: 'week',    labelEn: 'This Week', labelHi: 'इस हफ्ते' },
-  { key: 'month',   labelEn: 'Month',   labelHi: 'महीना' },
+const GROUP_CHIPS: { key: FilterGroup; labelEn: string; labelHi: string }[] = [
+  { key: 'all',      labelEn: 'All',       labelHi: 'सभी' },
+  { key: 'overdue',  labelEn: 'Overdue',   labelHi: 'देर' },
+  { key: 'today',    labelEn: 'Today',     labelHi: 'आज' },
+  { key: 'upcoming', labelEn: 'Upcoming',  labelHi: 'आगामी' },
+  { key: 'week',     labelEn: 'This Week', labelHi: 'इस हफ्ते' },
+  { key: 'month',    labelEn: 'Month',     labelHi: 'महीना' },
 ];
 
-export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups = false }: TaskFilterBarProps) {
+export function TaskFilterBar({
+  filter,
+  onChange,
+  language,
+  hideSearchAndGroups = false,
+  groupCounts,
+  categoryCounts,
+}: TaskFilterBarProps) {
   const isFiltered =
     filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all';
 
@@ -71,6 +81,8 @@ export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups 
         >
           {GROUP_CHIPS.map((chip) => {
             const active = filter.group === chip.key;
+            const count = groupCounts?.[chip.key];
+            const countStr = typeof count === 'number' ? ` (${count})` : '';
             return (
               <Pressable
                 key={chip.key}
@@ -78,7 +90,7 @@ export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups 
                 onPress={() => onChange({ ...filter, group: chip.key })}
               >
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                  {language === 'hi' ? chip.labelHi : chip.labelEn}
+                  {(language === 'hi' ? chip.labelHi : chip.labelEn) + countStr}
                 </Text>
               </Pressable>
             );
@@ -99,10 +111,13 @@ export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups 
         >
           <Text style={[styles.chipText, filter.category === 'all' && styles.chipTextActive]}>
             {language === 'hi' ? 'सभी श्रेणियाँ' : 'All Categories'}
+            {typeof groupCounts?.all === 'number' ? ` (${groupCounts.all})` : ''}
           </Text>
         </Pressable>
         {CATEGORIES.map((cat) => {
           const active = filter.category === cat.key;
+          const count = categoryCounts?.[cat.key as CategoryKey];
+          const countStr = typeof count === 'number' ? ` (${count})` : '';
           return (
             <Pressable
               key={cat.key}
@@ -113,7 +128,7 @@ export function TaskFilterBar({ filter, onChange, language, hideSearchAndGroups 
             >
               <Text style={styles.chipCategoryEmoji}>{cat.icon}</Text>
               <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {language === 'hi' ? cat.labelHi : cat.labelEn}
+                {(language === 'hi' ? cat.labelHi : cat.labelEn) + countStr}
               </Text>
             </Pressable>
           );

@@ -11,11 +11,32 @@ export function subscribeToUserTasksAndHouseholds(
   const db = getFirestoreDb();
   if (!db) return () => {};
 
-  const taskMap = new Map<string, RepeatingTask>();
+  const userTasksMap = new Map<string, RepeatingTask>();
+  const householdTasksMap = new Map<string, Map<string, RepeatingTask>>();
   const unsubs: (() => void)[] = [];
 
   const notify = () => {
-    onUpdate(Array.from(taskMap.values()));
+    const combined = new Map<string, RepeatingTask>();
+    // Shared household tasks populate first
+    householdTasksMap.forEach((hhMap) => {
+      hhMap.forEach((task, id) => {
+        combined.set(id, task);
+      });
+    });
+    // Merge user's master tasks, keeping whichever is newer
+    userTasksMap.forEach((userTask, id) => {
+      const hhTask = combined.get(id);
+      if (!hhTask) {
+        combined.set(id, userTask);
+      } else {
+        const hhTime = hhTask.updatedAt ? new Date(hhTask.updatedAt).getTime() : 0;
+        const userTime = userTask.updatedAt ? new Date(userTask.updatedAt).getTime() : 0;
+        if (userTime > hhTime) {
+          combined.set(id, userTask);
+        }
+      }
+    });
+    onUpdate(Array.from(combined.values()));
   };
 
   // 1. Subscribe to User's Master Collection (/users/{userId}/tasks)
@@ -24,9 +45,10 @@ export function subscribeToUserTasksAndHouseholds(
     onSnapshot(
       userColRef,
       (snapshot) => {
+        userTasksMap.clear();
         snapshot.docs.forEach((d) => {
           const task = d.data() as RepeatingTask;
-          taskMap.set(task.id, task);
+          userTasksMap.set(task.id, task);
         });
         notify();
       },
@@ -45,9 +67,15 @@ export function subscribeToUserTasksAndHouseholds(
       onSnapshot(
         hhColRef,
         (snapshot) => {
+          let hhMap = householdTasksMap.get(hhId);
+          if (!hhMap) {
+            hhMap = new Map<string, RepeatingTask>();
+            householdTasksMap.set(hhId, hhMap);
+          }
+          hhMap.clear();
           snapshot.docs.forEach((d) => {
             const task = d.data() as RepeatingTask;
-            taskMap.set(task.id, task);
+            hhMap!.set(task.id, task);
           });
           notify();
         },

@@ -216,23 +216,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unsubscribeHouseholds = onSnapshot(hhQuery, (snap) => {
             if (cancelled) return;
             const remoteHhs = snap.docs.map((d) => d.data() as HouseholdContext);
-            if (remoteHhs.length > 0) {
-              setUser((prevUser) => {
-                if (!prevUser) return null;
-                const existingHhs = prevUser.households ?? [];
-                const hhMap = new Map<string, HouseholdContext>();
-                existingHhs.forEach((h) => hhMap.set(h.id, h));
-                remoteHhs.forEach((h) => hhMap.set(h.id, h));
-                const mergedHhs = Array.from(hhMap.values());
-                const updated = {
-                  ...prevUser,
-                  households: mergedHhs,
-                  activeHouseholdId: prevUser.activeHouseholdId || mergedHhs[0]?.id,
-                };
-                userRepository.saveLocal(updated).catch(() => {});
-                return updated;
+            setUser((prevUser) => {
+              if (!prevUser) return null;
+              const existingHhs = prevUser.households ?? [];
+              const hhMap = new Map<string, HouseholdContext>();
+
+              // Add remote authoritative households first
+              remoteHhs.forEach((h) => hhMap.set(h.id, h));
+
+              // Check existing local households
+              existingHhs.forEach((localHh) => {
+                if (hhMap.has(localHh.id)) return;
+
+                // Detect starter collision: empty local household with same name as a remote one
+                const isDuplicateStarter =
+                  (localHh.members?.length ?? 0) <= 1 &&
+                  localHh.ownerUid === prevUser.id &&
+                  remoteHhs.some((rh) => rh.name.trim().toLowerCase() === localHh.name.trim().toLowerCase());
+
+                if (!isDuplicateStarter) {
+                  hhMap.set(localHh.id, localHh);
+                }
               });
-            }
+
+              const mergedHhs = Array.from(hhMap.values());
+              const updated = {
+                ...prevUser,
+                households: mergedHhs,
+                activeHouseholdId: mergedHhs.some((h) => h.id === prevUser.activeHouseholdId)
+                  ? prevUser.activeHouseholdId
+                  : mergedHhs[0]?.id,
+              };
+              userRepository.saveLocal(updated).catch(() => {});
+              return updated;
+            });
           }, (err) => {
             console.warn('[Repeato] Household query snapshot listener failed:', err);
           });

@@ -21,6 +21,7 @@ export type AppIconName =
   | 'create-outline'
   | 'play-skip-forward-outline'
   | 'chevron-down-outline'
+  | 'copy-outline'
   | 'search-outline'
   | 'bookmark'
   | 'bookmark-outline'
@@ -56,7 +57,9 @@ export type AppIconName =
   | 'settings-outline'
   | 'person-remove-outline'
   | 'exit-outline'
-  | 'log-out-outline';
+  | 'log-out-outline'
+  | 'arrow-undo-outline'
+  | 'refresh-outline';
 
 interface AppIconProps {
   name: AppIconName;

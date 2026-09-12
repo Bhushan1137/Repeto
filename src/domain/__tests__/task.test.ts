@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   archiveTask,
   canAddTask,
+  canCompleteTask,
   canShareWith,
   capTasksForPlan,
   cleanupTasksOnRemoval,
@@ -11,7 +12,9 @@ import {
   createTaskFromParsed,
   createTaskFromPreset,
   duplicateTask,
+  hasCompletedToday,
   restoreTask,
+  undoCompleteTaskInstance,
   undoSkipTask,
   setNextDueDate,
   skipTaskInstance,
@@ -201,5 +204,268 @@ describe('domain/task', () => {
     expect(modified).toHaveLength(2);
     expect(modified[0].sharedWith).toHaveLength(0);
     expect(modified[0].assignedTo).toBeUndefined();
+  });
+
+  it('hasCompletedToday correctly detects same-day completions', () => {
+    const today = new Date('2026-09-12T10:00:00.000Z');
+    const task = createTaskFromPreset('Water Plants', 'home', 'Daily');
+    expect(hasCompletedToday(task, today)).toBe(false);
+
+    // With completion today
+    const completedTodayTask: RepeatingTask = {
+      ...task,
+      history: [
+        { month: 'Sep 2026', status: 'on_time', completedAt: '2026-09-12T08:30:00.000Z' },
+      ],
+    };
+    expect(hasCompletedToday(completedTodayTask, today)).toBe(true);
+
+    // With skipped today - should NOT count as completed today
+    const skippedTodayTask: RepeatingTask = {
+      ...task,
+      history: [
+        { month: 'Sep 2026', status: 'skipped', completedAt: '2026-09-12T08:30:00.000Z' },
+      ],
+    };
+    expect(hasCompletedToday(skippedTodayTask, today)).toBe(false);
+
+    // With completion yesterday
+    const completedYesterdayTask: RepeatingTask = {
+      ...task,
+      history: [
+        { month: 'Sep 2026', status: 'on_time', completedAt: '2026-09-11T10:00:00.000Z' },
+      ],
+    };
+    expect(hasCompletedToday(completedYesterdayTask, today)).toBe(false);
+  });
+
+  it('canCompleteTask enforces same-day lock and future task window restrictions', () => {
+    const today = new Date('2026-09-12T10:00:00.000Z');
+
+    // 1. Task due today (days = 0)
+    const taskDueToday: RepeatingTask = {
+      ...createTaskFromPreset('Electricity Bill', 'bills', 'Monthly'),
+      nextDueDate: '2026-09-12T10:00:00.000Z',
+    };
+    expect(canCompleteTask(taskDueToday, { today, maxEarlyDays: 0 })).toEqual({
+      allowed: true,
+      daysUntilDue: 0,
+    });
+
+    // 2. Overdue task (days < 0)
+    const taskOverdue: RepeatingTask = {
+      ...createTaskFromPreset('Credit Card', 'bills', 'Monthly'),
+      nextDueDate: '2026-09-10T10:00:00.000Z',
+    };
+    expect(canCompleteTask(taskOverdue, { today, maxEarlyDays: 0 })).toEqual({
+      allowed: true,
+      daysUntilDue: -2,
+    });
+
+    // 3. Already completed today -> rejected
+    const taskDoneToday: RepeatingTask = {
+      ...taskDueToday,
+      history: [{ month: 'Sep 2026', status: 'on_time', completedAt: '2026-09-12T08:00:00.000Z' }],
+    };
+    expect(canCompleteTask(taskDoneToday, { today, maxEarlyDays: 0 })).toEqual({
+      allowed: false,
+      reason: 'already_completed_today',
+      daysUntilDue: 0,
+    });
+
+    // 4. Future task due in 1 day (tomorrow)
+    const taskTomorrow: RepeatingTask = {
+      ...createTaskFromPreset('Workout', 'health', 'Daily'),
+      nextDueDate: '2026-09-13T10:00:00.000Z',
+    };
+    // Disallowed for quick complete (maxEarlyDays = 0)
+    expect(canCompleteTask(taskTomorrow, { today, maxEarlyDays: 0 })).toEqual({
+      allowed: false,
+      reason: 'future_task',
+      daysUntilDue: 1,
+    });
+    // Allowed from detail sheet early window (maxEarlyDays = 2)
+    expect(canCompleteTask(taskTomorrow, { today, maxEarlyDays: 2 })).toEqual({
+      allowed: true,
+      daysUntilDue: 1,
+    });
+
+    // 5. Future task due in 40 days
+    const taskNextMonth: RepeatingTask = {
+      ...createTaskFromPreset('Quarterly Tax', 'finance', 'Monthly'),
+      nextDueDate: '2026-10-22T10:00:00.000Z',
+    };
+    // Disallowed for quick complete
+    expect(canCompleteTask(taskNextMonth, { today, maxEarlyDays: 0 })).toEqual({
+      allowed: false,
+      reason: 'future_task',
+      daysUntilDue: 40,
+    });
+    // Disallowed even from detail sheet (maxEarlyDays = 2)
+    expect(canCompleteTask(taskNextMonth, { today, maxEarlyDays: 2 })).toEqual({
+      allowed: false,
+      reason: 'future_task',
+      daysUntilDue: 40,
+    });
+
+    // 6. Archived task
+    const taskArchived: RepeatingTask = {
+      ...taskDueToday,
+      archived: true,
+    };
+    expect(canCompleteTask(taskArchived, { today })).toEqual({
+      allowed: false,
+      reason: 'archived',
+      daysUntilDue: 0,
+    });
+  });
+
+  it('undoCompleteTaskInstance removes history and restores nextDueDate', () => {
+    const originalDue = '2026-09-12T10:00:00.000Z';
+    const task: RepeatingTask = {
+      ...createTaskFromPreset('Water Bill', 'bills', 'Monthly'),
+      recurrence: { type: 'monthly' },
+      nextDueDate: originalDue,
+      snoozedUntil: '2026-09-14T10:00:00.000Z',
+      escalationCount: 2,
+    };
+
+    // 1. Mark Done
+    const completed = completeTaskInstance(task, 'Paid via UPI', 'user-1');
+    expect(completed.history).toHaveLength(1);
+    expect(completed.history[0].status).toBe('on_time');
+    expect(completed.history[0].note).toBe('Paid via UPI');
+    expect(completed.history[0].completedBy).toBe('user-1');
+    expect(completed.escalationCount).toBe(0);
+    expect(completed.snoozedUntil).toBeUndefined();
+    expect(new Date(completed.nextDueDate).getTime()).toBeGreaterThan(new Date(originalDue).getTime());
+
+    // 2. Undo Completion
+    const undone = undoCompleteTaskInstance(completed);
+    expect(undone.history).toHaveLength(0);
+    // nextDueDate should be restored back to the previous due date
+    expect(new Date(undone.nextDueDate).getMonth()).toBe(new Date(originalDue).getMonth());
+    expect(new Date(undone.nextDueDate).getDate()).toBe(new Date(originalDue).getDate());
+  });
+
+  it('undoSkipTask removes skipped history entry and restores nextDueDate', () => {
+    const originalDue = '2026-09-12T10:00:00.000Z';
+    const task: RepeatingTask = {
+      ...createTaskFromPreset('Gym Routine', 'health', 'Weekly'),
+      recurrence: { type: 'weekly' },
+      nextDueDate: originalDue,
+    };
+
+    // 1. Skip task
+    const skipped = skipTaskInstance(task, 'user-1');
+    expect(skipped.history).toHaveLength(1);
+    expect(skipped.history[0].status).toBe('skipped');
+    expect(skipped.history[0].completedBy).toBe('user-1');
+    expect(new Date(skipped.nextDueDate).getTime()).toBeGreaterThan(new Date(originalDue).getTime());
+
+    // 2. Undo skip
+    const undone = undoSkipTask(skipped);
+    expect(undone.history).toHaveLength(0);
+    expect(new Date(undone.nextDueDate).getDate()).toBe(new Date(originalDue).getDate());
+  });
+
+  it('Bulk flows: correctly performs bulk done, snooze, skip, undo, and pin on multiple tasks', () => {
+    const today = new Date('2026-09-12T10:00:00.000Z');
+
+    // Create 3 diverse repeating tasks
+    const task1: RepeatingTask = {
+      ...createTaskFromPreset('Daily Vitamins', 'health', 'Daily'),
+      recurrence: { type: 'daily' },
+      nextDueDate: '2026-09-12T08:00:00.000Z', // due today
+      escalationCount: 1,
+    };
+    const task2: RepeatingTask = {
+      ...createTaskFromPreset('Car Wash', 'home', 'Weekly'),
+      recurrence: { type: 'weekly' },
+      nextDueDate: '2026-09-10T10:00:00.000Z', // overdue (2 days late)
+      escalationCount: 2,
+    };
+    const task3: RepeatingTask = {
+      ...createTaskFromPreset('Internet Bill', 'bills', 'Monthly'),
+      recurrence: { type: 'monthly' },
+      nextDueDate: '2026-10-12T10:00:00.000Z', // future (30 days out)
+      escalationCount: 0,
+    };
+
+    const taskList = [task1, task2, task3];
+
+    // ── 1. BULK DONE FLOW ──
+    // Bulk complete only applies to eligible tasks (days <= 0)
+    const eligibleForDone = taskList.filter((t) => canCompleteTask(t, { today, maxEarlyDays: 0 }).allowed);
+    expect(eligibleForDone).toHaveLength(2); // task1 and task2 eligible, task3 future rejected
+
+    const bulkCompleted = taskList.map((t) => {
+      if (canCompleteTask(t, { today, maxEarlyDays: 0 }).allowed) {
+        return completeTaskInstance(t, undefined, 'bulk-user');
+      }
+      return t;
+    });
+
+    // Verify task1 (daily) updated properly
+    expect(bulkCompleted[0].history).toHaveLength(1);
+    expect(bulkCompleted[0].history[0].status).toBe('on_time');
+    expect(bulkCompleted[0].escalationCount).toBe(0);
+    expect(new Date(bulkCompleted[0].nextDueDate).getTime()).toBeGreaterThan(new Date(task1.nextDueDate).getTime());
+
+    // Verify task2 (weekly, was overdue) updated properly
+    expect(bulkCompleted[1].history).toHaveLength(1);
+    expect(bulkCompleted[1].history[0].status).toBe('late');
+    expect(bulkCompleted[1].escalationCount).toBe(0);
+    expect(new Date(bulkCompleted[1].nextDueDate).getTime()).toBeGreaterThan(new Date(task2.nextDueDate).getTime());
+
+    // Verify task3 (future) was not modified
+    expect(bulkCompleted[2].history).toHaveLength(0);
+    expect(bulkCompleted[2].nextDueDate).toBe(task3.nextDueDate);
+
+    // ── 2. BULK UNDO FLOW ──
+    const bulkUndone = bulkCompleted.map((t) => {
+      if (t.history && t.history.length > 0) {
+        return undoCompleteTaskInstance(t);
+      }
+      return t;
+    });
+
+    expect(bulkUndone[0].history).toHaveLength(0);
+    expect(new Date(bulkUndone[0].nextDueDate).getDate()).toBe(new Date(task1.nextDueDate).getDate());
+    expect(bulkUndone[1].history).toHaveLength(0);
+
+    // ── 3. BULK SNOOZE FLOW ──
+    const snoozeDays = 3;
+    const bulkSnoozed = taskList.map((t) => snoozeTaskInstance(t, snoozeDays, 'snooze-user'));
+
+    for (let i = 0; i < bulkSnoozed.length; i++) {
+      const snoozed = bulkSnoozed[i];
+      expect(snoozed.history).toHaveLength(1);
+      expect(snoozed.history[0].status).toBe('snoozed');
+      expect(snoozed.history[0].note).toBe('Snoozed by 3 days');
+      expect(snoozed.history[0].completedBy).toBe('snooze-user');
+      expect(snoozed.snoozedUntil).toBeDefined();
+      expect(snoozed.nextDueDate).toBe(snoozed.snoozedUntil);
+    }
+
+    // ── 4. BULK SKIP FLOW ──
+    const bulkSkipped = taskList.map((t) => skipTaskInstance(t, 'skip-user'));
+
+    for (let i = 0; i < bulkSkipped.length; i++) {
+      const skipped = bulkSkipped[i];
+      expect(skipped.history).toHaveLength(1);
+      expect(skipped.history[0].status).toBe('skipped');
+      expect(skipped.history[0].completedBy).toBe('skip-user');
+      expect(skipped.snoozedUntil).toBeUndefined();
+      expect(skipped.escalationCount).toBe(0);
+      expect(new Date(skipped.nextDueDate).getTime()).toBeGreaterThan(new Date(taskList[i].nextDueDate).getTime());
+    }
+
+    // ── 5. BULK PIN / UNPIN FLOW ──
+    const bulkPinned = taskList.map((t) => toggleTaskPin(t));
+    expect(bulkPinned.every((t) => t.pinned === true)).toBe(true);
+
+    const bulkUnpinned = bulkPinned.map((t) => toggleTaskPin(t));
+    expect(bulkUnpinned.every((t) => t.pinned === false)).toBe(true);
   });
 });

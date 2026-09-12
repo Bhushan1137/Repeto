@@ -1,4 +1,4 @@
-import type { HouseholdContext, HouseholdMemberProfile, SharedMember, UserProfile } from '@/types';
+import type { HouseholdContext, HouseholdMemberProfile, RepeatingTask, SharedMember, UserProfile } from '@/types';
 
 
 const COLORS = ['#3E7C6A', '#C1502E', '#E8A33D', '#363E71', '#2C5C4E'];
@@ -305,3 +305,127 @@ export function removeMemberFromHousehold(
   });
   return { households };
 }
+
+export interface CollisionResult {
+  hasCollision: boolean;
+  isStarterEmpty: boolean;
+  collidingHousehold?: HouseholdContext;
+}
+
+/**
+ * Detects if user already has a household with the same name,
+ * and whether the existing one is an untouched starter (0 tasks and <= 1 member).
+ */
+export function detectHouseholdCollision(
+  user: UserProfile,
+  newHousehold: HouseholdContext,
+  tasks: RepeatingTask[] = []
+): CollisionResult {
+  const existingList = listHouseholds(user);
+  const normalizedNewName = newHousehold.name.trim().toLowerCase();
+  const colliding = existingList.find(
+    (h) => h.id !== newHousehold.id && h.name.trim().toLowerCase() === normalizedNewName
+  );
+
+  if (!colliding) {
+    return { hasCollision: false, isStarterEmpty: false };
+  }
+
+  // Check if colliding is an untouched starter (0 tasks in this household, <= 1 member)
+  const taskCount = tasks.filter((t) => t.householdId === colliding.id).length;
+  const isStarterEmpty = taskCount === 0 && (colliding.members?.length ?? 0) <= 1;
+
+  return {
+    hasCollision: true,
+    isStarterEmpty,
+    collidingHousehold: colliding,
+  };
+}
+
+/**
+ * Merges sourceHousehold into targetHousehold.
+ * Re-parents all tasks from source to target, removes sourceHousehold,
+ * and sets activeHouseholdId to target.
+ */
+export function mergeHouseholds(
+  user: UserProfile,
+  sourceHhId: string,
+  targetHhId: string,
+  tasks: RepeatingTask[] = []
+): { updatedUser: UserProfile; updatedTasks: RepeatingTask[] } {
+  const currentHouseholds = listHouseholds(user);
+  const targetHh = currentHouseholds.find((h) => h.id === targetHhId);
+  const sourceHh = currentHouseholds.find((h) => h.id === sourceHhId);
+
+  if (!sourceHh) {
+    return { updatedUser: user, updatedTasks: tasks };
+  }
+
+  let updatedTargetHh = targetHh;
+  if (updatedTargetHh && sourceHh.members) {
+    const existingMemberUids = new Set(updatedTargetHh.memberUids ?? []);
+    const mergedMembers = [...updatedTargetHh.members];
+    sourceHh.members.forEach((sm) => {
+      if (sm.userId && !existingMemberUids.has(sm.userId)) {
+        mergedMembers.push(sm);
+        existingMemberUids.add(sm.userId);
+      }
+    });
+    updatedTargetHh = {
+      ...updatedTargetHh,
+      members: mergedMembers,
+      memberUids: Array.from(existingMemberUids),
+    };
+  }
+
+  const remainingHouseholds = currentHouseholds
+    .filter((h) => h.id !== sourceHhId)
+    .map((h) => (h.id === targetHhId && updatedTargetHh ? updatedTargetHh : h));
+
+  const updatedUser: UserProfile = {
+    ...user,
+    households: remainingHouseholds,
+    activeHouseholdId: targetHhId,
+  };
+
+  const updatedTasks = tasks.map((task) => {
+    if (task.householdId === sourceHhId) {
+      return {
+        ...task,
+        householdId: targetHhId,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return task;
+  });
+
+  return { updatedUser, updatedTasks };
+}
+
+/**
+ * Computes a user-friendly display name for a household.
+ * Disambiguates if multiple households share the exact same name.
+ */
+export function getHouseholdDisplayName(
+  hh: HouseholdContext,
+  currentUserId?: string,
+  allHouseholds: HouseholdContext[] = []
+): string {
+  if (!hh) return '';
+  const trimmedName = hh.name?.trim() || 'Household';
+  const sameNameCount = allHouseholds.filter(
+    (h) => h.name?.trim().toLowerCase() === trimmedName.toLowerCase()
+  ).length;
+
+  if (sameNameCount <= 1) {
+    return trimmedName;
+  }
+
+  if (currentUserId && hh.ownerUid === currentUserId) {
+    return `${trimmedName} (You)`;
+  }
+  const ownerMember = hh.members?.find((m) => m.userId === hh.ownerUid);
+  const ownerFirstName = ownerMember?.name?.split(' ')[0] || 'Shared';
+  return `${trimmedName} (${ownerFirstName})`;
+}
+

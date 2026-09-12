@@ -5,6 +5,7 @@ import { CalendarView } from '@/components/CalendarView';
 import { EmptyState, ScreenShell, SectionHeader } from '@/components/ScreenShell';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { TaskCard } from '@/components/TaskCard';
+import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFilterBar } from '@/components/TaskFilterBar';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
@@ -12,6 +13,9 @@ import { TodayFocusSection } from '@/components/TodayFocusSection';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
+import { canCompleteTask } from '@/domain/task';
+import { listHouseholds } from '@/domain/household';
+import { useNudge } from '@/hooks/useNudge';
 import type { FilterState } from '@/hooks/useFilteredTasks';
 import { DEFAULT_FILTER, useFilteredTasks } from '@/hooks/useFilteredTasks';
 import { useGroupedTasks } from '@/hooks/useGroupedTasks';
@@ -20,7 +24,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import { useTasks } from '@/providers/TaskProvider';
-import type { TaskGroup } from '@/types';
+import type { CategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -38,7 +42,8 @@ const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 's
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
+  const { handleNudge } = useNudge();
   const {
     tasks,
     loading,
@@ -52,11 +57,15 @@ export default function HomeScreen() {
     duplicateTask,
     completeTasks,
     snoozeTasks,
+    skipTasks,
+    undoCompleteTasks: _undoCompleteTasks,
     deleteTasks,
     archiveTasks: _archiveTasks,
     setTaskDueDate,
     updateTask,
     deleteHistoryEntry,
+    undoCompleteTask,
+    claimTask,
   } = useTasks();
   const { language, translate } = useTranslation();
 
@@ -73,7 +82,7 @@ export default function HomeScreen() {
   }, [completedRecommendation?.id, logImpression]);
 
   const completeTask = useCallback(
-    async (taskId: string, note?: string) => {
+    async (taskId: string, note?: string, options?: { maxEarlyDays?: number }) => {
       const taskObj = tasks.find((t) => t.id === taskId);
       if (taskObj) {
         setCompletedTaskName(taskObj.title);
@@ -82,17 +91,18 @@ export default function HomeScreen() {
           setCompletedRecommendation(match);
         }
       }
-      await rawCompleteTask(taskId, note);
+      await rawCompleteTask(taskId, note, options);
     },
     [tasks, rawCompleteTask, findMatch]
   );
-  const { selectedIds, toggleSelect, clearSelection, isSelecting } = useTaskSelection();
+  const { selectedIds, toggleSelect, selectAll, clearSelection, isSelecting } = useTaskSelection();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+  const userHouseholds = useMemo(() => listHouseholds(user ?? ({} as any)), [user]);
 
   const selectedTask = useMemo(() => {
     return tasks.find((t) => t.id === selectedTaskId) || null;
@@ -120,9 +130,25 @@ export default function HomeScreen() {
     });
   }, [filteredTasks, selectedCalendarDate]);
 
+  const visibleTaskIds = useMemo(
+    () => calendarFilteredTasks.map((t) => t.id),
+    [calendarFilteredTasks]
+  );
+  const isAllSelected =
+    visibleTaskIds.length > 0 && visibleTaskIds.every((id) => selectedIds.has(id));
+
+  const handleSelectAllToggle = useCallback(() => {
+    if (isAllSelected) {
+      clearSelection();
+    } else {
+      selectAll(visibleTaskIds);
+    }
+  }, [isAllSelected, clearSelection, selectAll, visibleTaskIds]);
+
   // Pinned tasks shown at top (before groups), only when no active filter query
+  // Tasks due today are rendered in Today's Focus, so we avoid rendering them twice
   const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
-    ? tasks.filter((t) => t.pinned)
+    ? tasks.filter((t) => t.pinned && daysUntilDue(t.nextDueDate) !== 0)
     : [];
 
   // Tasks that go through the group layout (excluding pinned when not filtering)
@@ -138,23 +164,57 @@ export default function HomeScreen() {
   const stats = useMemo(() => {
     let today = 0;
     let overdue = 0;
+    let upcoming = 0;
     for (const t of tasks) {
       const d = daysUntilDue(t.nextDueDate);
       if (d < 0) overdue += 1;
       else if (d === 0) today += 1;
+      else upcoming += 1;
     }
-    return { today, overdue };
+    return { today, overdue, upcoming };
   }, [tasks]);
 
-  const upcomingCount = useMemo(() => {
-    let count = 0;
+  const groupCounts = useMemo(() => {
+    let overdue = 0;
+    let today = 0;
+    let upcoming = 0;
+    let week = 0;
+    let month = 0;
+
     for (const t of tasks) {
       const d = daysUntilDue(t.nextDueDate);
-      if (d > 0 && d <= 7) {
-        count += 1;
+      if (d < 0) {
+        overdue += 1;
+      } else if (d === 0) {
+        today += 1;
+      } else {
+        upcoming += 1;
+        if (d <= 7) {
+          week += 1;
+        } else {
+          month += 1;
+        }
       }
     }
-    return count;
+
+    return {
+      all: tasks.length,
+      overdue,
+      today,
+      upcoming,
+      week,
+      month,
+    };
+  }, [tasks]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Partial<Record<CategoryKey, number>> = {};
+    for (const t of tasks) {
+      if (t.category) {
+        counts[t.category as CategoryKey] = (counts[t.category as CategoryKey] || 0) + 1;
+      }
+    }
+    return counts;
   }, [tasks]);
 
   const handleAction = async (action: () => Promise<void>) => {
@@ -237,17 +297,17 @@ export default function HomeScreen() {
                 style={[
                   styles.pulsePill,
                   styles.pulsePillInfo,
-                  filter.group === 'week' && styles.pulsePillActive,
+                  filter.group === 'upcoming' && styles.pulsePillActive,
                 ]}
                 onPress={() => setFilter(prev => ({
                   ...prev,
-                  group: prev.group === 'week' ? 'all' : 'week',
+                  group: prev.group === 'upcoming' ? 'all' : 'upcoming',
                   category: 'all'
                 }))}
               >
-                <AppIcon name="time-outline" size={13} color={filter.group === 'week' ? '#1D4ED8' : '#60A5FA'} />
-                <Text style={[styles.pulsePillText, { color: filter.group === 'week' ? Colors.ink : '#F3F4F6' }]}>
-                  {`${upcomingCount} ${language === 'hi' ? 'आगामी' : 'Upcoming'}`}
+                <AppIcon name="time-outline" size={13} color={filter.group === 'upcoming' ? '#1D4ED8' : '#60A5FA'} />
+                <Text style={[styles.pulsePillText, { color: filter.group === 'upcoming' ? Colors.ink : '#F3F4F6' }]}>
+                  {`${stats.upcoming} ${language === 'hi' ? 'आगामी' : 'Upcoming'}`}
                 </Text>
               </Pressable>
             </View>
@@ -311,7 +371,7 @@ export default function HomeScreen() {
                   filter.group === 'all' && filter.category === 'all' && styles.chipTextActive
                 ]}
               >
-                {language === 'hi' ? 'सभी' : 'All'}
+                {language === 'hi' ? `सभी (${tasks.length})` : `All (${tasks.length})`}
               </Text>
             </Pressable>
 
@@ -334,7 +394,7 @@ export default function HomeScreen() {
                     filter.category === 'bills' && styles.chipTextActive
                   ]}
                 >
-                  {language === 'hi' ? 'बिल' : 'Bills'}
+                  {language === 'hi' ? `बिल (${categoryCounts.bills || 0})` : `Bills (${categoryCounts.bills || 0})`}
                 </Text>
               </View>
             </Pressable>
@@ -358,7 +418,7 @@ export default function HomeScreen() {
                     filter.category === 'health' && styles.chipTextActive
                   ]}
                 >
-                  {language === 'hi' ? 'स्वास्थ्य' : 'Health'}
+                  {language === 'hi' ? `स्वास्थ्य (${categoryCounts.health || 0})` : `Health (${categoryCounts.health || 0})`}
                 </Text>
               </View>
             </Pressable>
@@ -382,7 +442,7 @@ export default function HomeScreen() {
                     filter.category === 'finance' && styles.chipTextActive
                   ]}
                 >
-                  {language === 'hi' ? 'वित्त' : 'Finance'}
+                  {language === 'hi' ? `वित्त (${categoryCounts.finance || 0})` : `Finance (${categoryCounts.finance || 0})`}
                 </Text>
               </View>
             </Pressable>
@@ -406,10 +466,49 @@ export default function HomeScreen() {
                     filter.category === 'home' && styles.chipTextActive
                   ]}
                 >
-                  {language === 'hi' ? 'गृहकार्य' : 'Home'}
+                  {language === 'hi' ? `गृहकार्य (${categoryCounts.home || 0})` : `Home (${categoryCounts.home || 0})`}
                 </Text>
               </View>
             </Pressable>
+
+            {/* Household context quick filter */}
+            {userHouseholds.length > 0 && (
+              <Pressable
+                style={[
+                  styles.chipBtn,
+                  filter.householdId !== 'all' && styles.chipBtnActive,
+                ]}
+                onPress={() =>
+                  setFilter((prev) => ({
+                    ...prev,
+                    householdId:
+                      prev.householdId === 'all'
+                        ? (activeHousehold?.id ?? userHouseholds[0]?.id)
+                        : prev.householdId === 'personal'
+                        ? 'all'
+                        : 'personal',
+                  }))
+                }
+              >
+                <View style={styles.chipInner}>
+                  <Text style={{ fontSize: 12, marginRight: 2 }}>
+                    {filter.householdId === 'personal' ? '👤' : '🏠'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      filter.householdId !== 'all' && styles.chipTextActive,
+                    ]}
+                  >
+                    {filter.householdId === 'personal'
+                      ? (language === 'hi' ? 'केवल व्यक्तिगत' : 'Personal Only')
+                      : filter.householdId && filter.householdId !== 'all'
+                      ? (userHouseholds.find((h) => h.id === filter.householdId)?.name ?? (language === 'hi' ? 'घर' : 'Household'))
+                      : (language === 'hi' ? 'घर/व्यक्तिगत' : 'Home / All')}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
 
             <Pressable
               style={styles.chipBtn}
@@ -427,6 +526,8 @@ export default function HomeScreen() {
             onChange={setFilter}
             language={language}
             hideSearchAndGroups={true}
+            groupCounts={groupCounts}
+            categoryCounts={categoryCounts}
           />
         )}
 
@@ -462,7 +563,7 @@ export default function HomeScreen() {
             subtitle={translate('homeEmptySub')}
             action={<Button title={translate('addFirstTask')} onPress={() => router.push('/(tabs)/add')} />}
           />
-        ) : isFiltering && filteredTasks.length === 0 ? (
+        ) : isFiltering && calendarFilteredTasks.length === 0 ? (
           <EmptyState
             icon="🔍"
             title={language === 'hi' ? 'कोई परिणाम नहीं' : 'No results'}
@@ -477,6 +578,7 @@ export default function HomeScreen() {
                 language={language}
                 onSelectTask={(taskId) => setSelectedTaskId(taskId)}
                 onCompleteTask={(taskId) => completeTask(taskId)}
+                onSnoozeTask={(taskId, days) => snoozeTask(taskId, days || 2)}
                 onToggleSelect={(taskId) => toggleSelect(taskId)}
                 selectedIds={selectedIds}
                 isSelecting={isSelecting}
@@ -489,22 +591,31 @@ export default function HomeScreen() {
                 <SectionHeader label={language === 'hi' ? 'पिन किए गए' : 'Pinned'} count={pinnedTasks.length} />
                 {pinnedTasks.map((task) => {
                   const isItemSelected = selectedIds.has(task.id);
+                  const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
                   return (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
+                    <SwipeableTaskItem
+                      key={`pinned-swipe-${task.id}`}
                       language={language}
-                      selected={isItemSelected}
-                      onPress={() => {
-                        if (isSelecting) {
-                          toggleSelect(task.id);
-                        } else {
-                          setSelectedTaskId(task.id);
-                        }
-                      }}
-                      onLongPress={() => toggleSelect(task.id)}
-                      onCompletePress={isSelecting ? undefined : () => completeTask(task.id)}
-                    />
+                      enabled={!isSelecting}
+                      onComplete={canComplete ? () => completeTask(task.id) : undefined}
+                      onSnooze={(days) => snoozeTask(task.id, days || 2)}
+                    >
+                      <TaskCard
+                        task={task}
+                        language={language}
+                        selected={isItemSelected}
+                        style={{ marginBottom: 0 }}
+                        onPress={() => {
+                          if (isSelecting) {
+                            toggleSelect(task.id);
+                          } else {
+                            setSelectedTaskId(task.id);
+                          }
+                        }}
+                        onLongPress={() => toggleSelect(task.id)}
+                        onCompletePress={!isSelecting && canComplete ? () => completeTask(task.id) : undefined}
+                      />
+                    </SwipeableTaskItem>
                   );
                 })}
               </View>
@@ -521,22 +632,31 @@ export default function HomeScreen() {
                   />
                   {items.map((task) => {
                     const isItemSelected = selectedIds.has(task.id);
+                    const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
                     return (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
+                      <SwipeableTaskItem
+                        key={`task-swipe-${task.id}`}
                         language={language}
-                        selected={isItemSelected}
-                        onPress={() => {
-                          if (isSelecting) {
-                            toggleSelect(task.id);
-                          } else {
-                            setSelectedTaskId(task.id);
-                          }
-                        }}
-                        onLongPress={() => toggleSelect(task.id)}
-                        onCompletePress={isSelecting ? undefined : () => completeTask(task.id)}
-                      />
+                        enabled={!isSelecting}
+                        onComplete={canComplete ? () => completeTask(task.id) : undefined}
+                        onSnooze={(days) => snoozeTask(task.id, days || 2)}
+                      >
+                        <TaskCard
+                          task={task}
+                          language={language}
+                          selected={isItemSelected}
+                          style={{ marginBottom: 0 }}
+                          onPress={() => {
+                            if (isSelecting) {
+                              toggleSelect(task.id);
+                            } else {
+                              setSelectedTaskId(task.id);
+                            }
+                          }}
+                          onLongPress={() => toggleSelect(task.id)}
+                          onCompletePress={!isSelecting && canComplete ? () => completeTask(task.id) : undefined}
+                        />
+                      </SwipeableTaskItem>
                     );
                   })}
                 </View>
@@ -550,6 +670,9 @@ export default function HomeScreen() {
       {isSelecting && (
         <BulkActionBar
           selectedCount={selectedIds.size}
+          totalCount={visibleTaskIds.length}
+          isAllSelected={isAllSelected}
+          onSelectAll={handleSelectAllToggle}
           onClear={clearSelection}
           onComplete={async () => {
             await completeTasks(Array.from(selectedIds));
@@ -557,6 +680,10 @@ export default function HomeScreen() {
           }}
           onSnooze={async () => {
             await snoozeTasks(Array.from(selectedIds));
+            clearSelection();
+          }}
+          onSkip={async () => {
+            await skipTasks(Array.from(selectedIds));
             clearSelection();
           }}
           onDelete={async () => {
@@ -573,10 +700,11 @@ export default function HomeScreen() {
         language={language}
         translate={translate}
         onClose={() => setSelectedTaskId(null)}
-        onComplete={(id, note) => handleAction(() => completeTask(id, note))}
+        onComplete={(id, note, options) => handleAction(() => completeTask(id, note, options))}
         onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
         onSkip={(id) => handleAction(() => skipTask(id))}
         onUndoSkip={(id) => handleAction(() => undoSkipTask(id))}
+        onUndoComplete={(id) => handleAction(() => undoCompleteTask(id))}
         onDelete={(id) => handleAction(() => deleteTask(id))}
         onArchive={(id) => handleAction(() => archiveTask(id))}
         onPin={(id) => handleAction(() => pinTask(id))}
@@ -587,6 +715,13 @@ export default function HomeScreen() {
         }}
         onSetDueDate={(id, date) => handleAction(() => setTaskDueDate(id, date))}
         onDeleteHistoryEntry={deleteHistoryEntry}
+        onClaim={(id) => handleAction(() => claimTask(id))}
+        onNudge={(id) => {
+          const t = tasks.find((x) => x.id === id);
+          if (t) {
+            handleNudge(t);
+          }
+        }}
       />
 
       <TaskFormSheet
