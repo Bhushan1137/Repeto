@@ -44,7 +44,10 @@ export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
 
     // Group filter (due date group)
     if (filter.group === 'upcoming') {
-      result = result.filter((t) => daysUntilDue(t.nextDueDate) > 0);
+      result = result.filter((t) => {
+        const d = daysUntilDue(t.nextDueDate);
+        return d >= 0 && d <= 7;
+      });
     } else if (filter.group === 'today') {
       result = result.filter((t) => daysUntilDue(t.nextDueDate) === 0);
     } else if (filter.group === 'overdue') {
@@ -55,7 +58,12 @@ export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
         return d > 0 && d <= 7;
       });
     } else if (filter.group === 'month') {
-      result = result.filter((t) => daysUntilDue(t.nextDueDate) > 7);
+      result = result.filter((t) => {
+        const d = daysUntilDue(t.nextDueDate);
+        return d > 7 && d <= 30;
+      });
+    } else if (filter.group === 'later') {
+      result = result.filter((t) => daysUntilDue(t.nextDueDate) > 30);
     }
 
     return result;

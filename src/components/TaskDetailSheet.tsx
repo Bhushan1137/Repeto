@@ -22,6 +22,8 @@ import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, daysPercent } from '@/domain/recurrence';
+import { canSnoozeTask } from '@/domain/task';
+import { formatTime12 } from '@/utils/timeFormat';
 import { initials } from '@/domain/insights';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Button } from '@/components/Button';
@@ -94,6 +96,11 @@ export function TaskDetailSheet({
     if (!task || !task.householdId) return null;
     return households.find(h => h.id === task.householdId) ?? null;
   }, [task, households]);
+
+  const snoozeAllowed = useMemo(() => {
+    if (!task) return false;
+    return canSnoozeTask(task).allowed;
+  }, [task]);
 
   React.useEffect(() => {
     setImageError(false);
@@ -371,7 +378,7 @@ export function TaskDetailSheet({
                     </Text>
                     <Text style={styles.completedOccurrenceSub}>
                       {todayCompletion?.completedAt
-                        ? `${language === 'hi' ? 'आज' : 'Completed at'} ${new Date(todayCompletion.completedAt).toLocaleTimeString(language === 'hi' ? 'hi-IN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
+                        ? `${language === 'hi' ? 'आज' : 'Completed at'} ${formatTime12(todayCompletion.completedAt)}`
                         : (language === 'hi' ? 'यह कार्य पूरा कर लिया गया है' : 'This occurrence is marked done')}
                     </Text>
                   </View>
@@ -554,11 +561,13 @@ export function TaskDetailSheet({
                   )}
 
                   <View style={styles.secondaryRow}>
-                    <ActionChip
-                      icon="time-outline"
-                      label={translate('snooze2d')}
-                      onPress={() => setSnoozeOptionsVisible((v) => !v)}
-                    />
+                    {snoozeAllowed && (
+                      <ActionChip
+                        icon="time-outline"
+                        label={translate('snooze2d')}
+                        onPress={() => setSnoozeOptionsVisible((v) => !v)}
+                      />
+                    )}
                     <ActionChip
                       icon="play-skip-forward-outline"
                       label={translate('skipOccurrence')}

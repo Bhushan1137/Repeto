@@ -1030,7 +1030,7 @@ function HouseholdView({
 // ────────────────────────────────────────────────────────────────────────────
 export default function HouseholdScreen() {
   const { user, updateUser, activeHousehold, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold } = useAuth();
-  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, claimTask } = useTasks();
+  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, claimTask, refreshTasks } = useTasks();
   const { handleNudge } = useNudge();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
@@ -1102,6 +1102,7 @@ export default function HouseholdScreen() {
         title={translate('hhTitle') + ' 🏠'}
         subtitle={translate('hhSub')}
         scrollRef={scrollRef}
+        onRefresh={refreshTasks}
       >
         {households.length === 0 ? (
           // ── Zero-Household State ──

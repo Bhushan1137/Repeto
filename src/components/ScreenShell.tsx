@@ -11,6 +11,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -32,6 +33,8 @@ interface ScreenShellProps {
   lightHeader?: boolean;
   showBack?: boolean;
   onBackPress?: () => void;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
 }
 
 export function ScreenShell({
@@ -46,6 +49,8 @@ export function ScreenShell({
   lightHeader = false,
   showBack = false,
   onBackPress,
+  onRefresh,
+  refreshing,
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -53,6 +58,19 @@ export function ScreenShell({
   const { tasks } = useTasks();
   const { unreadCount } = useNotifications();
   const [activityVisible, setActivityVisible] = useState(false);
+  const [internalRefreshing, setInternalRefreshing] = useState(false);
+
+  const isRefreshing = refreshing ?? internalRefreshing;
+
+  const handleRefresh = React.useCallback(async () => {
+    if (!onRefresh) return;
+    setInternalRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setInternalRefreshing(false);
+    }
+  }, [onRefresh]);
 
   // ─── Header Metrics ────────────────────────────────────────────────────────
   const hasExtra = !!headerExtra;
@@ -376,7 +394,17 @@ export function ScreenShell({
     }
   );
 
-  const { onScroll: _externalOnScroll, ...restScrollProps } = scrollProps ?? {};
+  const { onScroll: _externalOnScroll, refreshControl: _externalRefreshControl, ...restScrollProps } = scrollProps ?? {};
+
+  const refreshControlNode = onRefresh ? (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      tintColor={Colors.marigoldDeep}
+      colors={[Colors.marigoldDeep, Colors.tealDeep, Colors.indigo950]}
+      progressViewOffset={insets.top + (lightHeader ? 10 : 25)}
+    />
+  ) : _externalRefreshControl;
 
   return (
     <View style={styles.root}>
@@ -388,6 +416,7 @@ export function ScreenShell({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
+          refreshControl={refreshControlNode}
           {...restScrollProps}
           onScroll={onScroll}
         >

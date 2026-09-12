@@ -40,10 +40,14 @@ describe('hooks/useFilteredTasks', () => {
     const futureDate = new Date(today);
     futureDate.setDate(today.getDate() + 5);
 
+    const distantDate = new Date(today);
+    distantDate.setDate(today.getDate() + 135);
+
     const overdueTask = { ...task1, id: 't-overdue', nextDueDate: overdueDate.toISOString() };
     const todayTask = { ...task2, id: 't-today', nextDueDate: todayDate.toISOString() };
     const upcomingTask = { ...task1, id: 't-upcoming', nextDueDate: futureDate.toISOString() };
-    const sample = [overdueTask, todayTask, upcomingTask];
+    const distantTask = { ...task1, id: 't-distant', nextDueDate: distantDate.toISOString() };
+    const sample = [overdueTask, todayTask, upcomingTask, distantTask];
 
     const overdueFiltered = useFilteredTasks(sample, { ...DEFAULT_FILTER, group: 'overdue' });
     expect(overdueFiltered).toHaveLength(1);
@@ -53,9 +57,15 @@ describe('hooks/useFilteredTasks', () => {
     expect(todayFiltered).toHaveLength(1);
     expect(todayFiltered[0].id).toBe('t-today');
 
+    // Upcoming should include today and this week (0 <= d <= 7), but exclude distantTask (135d)
     const upcomingFiltered = useFilteredTasks(sample, { ...DEFAULT_FILTER, group: 'upcoming' });
-    expect(upcomingFiltered).toHaveLength(1);
-    expect(upcomingFiltered[0].id).toBe('t-upcoming');
+    expect(upcomingFiltered).toHaveLength(2);
+    expect(upcomingFiltered.map((t) => t.id)).toEqual(['t-today', 't-upcoming']);
+
+    // Later should include tasks due in > 30 days
+    const laterFiltered = useFilteredTasks(sample, { ...DEFAULT_FILTER, group: 'later' });
+    expect(laterFiltered).toHaveLength(1);
+    expect(laterFiltered[0].id).toBe('t-distant');
   });
 
   it('filters tasks by household context and personal tasks', () => {

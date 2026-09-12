@@ -42,6 +42,7 @@ export default function InsightsScreen() {
     snoozeTask,
     skipTask,
     deleteTask,
+    refreshTasks,
   } = useTasks();
   const { user } = useAuth();
   const { translate, language } = useTranslation();
@@ -175,7 +176,11 @@ export default function InsightsScreen() {
   }, [tasks, households, isHi, user?.id, validHouseholdIds]);
 
   return (
-    <ScreenShell title={translate('insTitle')} subtitle={translate('insSub')}>
+    <ScreenShell
+      title={translate('insTitle')}
+      subtitle={translate('insSub')}
+      onRefresh={refreshTasks}
+    >
       {/* ── 1. Top Scope Filter Pills (if user has households) ── */}
       {households.length > 0 && (
         <View style={styles.scopeWrapper}>

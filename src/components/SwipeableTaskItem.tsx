@@ -25,7 +25,7 @@ interface SwipeableTaskItemProps {
   children: React.ReactNode;
   language: Language;
   onComplete?: () => void;
-  onSnooze: (days?: number) => void;
+  onSnooze?: (days?: number) => void;
   enabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -162,7 +162,7 @@ export function SwipeableTaskItem({
 
   const handleSnooze = () => {
     swipeableRef.current?.close();
-    onSnooze(2);
+    onSnooze?.(2);
   };
 
   const handleFinishComplete = useCallback(() => {
@@ -269,7 +269,7 @@ export function SwipeableTaskItem({
           overshootClamping: true,
         }}
         renderLeftActions={onComplete ? renderLeftActions : undefined}
-        renderRightActions={renderRightActions}
+        renderRightActions={onSnooze ? renderRightActions : undefined}
         onSwipeableOpen={(direction) => {
           if (direction === SwipeDirection.RIGHT && onComplete) {
             triggerCollapseAndComplete();

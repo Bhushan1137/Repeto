@@ -19,28 +19,39 @@ interface TaskFilterBarProps {
   filter: FilterState;
   onChange: (next: FilterState) => void;
   language: 'en' | 'hi';
+  hideSearch?: boolean;
+  hideGroups?: boolean;
+  hideCategories?: boolean;
   hideSearchAndGroups?: boolean;
   groupCounts?: Partial<Record<FilterGroup, number>>;
   categoryCounts?: Partial<Record<CategoryKey, number>>;
 }
 
 const GROUP_CHIPS: { key: FilterGroup; labelEn: string; labelHi: string }[] = [
-  { key: 'all',      labelEn: 'All',       labelHi: 'सभी' },
-  { key: 'overdue',  labelEn: 'Overdue',   labelHi: 'देर' },
-  { key: 'today',    labelEn: 'Today',     labelHi: 'आज' },
-  { key: 'upcoming', labelEn: 'Upcoming',  labelHi: 'आगामी' },
-  { key: 'week',     labelEn: 'This Week', labelHi: 'इस हफ्ते' },
-  { key: 'month',    labelEn: 'Month',     labelHi: 'महीना' },
+  { key: 'all',      labelEn: 'All',        labelHi: 'सभी' },
+  { key: 'overdue',  labelEn: 'Overdue',    labelHi: 'बकाया' },
+  { key: 'today',    labelEn: 'Today',      labelHi: 'आज' },
+  { key: 'upcoming', labelEn: 'Upcoming',   labelHi: 'आगामी' },
+  { key: 'week',     labelEn: 'This Week',  labelHi: 'इस हफ्ते' },
+  { key: 'month',    labelEn: 'This Month', labelHi: 'इस महीने' },
+  { key: 'later',    labelEn: 'Later',      labelHi: 'बाद में' },
 ];
 
 export function TaskFilterBar({
   filter,
   onChange,
   language,
+  hideSearch = false,
+  hideGroups = false,
+  hideCategories = false,
   hideSearchAndGroups = false,
   groupCounts,
   categoryCounts,
 }: TaskFilterBarProps) {
+  const shouldHideSearch = hideSearch || hideSearchAndGroups;
+  const shouldHideGroups = hideGroups || hideSearchAndGroups;
+  const shouldHideCategories = hideCategories;
+
   const isFiltered =
     filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all';
 
@@ -52,7 +63,7 @@ export function TaskFilterBar({
   return (
     <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOutUp.duration(180)}>
       {/* Search input */}
-      {!hideSearchAndGroups && (
+      {!shouldHideSearch && (
         <View style={styles.searchRow}>
           <AppIcon name="search-outline" size={18} color={Colors.inkFaint} />
           <TextInput
@@ -73,11 +84,12 @@ export function TaskFilterBar({
       )}
 
       {/* Due group chips */}
-      {!hideSearchAndGroups && (
+      {!shouldHideGroups && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
+          style={{ marginBottom: shouldHideCategories ? 6 : 0 }}
         >
           {GROUP_CHIPS.map((chip) => {
             const active = filter.group === chip.key;
@@ -99,44 +111,46 @@ export function TaskFilterBar({
       )}
 
       {/* Category chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-        style={hideSearchAndGroups ? { marginTop: 4, marginBottom: 8 } : undefined}
-      >
-        <Pressable
-          style={[styles.chip, filter.category === 'all' && styles.chipActive]}
-          onPress={() => onChange({ ...filter, category: 'all' })}
+      {!shouldHideCategories && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          style={{ marginTop: 4, marginBottom: 8 }}
         >
-          <Text style={[styles.chipText, filter.category === 'all' && styles.chipTextActive]}>
-            {language === 'hi' ? 'सभी श्रेणियाँ' : 'All Categories'}
-            {typeof groupCounts?.all === 'number' ? ` (${groupCounts.all})` : ''}
-          </Text>
-        </Pressable>
-        {CATEGORIES.map((cat) => {
-          const active = filter.category === cat.key;
-          const count = categoryCounts?.[cat.key as CategoryKey];
-          const countStr = typeof count === 'number' ? ` (${count})` : '';
-          return (
-            <Pressable
-              key={cat.key}
-              style={[styles.chip, active && styles.chipCategoryActive]}
-              onPress={() =>
-                onChange({ ...filter, category: active ? 'all' : (cat.key as CategoryKey) })
-              }
-            >
-              <Text style={styles.chipCategoryEmoji}>{cat.icon}</Text>
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {(language === 'hi' ? cat.labelHi : cat.labelEn) + countStr}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+          <Pressable
+            style={[styles.chip, filter.category === 'all' && styles.chipActive]}
+            onPress={() => onChange({ ...filter, category: 'all' })}
+          >
+            <Text style={[styles.chipText, filter.category === 'all' && styles.chipTextActive]}>
+              {language === 'hi' ? 'सभी श्रेणियाँ' : 'All Categories'}
+              {typeof groupCounts?.all === 'number' ? ` (${groupCounts.all})` : ''}
+            </Text>
+          </Pressable>
+          {CATEGORIES.map((cat) => {
+            const active = filter.category === cat.key;
+            const count = categoryCounts?.[cat.key as CategoryKey];
+            const countStr = typeof count === 'number' ? ` (${count})` : '';
+            return (
+              <Pressable
+                key={cat.key}
+                style={[styles.chip, active && styles.chipCategoryActive]}
+                onPress={() =>
+                  onChange({ ...filter, category: active ? 'all' : (cat.key as CategoryKey) })
+                }
+              >
+                <Text style={styles.chipCategoryEmoji}>{cat.icon}</Text>
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  {(language === 'hi' ? cat.labelHi : cat.labelEn) + countStr}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Clear all filter hint */}
-      {isFiltered && !hideSearchAndGroups && (
+      {isFiltered && (
         <Pressable style={styles.clearRow} onPress={clearAll}>
           <Text style={styles.clearText}>
             {language === 'hi' ? 'फ़िल्टर साफ़ करें' : 'Clear filters'}

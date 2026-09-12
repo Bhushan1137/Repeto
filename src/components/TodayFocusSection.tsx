@@ -9,6 +9,7 @@ import { hasCompletedToday } from '@/domain/task';
 import { TaskCard } from '@/components/TaskCard';
 import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
 import { AppIcon } from '@/components/AppIcon';
+import { formatTime12 } from '@/utils/timeFormat';
 
 interface TodayFocusSectionProps {
   tasks: RepeatingTask[];
@@ -239,10 +240,7 @@ export function TodayFocusSection({
 
           // Completed Task Card
           const cat = CATEGORY_MAP[item.task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋' };
-          const completedTimeStr = new Date(item.completedAt).toLocaleTimeString(
-            language === 'hi' ? 'hi-IN' : 'en-US',
-            { hour: '2-digit', minute: '2-digit' }
-          );
+          const completedTimeStr = formatTime12(item.completedAt);
 
           return (
             <View

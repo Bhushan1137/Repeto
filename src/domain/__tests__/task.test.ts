@@ -3,6 +3,7 @@ import {
   archiveTask,
   canAddTask,
   canCompleteTask,
+  canSnoozeTask,
   canShareWith,
   capTasksForPlan,
   cleanupTasksOnRemoval,
@@ -314,6 +315,59 @@ describe('domain/task', () => {
       archived: true,
     };
     expect(canCompleteTask(taskArchived, { today })).toEqual({
+      allowed: false,
+      reason: 'archived',
+      daysUntilDue: 0,
+    });
+  });
+
+  it('canSnoozeTask restricts snooze to today and this week (days <= 7)', () => {
+    const today = new Date('2026-09-12T10:00:00.000Z');
+
+    const baseTask = createTaskFromPreset('Internet Bill', 'bills', 'Monthly');
+
+    // Overdue task (days = -2) -> allowed
+    const overdueTask: RepeatingTask = { ...baseTask, nextDueDate: '2026-09-10T10:00:00.000Z' };
+    expect(canSnoozeTask(overdueTask, { today })).toEqual({
+      allowed: true,
+      daysUntilDue: -2,
+    });
+
+    // Today task (days = 0) -> allowed
+    const todayTask: RepeatingTask = { ...baseTask, nextDueDate: '2026-09-12T10:00:00.000Z' };
+    expect(canSnoozeTask(todayTask, { today })).toEqual({
+      allowed: true,
+      daysUntilDue: 0,
+    });
+
+    // This week task (days = 5) -> allowed
+    const thisWeekTask: RepeatingTask = { ...baseTask, nextDueDate: '2026-09-17T10:00:00.000Z' };
+    expect(canSnoozeTask(thisWeekTask, { today })).toEqual({
+      allowed: true,
+      daysUntilDue: 5,
+    });
+
+    // 7 days away -> allowed
+    const sevenDaysTask: RepeatingTask = { ...baseTask, nextDueDate: '2026-09-19T10:00:00.000Z' };
+    expect(canSnoozeTask(sevenDaysTask, { today })).toEqual({
+      allowed: true,
+      daysUntilDue: 7,
+    });
+
+    // Future task (days = 10 or 136) -> rejected
+    const tenDaysTask: RepeatingTask = { ...baseTask, nextDueDate: '2026-09-22T10:00:00.000Z' };
+    expect(canSnoozeTask(tenDaysTask, { today })).toEqual({
+      allowed: false,
+      reason: 'not_in_range',
+      daysUntilDue: 10,
+    });
+
+    const farFutureTask: RepeatingTask = { ...baseTask, nextDueDate: '2027-01-26T10:00:00.000Z' };
+    expect(canSnoozeTask(farFutureTask, { today }).allowed).toBe(false);
+
+    // Archived task -> rejected
+    const archivedTask: RepeatingTask = { ...todayTask, archived: true };
+    expect(canSnoozeTask(archivedTask, { today })).toEqual({
       allowed: false,
       reason: 'archived',
       daysUntilDue: 0,

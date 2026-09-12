@@ -78,6 +78,7 @@ describe('insights domain module', () => {
     expect(grouped).toHaveProperty('today');
     expect(grouped).toHaveProperty('week');
     expect(grouped).toHaveProperty('month');
+    expect(grouped).toHaveProperty('later');
   });
 
   it('computes overall insights result', () => {

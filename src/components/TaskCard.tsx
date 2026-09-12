@@ -7,6 +7,7 @@ import { Colors, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, daysPercent, shortDayLabel } from '@/domain/recurrence';
 import { ProgressRing } from '@/components/ProgressRing';
 import { AppIcon } from '@/components/AppIcon';
+import { formatTime12 } from '@/utils/timeFormat';
 
 interface TaskCardProps {
   task: RepeatingTask;
@@ -54,7 +55,7 @@ export function TaskCard({
   }, [task.category]);
 
   const reminderText = useMemo(() => {
-    const time = task.reminderTime || '9:00 AM';
+    const time = formatTime12(task.reminderTime);
     if (days === 0) {
       return language === 'hi' ? `आज ${time}` : `Today at ${time}`;
     }

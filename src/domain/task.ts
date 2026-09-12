@@ -179,6 +179,31 @@ export function canCompleteTask(
   return { allowed: true, daysUntilDue: days };
 }
 
+export interface TaskSnoozeEligibility {
+  allowed: boolean;
+  reason?: 'archived' | 'not_in_range';
+  daysUntilDue: number;
+}
+
+export function canSnoozeTask(
+  task: RepeatingTask,
+  options?: { today?: Date }
+): TaskSnoozeEligibility {
+  const today = options?.today ?? new Date();
+  const days = daysUntilDue(task.nextDueDate, today);
+
+  if (task.archived) {
+    return { allowed: false, reason: 'archived', daysUntilDue: days };
+  }
+
+  // Only allowed if task is due today or this week (days <= 7, including overdue)
+  if (days > 7) {
+    return { allowed: false, reason: 'not_in_range', daysUntilDue: days };
+  }
+
+  return { allowed: true, daysUntilDue: days };
+}
+
 export function statusForCompletion(dueDateIso: string, completedAt: Date = new Date()): CompletionStatus {
   return daysUntilDue(dueDateIso, completedAt) < 0 ? 'late' : 'on_time';
 }

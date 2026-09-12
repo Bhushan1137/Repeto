@@ -1,4 +1,4 @@
-import type { RecurrenceRule, RecurrenceType } from '@/types';
+import type { RecurrenceRule, RecurrenceType, TaskGroup } from '@/types';
 
 function startOfDay(d: Date): Date {
   const copy = new Date(d);
@@ -79,11 +79,12 @@ export function daysUntilDue(dueDateIso: string, from: Date = new Date()): numbe
   return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export function getTaskGroup(days: number): 'overdue' | 'today' | 'week' | 'month' {
+export function getTaskGroup(days: number): TaskGroup {
   if (days < 0) return 'overdue';
   if (days === 0) return 'today';
   if (days <= 7) return 'week';
-  return 'month';
+  if (days <= 30) return 'month';
+  return 'later';
 }
 
 export function dayLabel(days: number, lang: 'en' | 'hi'): string {

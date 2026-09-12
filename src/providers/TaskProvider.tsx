@@ -15,6 +15,7 @@ import type { TaskFormValues } from '@/domain/taskForm';
 import {
   canAddTask,
   canCompleteTask,
+  canSnoozeTask,
   canShareWith,
   capTasksForPlan,
   completeTaskInstance,
@@ -83,6 +84,7 @@ interface TaskContextValue {
   unshareAllLocalTasks: () => Promise<void>;
   mergeHouseholds: (sourceHhId: string, targetHhId: string) => Promise<void>;
   claimTask: (taskId: string) => Promise<void>;
+  refreshTasks: () => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -374,9 +376,33 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const snoozeTask = useCallback(
-    (taskId: string, days = 2) => applyMutation(taskId, (t) => snoozeTaskInstance(t, days, user?.id), 'snoozed'),
-    [applyMutation, user?.id]
+    (taskId: string, days = 2) => {
+      const existing = tasks.find((t) => t.id === taskId);
+      if (existing && !canSnoozeTask(existing).allowed) {
+        showToast(translate('snoozeRestricted'));
+        return Promise.resolve();
+      }
+      return applyMutation(taskId, (t) => snoozeTaskInstance(t, days, user?.id), 'snoozed');
+    },
+    [tasks, applyMutation, user?.id, showToast, translate]
   );
+
+  const refreshTasks = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      if (isOnline) {
+        await taskRepository.flushSyncQueue(user.id).catch(() => {});
+      }
+      const [loaded] = await Promise.all([
+        taskRepository.load(user.id, isOnline),
+        new Promise((resolve) => setTimeout(resolve, 400)),
+      ]);
+      setTasks(loaded);
+      setHydrated(true);
+    } catch (err) {
+      console.warn('[Repeato] Failed to refresh tasks:', err);
+    }
+  }, [user?.id, isOnline]);
 
   const skipTask = useCallback(
     (taskId: string) => applyMutation(taskId, (t) => skipTaskInstance(t, user?.id), 'skippedToast'),
@@ -578,11 +604,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       const snoozedList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
-        if (existing) {
+        if (existing && canSnoozeTask(existing).allowed) {
           const mutated = snoozeTaskInstance(existing, days, user?.id);
           next = updateTaskInList(next, id, () => mutated);
           snoozedList.push(mutated);
         }
+      }
+      if (snoozedList.length === 0) {
+        showToast(translate('snoozeRestricted'));
+        return;
       }
       try {
         await persistAll(next);
@@ -958,8 +988,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       unshareAllLocalTasks,
       mergeHouseholds: mergeHouseholdsCb,
       claimTask: claimTaskCb,
+      refreshTasks,
     }),
-    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, undoSkipTaskCb, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, skipTasks, undoCompleteTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, undoCompleteTask, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, mergeHouseholdsCb, claimTaskCb]
+    [hydrated, tasks, loading, addTask, completeTask, snoozeTask, skipTask, undoSkipTaskCb, deleteTask, archiveTaskCb, restoreTaskCb, pinTask, duplicateTaskCb, setTaskDueDate, completeTasks, snoozeTasks, skipTasks, undoCompleteTasks, deleteTasks, archiveTasks, addPresetTask, updateTask, completeOnboarding, resetTasks, deleteHistoryEntry, undoCompleteTask, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, mergeHouseholdsCb, claimTaskCb, refreshTasks]
   );
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

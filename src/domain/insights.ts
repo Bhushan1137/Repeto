@@ -328,6 +328,7 @@ export function groupTasksByDue(
     today: [],
     week: [],
     month: [],
+    later: [],
   };
   tasks.forEach((task) => {
     // Filter out invalid/empty tasks

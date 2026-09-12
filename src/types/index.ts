@@ -27,7 +27,7 @@ export type RecurrenceType =
   | 'monthDay'
   | 'nthWeekday';
 
-export type TaskGroup = 'overdue' | 'today' | 'week' | 'month';
+export type TaskGroup = 'overdue' | 'today' | 'week' | 'month' | 'later';
 
 export type CompletionStatus = 'on_time' | 'late' | 'missed' | 'skipped' | 'snoozed';
 

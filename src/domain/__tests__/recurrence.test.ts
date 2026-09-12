@@ -144,6 +144,20 @@ describe('getTaskGroup', () => {
   it('classifies today', () => {
     expect(getTaskGroup(0)).toBe('today');
   });
+  it('classifies week for <= 7 days', () => {
+    expect(getTaskGroup(3)).toBe('week');
+    expect(getTaskGroup(7)).toBe('week');
+  });
+  it('classifies month for 8 to 30 days', () => {
+    expect(getTaskGroup(8)).toBe('month');
+    expect(getTaskGroup(25)).toBe('month');
+    expect(getTaskGroup(30)).toBe('month');
+  });
+  it('classifies later for > 30 days (such as 136 and 175 days)', () => {
+    expect(getTaskGroup(31)).toBe('later');
+    expect(getTaskGroup(136)).toBe('later');
+    expect(getTaskGroup(175)).toBe('later');
+  });
 });
 
 describe('free tier limits', () => {

@@ -13,7 +13,7 @@ import { TodayFocusSection } from '@/components/TodayFocusSection';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
-import { canCompleteTask } from '@/domain/task';
+import { canCompleteTask, canSnoozeTask } from '@/domain/task';
 import { listHouseholds } from '@/domain/household';
 import { useNudge } from '@/hooks/useNudge';
 import type { FilterState } from '@/hooks/useFilteredTasks';
@@ -31,11 +31,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import { Card } from 'react-native-paper';
 
-const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth'> = {
+const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth' | 'secLater'> = {
   overdue: 'secOverdue',
   today: 'secToday',
   week: 'secWeek',
   month: 'secMonth',
+  later: 'secLater',
 };
 
 
@@ -66,6 +67,7 @@ export default function HomeScreen() {
     deleteHistoryEntry,
     undoCompleteTask,
     claimTask,
+    refreshTasks,
   } = useTasks();
   const { language, translate } = useTranslation();
 
@@ -101,6 +103,7 @@ export default function HomeScreen() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
+  const [laterExpanded, setLaterExpanded] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
   const userHouseholds = useMemo(() => listHouseholds(user ?? ({} as any)), [user]);
 
@@ -169,7 +172,7 @@ export default function HomeScreen() {
       const d = daysUntilDue(t.nextDueDate);
       if (d < 0) overdue += 1;
       else if (d === 0) today += 1;
-      else upcoming += 1;
+      else if (d <= 7) upcoming += 1;
     }
     return { today, overdue, upcoming };
   }, [tasks]);
@@ -180,6 +183,7 @@ export default function HomeScreen() {
     let upcoming = 0;
     let week = 0;
     let month = 0;
+    let later = 0;
 
     for (const t of tasks) {
       const d = daysUntilDue(t.nextDueDate);
@@ -187,13 +191,14 @@ export default function HomeScreen() {
         overdue += 1;
       } else if (d === 0) {
         today += 1;
-      } else {
         upcoming += 1;
-        if (d <= 7) {
-          week += 1;
-        } else {
-          month += 1;
-        }
+      } else if (d <= 7) {
+        week += 1;
+        upcoming += 1;
+      } else if (d <= 30) {
+        month += 1;
+      } else {
+        later += 1;
       }
     }
 
@@ -204,6 +209,7 @@ export default function HomeScreen() {
       upcoming,
       week,
       month,
+      later,
     };
   }, [tasks]);
 
@@ -248,6 +254,7 @@ export default function HomeScreen() {
       <ScreenShell
         title={greetingTitle}
         subtitle={translate('subGreeting')}
+        onRefresh={refreshTasks}
         headerExtra={
           hasTasks ? (
             <View style={styles.dailyPulseRow}>
@@ -519,13 +526,14 @@ export default function HomeScreen() {
           </ScrollView>
         )}
 
-        {/* Filter bar */}
+        {/* Filter bar - Shows timeframe & group filters, avoids duplicating inline categories */}
         {filterVisible && (
           <TaskFilterBar
             filter={filter}
             onChange={setFilter}
             language={language}
-            hideSearchAndGroups={true}
+            hideSearch={true}
+            hideCategories={true}
             groupCounts={groupCounts}
             categoryCounts={categoryCounts}
           />
@@ -592,13 +600,14 @@ export default function HomeScreen() {
                 {pinnedTasks.map((task) => {
                   const isItemSelected = selectedIds.has(task.id);
                   const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
+                  const canSnooze = canSnoozeTask(task).allowed;
                   return (
                     <SwipeableTaskItem
                       key={`pinned-swipe-${task.id}`}
                       language={language}
                       enabled={!isSelecting}
                       onComplete={canComplete ? () => completeTask(task.id) : undefined}
-                      onSnooze={(days) => snoozeTask(task.id, days || 2)}
+                      onSnooze={canSnooze ? (days) => snoozeTask(task.id, days || 2) : undefined}
                     >
                       <TaskCard
                         task={task}
@@ -622,24 +631,48 @@ export default function HomeScreen() {
             )}
 
             {/* Grouped tasks (skips 'today' when TodayFocusSection is active) */}
-            {groups.map(({ group, items }) =>
-              items.length === 0 || (!isFiltering && group === 'today') ? null : (
+            {groups.map(({ group, items }) => {
+              if (items.length === 0 || (!isFiltering && group === 'today')) return null;
+
+              const isLaterGroup = group === 'later';
+              const showItems = !isLaterGroup || isFiltering || laterExpanded;
+
+              return (
                 <View key={group}>
-                  <SectionHeader
-                    label={translate(SECTION_KEYS[group])}
-                    count={items.length}
-                    accent={group === 'overdue' ? 'danger' : 'default'}
-                  />
-                  {items.map((task) => {
+                  {isLaterGroup && !isFiltering ? (
+                    <Pressable
+                      onPress={() => setLaterExpanded((v) => !v)}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}
+                    >
+                      <SectionHeader
+                        label={translate(SECTION_KEYS[group])}
+                        count={items.length}
+                        accent="default"
+                      />
+                      <AppIcon
+                        name={laterExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                        size={18}
+                        color={Colors.inkFaint}
+                      />
+                    </Pressable>
+                  ) : (
+                    <SectionHeader
+                      label={translate(SECTION_KEYS[group])}
+                      count={items.length}
+                      accent={group === 'overdue' ? 'danger' : 'default'}
+                    />
+                  )}
+                  {showItems && items.map((task) => {
                     const isItemSelected = selectedIds.has(task.id);
                     const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
+                    const canSnooze = canSnoozeTask(task).allowed;
                     return (
                       <SwipeableTaskItem
                         key={`task-swipe-${task.id}`}
                         language={language}
                         enabled={!isSelecting}
                         onComplete={canComplete ? () => completeTask(task.id) : undefined}
-                        onSnooze={(days) => snoozeTask(task.id, days || 2)}
+                        onSnooze={canSnooze ? (days) => snoozeTask(task.id, days || 2) : undefined}
                       >
                         <TaskCard
                           task={task}
@@ -660,8 +693,8 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
-              )
-            )}
+              );
+            })}
           </>
         )}
       </ScreenShell>

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { RepeatingTask, TaskGroup } from '@/types';
 import { groupTasksByDue } from '@/domain/insights';
 
-const GROUP_ORDER: TaskGroup[] = ['overdue', 'today', 'week', 'month'];
+const GROUP_ORDER: TaskGroup[] = ['overdue', 'today', 'week', 'month', 'later'];
 
 export function useGroupedTasks(tasks: RepeatingTask[]) {
   return useMemo(() => {
