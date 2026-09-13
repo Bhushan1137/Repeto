@@ -56,7 +56,16 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
     const rootSegment = segments[0];
     const isInsideOnboarding = rootSegment === '(onboarding)';
-    const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms';
+    const isWebLegalPath =
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      Boolean(
+        window.location?.pathname &&
+          (window.location.pathname.includes('privacy') ||
+            window.location.pathname.includes('terms') ||
+            window.location.pathname.includes('deletion'))
+      );
+    const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms' || isWebLegalPath;
     const isStandaloneModal =
       rootSegment === 'help-support' ||
       rootSegment === 'notifications' ||

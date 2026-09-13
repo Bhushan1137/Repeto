@@ -3,38 +3,62 @@
   command = "npm run build:web"
   publish = "dist"
 
-# Ensure clean routing to static legal and policy pages for Play Console bots
+# Pure static legal and compliance pages (force = true ensures no Expo Router JS interception)
 [[redirects]]
   from = "/privacy"
   to = "/privacy.html"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/privacy-policy"
   to = "/privacy.html"
   status = 200
+  force = true
+
+[[redirects]]
+  from = "/privacy.html"
+  to = "/privacy.html"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/terms"
   to = "/terms.html"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/terms-of-service"
   to = "/terms.html"
   status = 200
+  force = true
+
+[[redirects]]
+  from = "/terms.html"
+  to = "/terms.html"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/delete-account"
   to = "/account-deletion.html"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/account-deletion"
   to = "/account-deletion.html"
   status = 200
+  force = true
 
-# Expo Router Client-Side Routing Fallback (SPA)
+[[redirects]]
+  from = "/account-deletion.html"
+  to = "/account-deletion.html"
+  status = 200
+  force = true
+
+# Expo Router Client-Side Routing Fallback (SPA) for the Web App
 [[redirects]]
   from = "/*"
   to = "/index.html"
