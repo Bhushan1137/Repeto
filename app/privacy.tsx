@@ -130,7 +130,10 @@ export default function PrivacyScreen() {
                     Repeto requests minimal device permissions:
                   </Text>
                   <Text style={styles.bulletText}>
-                    • <Text style={styles.boldText}>Notifications & Alarms:</Text> To alert you at the exact time a recurring task is due. You can turn this off anytime in your phone settings.
+                    • <Text style={styles.boldText}>Camera Permission:</Text> Used strictly and solely to scan QR codes for joining or inviting family to a shared household. Camera frames are processed on-device in real-time. Repeto never captures, records, saves, or uploads photos or videos.
+                  </Text>
+                  <Text style={styles.bulletText}>
+                    • <Text style={styles.boldText}>Notifications & Exact Alarms:</Text> To alert you at the exact time a recurring task or routine is due. You can turn this off anytime in your phone settings.
                   </Text>
                 </Card.Content>
               </Card>
@@ -157,10 +160,10 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. स्वागत और हमारा वादा</Text>
                   <Text style={styles.bodyText}>
-                    Repeto में आपका स्वागत है! हमने यह ऐप इसलिए बनाया है ताकि घर का किराया, बिजली बिल, दवाइयां और घरेलू काम याद रखना आपके और आपके परिवार के लिए आसान और चिंतामुक्त रहे।
+                    Repeto में आपका स्वागत है! हमने इस ऐप को आपके और आपके परिवार के लिए बिल, दवाइयाँ और दैनिक कार्य याद रखना आसान और तनावमुक्त बनाने के लिए डिज़ाइन किया है।
                   </Text>
                   <Text style={styles.bodyText}>
-                    हमारा वादा सरल है: आपका डेटा केवल आपका है। हम आपकी व्यक्तिगत जानकारी कभी किसी को नहीं बेचते, कोई विज्ञापन नहीं दिखाते, और केवल वही जानकारी लेते हैं जो आपके रिमाइंडर्स को समय पर चलाने के लिए आवश्यक है।
+                    हमारा वादा सरल है: आपका डेटा केवल आपका है। हम व्यक्तिगत जानकारी नहीं बेचते, कोई विज्ञापन नहीं दिखाते, और केवल वही डेटा एकत्र करते हैं जो आपके रूटीन को सुचारू रखने के लिए आवश्यक है।
                   </Text>
                 </Card.Content>
               </Card>
@@ -168,30 +171,30 @@ export default function PrivacyScreen() {
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
                   <Text style={styles.sectionTitle}>2. हम कौन सी जानकारी एकत्र करते हैं</Text>
-                  <Text style={styles.bulletText}>
-                    • <Text style={styles.boldText}>आपकी प्रोफ़ाइल:</Text> जब आप Google या ईमेल से साइन इन करते हैं, तो हमें आपका नाम, ईमेल और प्रोफ़ाइल चित्र मिलता है।
+                  <Text style={styles.bodyText}>
+                    अलार्म और रीयल-टाइम सिंक प्रदान करने के लिए हम निम्नलिखित जानकारी एकत्र करते हैं:
                   </Text>
                   <Text style={styles.bulletText}>
-                    • <Text style={styles.boldText}>रिमाइंडर और कार्य:</Text> आपके द्वारा बनाए गए टास्क (जैसे &quot;बिजली बिल भुगतान&quot;), समय, तारीखें, बिल राशि और पूर्णता इतिहास।
+                    • <Text style={styles.boldText}>खाता प्रोफ़ाइल:</Text> Google साइन-इन या ईमेल से लॉगिन करने पर आपका नाम, ईमेल और प्रोफ़ाइल फ़ोटो।
                   </Text>
                   <Text style={styles.bulletText}>
-                    • <Text style={styles.boldText}>घर और साझाकरण:</Text> यदि आप परिवार या रूममेट्स के साथ घर बनाते हैं, तो उस घर में साझा किए गए कार्य।
+                    • <Text style={styles.boldText}>टास्क और रिमाइंडर:</Text> आपके द्वारा बनाए गए कार्य, नियत तारीखें, पुनरावृत्ति समय और पूर्णता का इतिहास।
                   </Text>
                   <Text style={styles.bulletText}>
-                    • <Text style={styles.boldText}>ऐप सेटिंग्स:</Text> आपकी चुनी हुई भाषा (अंग्रेज़ी या हिन्दी) और सूचना प्राथमिकताएं।
+                    • <Text style={styles.boldText}>घर (Household) सहयोग:</Text> यदि आप किसी साझा घर में शामिल होते हैं, तो घर का नाम और सदस्यों के बीच साझा कार्य।
                   </Text>
                 </Card.Content>
               </Card>
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>3. आपकी जानकारी का उपयोग कैसे होता है</Text>
-                  <Text style={styles.bulletText}>• आपके कार्यों के नियत समय पर सटीक अलार्म और नोटिफिकेशन भेजने के लिए।</Text>
-                  <Text style={styles.bulletText}>• आपके कार्यों को आपके सभी फोन में सुरक्षित रूप से सिंक रखने के लिए।</Text>
-                  <Text style={styles.bulletText}>• घर के सदस्यों को साझा किए गए कार्यों की स्थिति दिखाने के लिए।</Text>
+                  <Text style={styles.sectionTitle}>3. जानकारी का उपयोग</Text>
                   <Text style={styles.bodyText}>
-                    हम आपके डेटा का उपयोग किसी विज्ञापन या ट्रैकिंग के लिए कभी नहीं करते हैं।
+                    हम आपकी जानकारी का उपयोग केवल ऐप के मूल कार्यों के लिए करते हैं:
                   </Text>
+                  <Text style={styles.bulletText}>• समय पर रिमाइंडर अलार्म भेजना।</Text>
+                  <Text style={styles.bulletText}>• आपके सभी उपकरणों पर टास्क रीयल-टाइम में सिंक करना।</Text>
+                  <Text style={styles.bulletText}>• परिवार के सदस्यों के साथ साझा कार्य प्रबंधित करना।</Text>
                 </Card.Content>
               </Card>
 
@@ -224,7 +227,22 @@ export default function PrivacyScreen() {
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>6. सहायता और संपर्क</Text>
+                  <Text style={styles.sectionTitle}>6. डिवाइस अनुमतियाँ</Text>
+                  <Text style={styles.bodyText}>
+                    Repeto केवल आवश्यक कार्यक्षमताओं के लिए न्यूनतम अनुमतियों का अनुरोध करता है:
+                  </Text>
+                  <Text style={styles.bulletText}>
+                    • <Text style={styles.boldText}>कैमरा अनुमति:</Text> केवल साझा घर में शामिल होने के लिए QR कोड स्कैन करने के लिए उपयोग की जाती है। कैमरे से कोई भी फ़ोटो या वीडियो कभी सहेजा या अपलोड नहीं किया जाता।
+                  </Text>
+                  <Text style={styles.bulletText}>
+                    • <Text style={styles.boldText}>सूचनाएं और अलार्म:</Text> आपके नियत कार्यों के समय पर सटीक रिमाइंडर भेजने के लिए। आप इसे फ़ोन सेटिंग्स में कभी भी प्रबंधित कर सकते हैं।
+                  </Text>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.sectionCard} mode="elevated">
+                <Card.Content>
+                  <Text style={styles.sectionTitle}>7. सहायता और संपर्क</Text>
                   <Text style={styles.bodyText}>
                     यदि आपका कोई भी सवाल, सुझाव या डेटा से संबंधित प्रश्न है, तो कृपया ऐप के भीतर सहायता केंद्र से संपर्क करें:
                   </Text>
