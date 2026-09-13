@@ -15,7 +15,7 @@ import { useAuth } from '@/providers/AuthProvider';
 export default function LanguageScreen() {
   const router = useRouter();
   const { language, setLanguage } = useOnboarding();
-  const { setLanguage: setAuthLanguage } = useAuth();
+  const { setLanguage: setAuthLanguage, user } = useAuth();
   const insets = useSafeAreaInsets();
 
   return (
@@ -63,7 +63,11 @@ export default function LanguageScreen() {
         style={styles.cta}
         onPress={async () => {
           await setAuthLanguage(language);
-          router.replace('/(onboarding)/profile');
+          if (!user) {
+            router.replace('/(onboarding)/sign-in');
+          } else {
+            router.replace('/(onboarding)/profile');
+          }
         }}
         testID="language-continue-btn"
       />

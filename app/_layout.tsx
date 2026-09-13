@@ -82,10 +82,11 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. Not logged in -> MUST be on sign-in (allow help-support for FAQs)
+    // 1. Not logged in -> MUST be on sign-in or language (allow help-support for FAQs)
     if (!user) {
       if (rootSegment === 'help-support') return;
-      if (!isInsideOnboarding || currentScreen !== 'sign-in') {
+      const isAllowedUnauthScreen = currentScreen === 'sign-in' || currentScreen === 'language';
+      if (!isInsideOnboarding || !isAllowedUnauthScreen) {
         router.replace('/(onboarding)/sign-in');
       }
       return;

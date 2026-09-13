@@ -4,7 +4,6 @@ import { Colors, Radius, Shadows } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
-import { signInWithEmail } from '@/services/authService';
 import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -42,7 +41,7 @@ const FEATURES = [
 export default function SignInScreen() {
   const router = useRouter();
   const { language } = useOnboarding();
-  const { signInWithGoogle, setUser } = useAuth();
+  const { signInWithGoogle, signInWithEmail, setUser } = useAuth();
   const { translate } = useTranslation(language);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -82,23 +81,16 @@ export default function SignInScreen() {
     setEmailError('');
     setResetSent(false);
     try {
-      const res = await signInWithEmail(emailVal.trim(), passwordVal, language as any);
+      const res = await signInWithEmail(emailVal.trim(), passwordVal);
       if (res.ok && res.isDeleted) {
         // Soft-deleted account: NavigationGuard handles routing to account-recovery
         return;
       }
-      if (res.ok && res.user) {
-        setUser(res.user);
-      } else if (res.message) {
-        setEmailError(res.message);
+      if (!res.ok) {
+        setEmailError(res.message || 'Sign-in failed. Please check your credentials and try again.');
       }
-    } catch (e: any) {
-      const code = String(e?.code || '');
-      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
-        setEmailError('No account found. New users must sign up using Google Sign-In.');
-      } else {
-        setEmailError('Sign-in failed. Please check your credentials and try again.');
-      }
+    } catch {
+      setEmailError('Sign-in failed. Please check your credentials and try again.');
     } finally {
       setEmailLoading(false);
     }
@@ -318,6 +310,9 @@ export default function SignInScreen() {
 
               {emailFormOpen && (
                 <View style={styles.emailForm} testID="signin-email-form">
+                  <Text style={styles.emailSubHint}>
+                    Existing accounts only. New users must continue with Google above.
+                  </Text>
                   {/* Email input */}
                   <View style={styles.inputWrapper}>
                     <AppIcon name="mail-outline" size={16} color={Colors.inkSoft} style={styles.inputIcon} />
@@ -362,7 +357,7 @@ export default function SignInScreen() {
                   ) : null}
                   {resetSent ? (
                     <Text style={styles.resetSentText} testID="reset-sent-text">
-                      ✓ Password reset email sent! Check your inbox.
+                      ✓ If an account exists, a reset link was sent. Please check your Inbox and Spam folders.
                     </Text>
                   ) : null}
 
@@ -710,6 +705,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_500Medium',
     outlineStyle: 'none',
   } as any,
+  emailSubHint: {
+    fontSize: 11.5,
+    color: Colors.inkFaint,
+    fontFamily: 'Manrope_500Medium',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   emailError: {
     fontSize: 12,
     color: '#e53e3e',

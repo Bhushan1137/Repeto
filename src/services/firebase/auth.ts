@@ -148,8 +148,9 @@ export function getAuthErrorMessage(code: string): string {
     case 'auth/user-not-found':
       return 'No account found with this email. Please sign in with Google first.';
     case 'auth/wrong-password':
-    case 'auth/invalid-credential':
       return 'Incorrect password. Use "Forgot password?" to reset it.';
+    case 'auth/invalid-credential':
+      return 'Invalid email or password. New users must sign in with Google.';
     case 'auth/invalid-email':
       return 'Please enter a valid email address.';
     case 'auth/too-many-requests':

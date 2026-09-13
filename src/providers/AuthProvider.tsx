@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { HouseholdContext, Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
-import { signInWithGoogle as authSignIn, profileFromFirebaseUser, profileFromSignedInUser, deleteAccountSoft } from '@/services/authService';
+import { signInWithGoogle as authSignIn, signInWithEmail as authSignInWithEmail, profileFromFirebaseUser, profileFromSignedInUser, deleteAccountSoft } from '@/services/authService';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
@@ -23,6 +23,7 @@ interface AuthContextValue {
   /** The currently active household context (multi-household support) */
   activeHousehold: HouseholdContext | null;
   signInWithGoogle: (language: Language) => Promise<{ ok: boolean; user?: UserProfile; isDeleted?: boolean; error?: string; message?: string }>;
+  signInWithEmail: (email: string, pass: string) => Promise<{ ok: boolean; user?: UserProfile; isDeleted?: boolean; error?: string; message?: string }>;
   updateUser: (patch: Partial<UserProfile>) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   signOut: () => Promise<void>;
@@ -340,6 +341,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: true, user: finalUser };
     },
     [persistUser]
+  );
+
+  const signInWithEmail = useCallback(
+    async (email: string, pass: string): Promise<{ ok: boolean; user?: UserProfile; isDeleted?: boolean; error?: string; message?: string }> => {
+      const result = await authSignInWithEmail(email, pass, language);
+      if (!result.ok) {
+        return { ok: false, error: result.error, message: result.message };
+      }
+      if (result.isDeleted && result.deletedAccountInfo) {
+        setDeletedAccountInfo(result.deletedAccountInfo);
+        setUser(null);
+        return { ok: true, isDeleted: true };
+      }
+      if (!result.user) {
+        return { ok: false, error: 'failed', message: result.message };
+      }
+      const finalUser: UserProfile = {
+        ...result.user,
+        termsAcceptedAt: result.user.termsAcceptedAt ?? new Date().toISOString(),
+      };
+      await persistUser(finalUser);
+      return { ok: true, user: finalUser };
+    },
+    [language, persistUser]
   );
 
   const updateUser = useCallback(
@@ -670,6 +695,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firebaseReady,
       activeHousehold,
       signInWithGoogle,
+      signInWithEmail,
       updateUser,
       setLanguage,
       signOut,
@@ -683,7 +709,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       restoreAccount,
       freshStartAccount,
     }),
-    [ready, user, setUser, language, languageSelected, firebaseReady, activeHousehold, signInWithGoogle, updateUser, setLanguage, signOut, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold, deleteAccount, deletedAccountInfo, restoreAccount, freshStartAccount]
+    [ready, user, setUser, language, languageSelected, firebaseReady, activeHousehold, signInWithGoogle, signInWithEmail, updateUser, setLanguage, signOut, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold, deleteAccount, deletedAccountInfo, restoreAccount, freshStartAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

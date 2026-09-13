@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { CATEGORY_MAP } from '@/constants/categories';
@@ -66,12 +66,12 @@ export default function SuggestionsScreen() {
                 return (
                   <Card
                     key={`preset-${idx}`}
-                    style={[styles.rowCard, !s.accepted && styles.rowSkipped]}
+                    style={[styles.rowCard, s.accepted && styles.rowSelected]}
                     mode="elevated"
                     testID={`suggestions-card-${idx}`}
                   >
                     <TouchableRipple
-                      onPress={() => setEditIndex(idx)}
+                      onPress={() => toggleSuggestion(idx)}
                       style={styles.cardRipple}
                       testID={`suggestions-card-ripple-${idx}`}
                       borderless
@@ -81,22 +81,26 @@ export default function SuggestionsScreen() {
                           <Text style={styles.rowIcon}>{cat.icon}</Text>
                         </View>
                         <View style={styles.rowInfo} testID={`suggestions-row-info-${idx}`}>
-                          <Text style={[styles.rowTitle, !s.accepted && styles.skipped]} testID={`suggestions-row-title-${idx}`}>{title}</Text>
+                          <Text style={styles.rowTitle} testID={`suggestions-row-title-${idx}`}>{title}</Text>
                           <Text style={styles.rowFreq} testID={`suggestions-row-freq-${idx}`}>
                             {freq}
                             {s.amount ? ` · ₹${s.amount.toLocaleString('en-IN')}` : ''}
                           </Text>
-                          <Text style={styles.editHint} testID={`suggestions-row-edit-hint-${idx}`}>{translate('editPreset')}</Text>
-                        </View>
-                        <View onStartShouldSetResponder={() => true} testID={`suggestions-toggle-wrapper-${idx}`}>
-                          <TouchableRipple
-                            style={[styles.toggleBtn, s.accepted ? styles.toggleOn : styles.toggleOff]}
-                            onPress={() => toggleSuggestion(idx)}
-                            testID={`suggestions-toggle-btn-${idx}`}
-                            borderless
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              setEditIndex(idx);
+                            }}
+                            hitSlop={8}
                           >
-                            <Text style={styles.toggleText}>{s.accepted ? '✓' : '✕'}</Text>
-                          </TouchableRipple>
+                            <Text style={styles.editHint} testID={`suggestions-row-edit-hint-${idx}`}>{translate('editPreset')}</Text>
+                          </Pressable>
+                        </View>
+                        <View
+                          style={[styles.toggleBtn, s.accepted ? styles.toggleOn : styles.toggleOff]}
+                          testID={`suggestions-toggle-btn-${idx}`}
+                        >
+                          {s.accepted ? <Text style={styles.toggleText}>✓</Text> : null}
                         </View>
                       </View>
                     </TouchableRipple>
@@ -165,9 +169,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: 10,
     overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     elevation: 1,
   },
-  rowSkipped: { opacity: 0.55 },
+  rowSelected: {
+    borderColor: Colors.tealDeep,
+  },
   cardRipple: {
     padding: 14,
   },
@@ -187,21 +195,20 @@ const styles = StyleSheet.create({
   rowIcon: { fontSize: 18 },
   rowInfo: { flex: 1 },
   rowTitle: { fontFamily: 'Manrope_700Bold', fontSize: 13.5, color: Colors.ink },
-  skipped: { textDecorationLine: 'line-through', opacity: 0.4 },
   rowFreq: { fontSize: 11.5, color: Colors.inkSoft, marginTop: 2 },
   editHint: { fontSize: 10.5, color: Colors.inkFaint, marginTop: 4, fontFamily: 'Manrope_600SemiBold' },
   toggleBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     overflow: 'hidden',
   },
-  toggleOn: { backgroundColor: Colors.teal, borderColor: Colors.teal },
-  toggleOff: { backgroundColor: Colors.clay, borderColor: Colors.clay },
-  toggleText: { color: Colors.white, fontSize: 13, textAlign: 'center' },
+  toggleOn: { backgroundColor: Colors.tealDeep, borderColor: Colors.tealDeep },
+  toggleOff: { backgroundColor: Colors.white, borderColor: 'rgba(25, 29, 58, 0.28)' },
+  toggleText: { color: Colors.white, fontSize: 13, fontFamily: 'Manrope_800ExtraBold', textAlign: 'center', lineHeight: 15 },
   stickyFooter: {
     position: 'absolute',
     bottom: 0,
