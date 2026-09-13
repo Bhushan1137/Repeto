@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Repeto: Recurring Tasks & Chores</title>
+  <meta name="description" content="Privacy Policy for Repeto - Recurring Task & Habit Tracker application.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0E1122;
+      --card-bg: #171B36;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #E8A33D;
+      --accent-glow: rgba(232, 163, 61, 0.15);
+      --text-main: #FFFFFF;
+      --text-muted: #9BA3C7;
+      --text-sub: #C5CAE9;
+      --danger: #E05D44;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.65;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .nav-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-glow);
+      text-decoration: none;
+    }
+
+    .badge {
+      display: inline-block;
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid rgba(232, 163, 61, 0.3);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .effective-date {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    h2 {
+      color: var(--accent);
+      font-size: 1.35rem;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    p {
+      color: var(--text-sub);
+      margin-bottom: 14px;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 0;
+      margin-bottom: 14px;
+    }
+
+    li {
+      position: relative;
+      padding-left: 24px;
+      margin-bottom: 10px;
+      color: var(--text-sub);
+    }
+
+    li::before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      color: var(--accent);
+      font-weight: bold;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .highlight-box {
+      background: rgba(232, 163, 61, 0.08);
+      border-left: 4px solid var(--accent);
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+
+    .highlight-box p {
+      margin-bottom: 0;
+      color: var(--text-main);
+    }
+
+    .deletion-box {
+      background: rgba(224, 93, 68, 0.08);
+      border-left: 4px solid var(--danger);
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+
+    .deletion-box p {
+      margin-bottom: 0;
+      color: var(--text-main);
+    }
+
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--card-border);
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <header>
+      <nav class="nav-links">
+        <a href="/">Launch App</a>
+        <a href="/privacy.html" class="active">Privacy Policy</a>
+        <a href="/terms.html">Terms of Service</a>
+        <a href="/account-deletion.html">Account & Data Deletion</a>
+      </nav>
+      <div class="badge">LEGAL & PRIVACY</div>
+      <h1>Privacy Policy</h1>
+      <div class="effective-date">Application: <strong>Repeto (com.repeto.tasks)</strong> | Effective Date: September 13, 2026</div>
+    </header>
+
+    <div class="card">
+      <h2>1. Introduction</h2>
+      <p>
+        Welcome to <strong>Repeto: Recurring Tasks & Chores</strong> ("Repeto", "we", "our", or "us").
+        We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how our
+        mobile application and web services collect, use, store, and protect your information when you use our services.
+      </p>
+      <p>
+        By installing, registering, or using Repeto, you consent to the practices described in this policy.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>2. Information We Collect</h2>
+      <p>We collect only the minimum amount of data required to provide our recurring habit, chore management, and collaboration features:</p>
+      <ul>
+        <li><strong>Account Credentials</strong>: When signing in via Google Sign-In, we receive your email address,
+          full name, and display avatar provided by Google's OAuth service to create and secure your user profile.</li>
+        <li><strong>Task & Household Data</strong>: Tasks, due dates, recurrence frequencies, completion history,
+          streaks, and household member IDs you create in the app. This data is synchronized to our secure Cloud
+          Firestore database so you can access your tasks across devices and collaborate with household members.</li>
+        <li><strong>Mobile Phone Number</strong>: A valid 10-digit mobile number provided during profile setup to verify member identity, facilitate household chore collaboration, and prevent duplicate account creation.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>3. Permissions & On-Device Processing</h2>
+      <p>Repeto requests specific permissions for core functionality:</p>
+
+      <div class="highlight-box">
+        <p><strong>Camera Permission (<code>CAMERA</code>)</strong>: Repeto accesses the camera strictly and solely to
+          scan QR codes when joining or inviting family and roommates to a shared Household. Camera frames are processed
+          entirely on your device in real-time. <strong>Repeto never captures, records, saves, or uploads photos or
+            videos from your camera.</strong></p>
+      </div>
+
+      <ul>
+        <li><strong>Exact Alarms (<code>SCHEDULE_EXACT_ALARM</code>)</strong>: Used solely to trigger timely push
+          notifications for recurring tasks and habit due dates at the exact minute you schedule them, even when your
+          device is idle.</li>
+        <li><strong>Post Notifications (<code>POST_NOTIFICATIONS</code>)</strong>: Used to display task reminders, daily
+          summaries, and household chore nudges on your device.</li>
+        <li><strong>Device Reboot Notification (<code>RECEIVE_BOOT_COMPLETED</code>)</strong>: Used solely to reschedule
+          your pending local reminder alarms when your phone restarts.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>4. How We Use & Share Your Data</h2>
+      <p>Your information is used strictly to:</p>
+      <ul>
+        <li>Provide core task scheduling, recurrence calculations, and household chore synchronization.</li>
+        <li>Deliver local reminders and push notifications.</li>
+        <li>Enable household members you explicitly invite to view and complete shared chores.</li>
+      </ul>
+      <p><strong>We do NOT sell, rent, monetize, or share your personal information with third-party advertisers or data
+          brokers.</strong></p>
+    </div>
+
+    <div class="card">
+      <h2>5. Security & Data Storage</h2>
+      <p>
+        All data transmitted between the Repeto application and our backend servers (Google Firebase Cloud Services) is
+        encrypted using industry-standard Transport Layer Security (TLS/HTTPS).
+        Access to task data is protected by strict database security rules ensuring that only authenticated users and
+        confirmed household members can access their respective tasks.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>6. User Rights & Account Deletion</h2>
+      <p>
+        You retain full control over your personal data:
+      </p>
+      <div class="deletion-box">
+        <p><strong>In-App Deletion</strong>: You can delete your account and all associated personal task history
+          instantly inside the app by going to <strong>Profile &rarr; Delete Account</strong>.</p>
+      </div>
+      <p>
+        <strong>Web Deletion Request</strong>: If you have uninstalled the app or cannot log in, you can request
+        permanent deletion of your account and all stored data by emailing us at <a
+          href="mailto:devstudio.hm@gmail.com">devstudio.hm@gmail.com</a> with the subject line <em>"Account Deletion
+          Request"</em> from the Google account used to register. Alternatively, visit our <a href="/account-deletion.html">Account & Data Deletion Portal</a>. Your account and data will be permanently purged
+        within 7 business days.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>7. Children's Privacy</h2>
+      <p>
+        Repeto is not targeted at children under the age of 13. We do not knowingly collect personal information from
+        children under 13. If we become aware that a child under 13 has provided personal data, we will immediately
+        delete such data.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>8. Changes to This Policy</h2>
+      <p>
+        We may update our Privacy Policy periodically. We will notify you of any material changes by updating the
+        effective date at the top of this page.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>9. Contact Us</h2>
+      <p>If you have any questions or concerns regarding this Privacy Policy or your data, please contact us:</p>
+      <ul>
+        <li>Email: <a href="mailto:devstudio.hm@gmail.com">devstudio.hm@gmail.com</a></li>
+        <li>Developer: Team Devstudio.hm</li>
+        <li>Website: <a href="https://repeto.online">https://repeto.online</a></li>
+        <li>App: Repeto: Recurring Tasks & Chores</li>
+      </ul>
+    </div>
+
+    <footer>
+      <p style="margin-bottom: 8px;">
+        <a href="/">App</a> &bull; <a href="/privacy.html">Privacy Policy</a> &bull; <a href="/terms.html">Terms of Service</a> &bull; <a href="/account-deletion.html">Data Deletion</a>
+      </p>
+      &copy; 2026 Repeto. All rights reserved.
+    </footer>
+  </div>
+
+</body>
+
+</html>

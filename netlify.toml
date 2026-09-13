@@ -1,0 +1,55 @@
+# Netlify configuration for Repeto Web App & Play Console landing endpoints
+[build]
+  command = "npm run build:web"
+  publish = "dist"
+
+# Ensure clean routing to static legal and policy pages for Play Console bots
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy-policy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms-of-service"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/delete-account"
+  to = "/account-deletion.html"
+  status = 200
+
+[[redirects]]
+  from = "/account-deletion"
+  to = "/account-deletion.html"
+  status = 200
+
+# Expo Router Client-Side Routing Fallback (SPA)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security and cache headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/.well-known/*"
+  [headers.values]
+    Content-Type = "application/json"
+    Access-Control-Allow-Origin = "*"
