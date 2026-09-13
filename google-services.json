@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:190445167944:android:771adf84ac206fc794bf7d",
+        "mobilesdk_app_id": "1:190445167944:android:6e1fc96fee9634b294bf7d",
         "android_client_info": {
-          "package_name": "com.repeto.app"
+          "package_name": "com.repeto.tasks"
         }
       },
       "oauth_client": [

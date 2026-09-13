@@ -4,7 +4,7 @@ export const firebaseConfig = {
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? 'repeto-ff21c',
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? 'repeto-ff21c.firebasestorage.app',
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '190445167944',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '1:190445167944:android:771adf84ac206fc794bf7d',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '1:190445167944:android:6e1fc96fee9634b294bf7d',
 };
 
 export const googleWebClientId =

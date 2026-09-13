@@ -16,11 +16,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.repeto.app",
+      "bundleIdentifier": "com.repeto.tasks",
       "googleServicesFile": "./google-services.json"
     },
     "android": {
-      "package": "com.repeto.app",
+      "package": "com.repeto.tasks",
       "versionCode": 1,
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
