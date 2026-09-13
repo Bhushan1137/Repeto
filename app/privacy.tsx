@@ -69,6 +69,9 @@ export default function PrivacyScreen() {
                     • <Text style={styles.boldText}>Household Collaboration:</Text> If you join or create a shared household, the household name, member display names, and tasks shared within that household.
                   </Text>
                   <Text style={styles.bulletText}>
+                    • <Text style={styles.boldText}>Mobile Phone Number:</Text> A valid mobile number required during profile setup to verify member identity and facilitate household chore collaboration.
+                  </Text>
+                  <Text style={styles.bulletText}>
                     • <Text style={styles.boldText}>Device Preferences:</Text> Your chosen app language (English or Hindi) and your notification permission status.
                   </Text>
                 </Card.Content>
@@ -182,6 +185,9 @@ export default function PrivacyScreen() {
                   </Text>
                   <Text style={styles.bulletText}>
                     • <Text style={styles.boldText}>घर (Household) सहयोग:</Text> यदि आप किसी साझा घर में शामिल होते हैं, तो घर का नाम और सदस्यों के बीच साझा कार्य।
+                  </Text>
+                  <Text style={styles.bulletText}>
+                    • <Text style={styles.boldText}>मोबाइल नंबर:</Text> प्रोफ़ाइल सेटअप के दौरान एक वैध 10-अंकीय मोबाइल नंबर अनिवार्य है, जो परिवार के सदस्यों की पहचान और साझा कार्य प्रबंधन के लिए आवश्यक है।
                   </Text>
                 </Card.Content>
               </Card>
