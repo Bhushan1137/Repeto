@@ -41,7 +41,7 @@ const FEATURES = [
 export default function SignInScreen() {
   const router = useRouter();
   const { language } = useOnboarding();
-  const { signInWithGoogle, signInWithEmail, setUser } = useAuth();
+  const { signInWithGoogle, signInWithEmail } = useAuth();
   const { translate } = useTranslation(language);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
