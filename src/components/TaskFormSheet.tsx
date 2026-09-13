@@ -107,14 +107,18 @@ export function TaskFormSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalContainer}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <Card style={styles.sheet} mode="elevated">
           <View style={[styles.categoryAccentStrip, { backgroundColor: categoryAccent }]} />
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             <Text style={styles.heading}>{heading}</Text>
             <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
 
@@ -210,7 +214,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 6,
   },
-  body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 36 },
+  body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 80 },
   heading: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginBottom: 2 },
   subHeading: { fontFamily: 'Manrope_500Medium', fontSize: 13, color: Colors.inkSoft, marginBottom: 16 },
 });

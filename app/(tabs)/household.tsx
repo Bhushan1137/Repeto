@@ -910,7 +910,7 @@ function HouseholdView({
                   <View style={styles.qrCodeWrapper}>
                     <QRCode value={user.userCode} size={140} />
                     <Text style={styles.qrCodeInstruction}>
-                      {language === 'hi' ? 'रूममेट इस कोड को अपने फोन से स्कैन कर सकते हैं' : 'Roommate can scan this with Repeato scanner'}
+                      {language === 'hi' ? 'रूममेट इस कोड को अपने फोन से स्कैन कर सकते हैं' : 'Roommate can scan this with Repeto scanner'}
                     </Text>
                   </View>
                 )}

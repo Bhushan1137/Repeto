@@ -18,7 +18,7 @@ export default function TermsScreen() {
           <Card style={styles.headerCard} mode="elevated">
             <Card.Content>
               <Text style={styles.headerTitle}>
-                {lang === 'hi' ? 'Repeato में आपका स्वागत है' : 'Welcome to Repeato'}
+                {lang === 'hi' ? 'Repeto में आपका स्वागत है' : 'Welcome to Repeto'}
               </Text>
               <Text style={styles.headerSubtitle}>
                 {lang === 'hi'
@@ -45,10 +45,10 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. Welcome & Acceptance of Terms</Text>
                   <Text style={styles.bodyText}>
-                    Hello and welcome to Repeato! We created this application to help individuals, roommates, and families easily manage daily chores, bills, and repeating routines in harmony.
+                    Hello and welcome to Repeto! We created this application to help individuals, roommates, and families easily manage daily chores, bills, and repeating routines in harmony.
                   </Text>
                   <Text style={styles.bodyText}>
-                    By installing, opening, or using Repeato, you agree to these terms in a spirit of mutual trust and respect. We wrote these terms in clear, friendly language so that everyone can easily understand them. If you do not agree with any part of these guidelines, please feel free to discontinue using the application.
+                    By installing, opening, or using Repeto, you agree to these terms in a spirit of mutual trust and respect. We wrote these terms in clear, friendly language so that everyone can easily understand them. If you do not agree with any part of these guidelines, please feel free to discontinue using the application.
                   </Text>
                 </Card.Content>
               </Card>
@@ -69,7 +69,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>3. Respectful Household Collaboration</Text>
                   <Text style={styles.bodyText}>
-                    Repeato offers shared spaces where family members and flatmates can share reminders, assign tasks, and split responsibilities together.
+                    Repeto offers shared spaces where family members and flatmates can share reminders, assign tasks, and split responsibilities together.
                   </Text>
                   <Text style={styles.bulletText}>
                     • <Text style={styles.bulletBold}>Mutual Respect:</Text> Please keep shared task titles, notes, and activity chats polite, supportive, and kind.
@@ -90,7 +90,7 @@ export default function TermsScreen() {
                     Everything you create—your tasks, lists, reminders, notes, and completion records—belongs entirely to you.
                   </Text>
                   <Text style={styles.bodyText}>
-                    You grant Repeato only the permission needed to sync your data across your devices, generate your scheduled alerts, and share tasks with members of your selected household. We never sell your personal content, and we never use your personal reminders for marketing or advertisement targeting.
+                    You grant Repeto only the permission needed to sync your data across your devices, generate your scheduled alerts, and share tasks with members of your selected household. We never sell your personal content, and we never use your personal reminders for marketing or advertisement targeting.
                   </Text>
                 </Card.Content>
               </Card>
@@ -99,7 +99,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>5. Account Deletion & Your Control (Google Play Compliance)</Text>
                   <Text style={styles.bodyText}>
-                    You have total ownership and control over your account at all times. In compliance with Google Play Store User Data & Account Deletion policies, Repeato provides an easy, direct in-app path to delete your account:
+                    You have total ownership and control over your account at all times. In compliance with Google Play Store User Data & Account Deletion policies, Repeto provides an easy, direct in-app path to delete your account:
                   </Text>
                   <View style={styles.calloutBox}>
                     <Text style={styles.calloutTitle}>How to Delete Your Account In-App:</Text>
@@ -135,7 +135,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>7. Changes to These Terms</Text>
                   <Text style={styles.bodyText}>
-                    As Repeato grows and introduces new capabilities, we may periodically update these terms. When changes occur, the updated document will always be accessible here in the app. Continuing to use Repeato after updates indicates your agreement with the updated terms.
+                    As Repeto grows and introduces new capabilities, we may periodically update these terms. When changes occur, the updated document will always be accessible here in the app. Continuing to use Repeto after updates indicates your agreement with the updated terms.
                   </Text>
                 </Card.Content>
               </Card>
@@ -161,7 +161,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. सेवा की शर्तों की स्वीकृति</Text>
                   <Text style={styles.bodyText}>
-                    नमस्ते! Repeato में आपका हार्दिक स्वागत है। हमने इस ऐप को इसलिए बनाया है ताकि आप, आपका परिवार और आपके साथी मिलकर बिना किसी तनाव के अपने दैनिक कार्यों, बिलों और आदतों को आसानी से व्यवस्थित रख सकें।
+                    नमस्ते! Repeto में आपका हार्दिक स्वागत है। हमने इस ऐप को इसलिए बनाया है ताकि आप, आपका परिवार और आपके साथी मिलकर बिना किसी तनाव के अपने दैनिक कार्यों, बिलों और आदतों को आसानी से व्यवस्थित रख सकें।
                   </Text>
                   <Text style={styles.bodyText}>
                     ऐप का उपयोग करके आप इन सरल और मित्रवत नियमों का सम्मान करने के लिए सहमत होते हैं। हमने इन नियमों को बिल्कुल सरल और सहज भाषा में लिखा है ताकि हर कोई इन्हें आसानी से समझ सके।
@@ -185,7 +185,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>3. पारिवारिक शिष्टाचार और सकारात्मक सहयोग</Text>
                   <Text style={styles.bodyText}>
-                    Repeato आपको परिवार और रूममेट्स के साथ कार्य साझा करने की सुविधा देता है। ऐप को एक खुशनुमा और सुरक्षित मंच बनाए रखने के लिए:
+                    Repeto आपको परिवार और रूममेट्स के साथ कार्य साझा करने की सुविधा देता है। ऐप को एक खुशनुमा और सुरक्षित मंच बनाए रखने के लिए:
                   </Text>
                   <Text style={styles.bulletText}>
                     • <Text style={styles.bulletBold}>आपसी सम्मान:</Text> कृपया सभी के साथ आदर, विनम्रता और सकारात्मकता से पेश आएं।
@@ -206,7 +206,7 @@ export default function TermsScreen() {
                     आप जो भी कार्य, नोट्स या सूचियाँ ऐप में जोड़ते हैं, वे पूरी तरह से आपकी अपनी हैं।
                   </Text>
                   <Text style={styles.bodyText}>
-                    Repeato केवल आपके डेटा को सुरक्षित रूप से सिंक करने और समय पर सूचनाएं भेजने के लिए इसका उपयोग करता है। हम आपका व्यक्तिगत डेटा कभी किसी को नहीं बेचते और न ही इसका उपयोग विज्ञापनों के लिए करते हैं।
+                    Repeto केवल आपके डेटा को सुरक्षित रूप से सिंक करने और समय पर सूचनाएं भेजने के लिए इसका उपयोग करता है। हम आपका व्यक्तिगत डेटा कभी किसी को नहीं बेचते और न ही इसका उपयोग विज्ञापनों के लिए करते हैं।
                   </Text>
                 </Card.Content>
               </Card>
@@ -239,7 +239,7 @@ export default function TermsScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>6. निरंतर सुधार और सेवा की गुणवत्ता</Text>
                   <Text style={styles.bodyText}>
-                    हम Repeato को अधिक तेज़, स्थिर और उपयोगी बनाने के लिए निरंतर काम करते हैं। हम आपको 100% संतोषजनक सेवा देने का हरसंभव प्रयास करते हैं। नेटवर्क समस्याओं या रखरखाव के कारण कभी-कभार आने वाली रुकावटों को हम प्राथमिकता के साथ हल करते हैं।
+                    हम Repeto को अधिक तेज़, स्थिर और उपयोगी बनाने के लिए निरंतर काम करते हैं। हम आपको 100% संतोषजनक सेवा देने का हरसंभव प्रयास करते हैं। नेटवर्क समस्याओं या रखरखाव के कारण कभी-कभार आने वाली रुकावटों को हम प्राथमिकता के साथ हल करते हैं।
                   </Text>
                 </Card.Content>
               </Card>

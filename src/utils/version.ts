@@ -22,7 +22,7 @@ export const BUILD_NUMBER: string | number =
  */
 export function getAppVersionLabel(language: 'en' | 'hi' = 'en'): string {
   if (language === 'hi') {
-    return `Repeato v${APP_VERSION} • प्यार से बनाया गया`;
+    return `Repeto v${APP_VERSION} • प्यार से बनाया गया`;
   }
-  return `Repeato v${APP_VERSION} • Built with care`;
+  return `Repeto v${APP_VERSION} • Built with care`;
 }

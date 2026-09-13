@@ -48,7 +48,9 @@ export function RecommendationProvider({ children }: { children: React.ReactNode
             if (Array.isArray(parsed)) {
               notifiedCampaignIdsRef.current = new Set(parsed);
             }
-          } catch {}
+          } catch {
+            // Ignore JSON parse error for malformed cached campaign IDs
+          }
         }
         setHasLoadedNotified(true);
       })

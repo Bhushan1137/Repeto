@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getFirestoreDb, getFirebaseAuth } from './app';
 import type { RepeatingTask, UserProfile } from '@/types';

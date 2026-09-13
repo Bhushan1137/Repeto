@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Modal, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Modal, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { Text, TextInput as PaperInput, Card } from "react-native-paper";
 import { Colors, Radius } from "@/constants/theme";
 import { HOUSEHOLD_ICONS, HOUSEHOLD_COLORS, MAX_HOUSEHOLDS } from "@/domain/household";
@@ -70,11 +70,15 @@ export function CreateHouseholdSheet({
     >
       <Pressable style={styles.backdrop} onPress={handleClose} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.sheetWrapper}
       >
         <Card style={styles.sheet} mode="elevated">
-          <Card.Content style={styles.content}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.headerTitle}>
@@ -194,7 +198,7 @@ export function CreateHouseholdSheet({
                 </Pressable>
               </>
             )}
-          </Card.Content>
+          </ScrollView>
         </Card>
       </KeyboardAvoidingView>
     </Modal>
@@ -222,7 +226,7 @@ const styles = StyleSheet.create({
   content: {
     paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 32,
+    paddingBottom: 48,
     gap: 18,
   },
   header: {

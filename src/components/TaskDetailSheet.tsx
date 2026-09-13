@@ -215,7 +215,7 @@ export function TaskDetailSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1, justifyContent: 'flex-end' }}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
@@ -258,7 +258,12 @@ export function TaskDetailSheet({
           </TouchableRipple>
         </LinearGradient>
 
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.body}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           {/* Escalation warning */}
           {task.escalationCount >= 2 && (
             <View style={styles.escalationChip}>
@@ -992,7 +997,7 @@ const styles = StyleSheet.create({
   title: { ...Typography.displaySm, color: Colors.onDark, marginBottom: 4, lineHeight: 26 },
   freq: { ...Typography.bodySm, color: Colors.onDarkMuted },
   amount: { ...Typography.title, color: Colors.marigoldLight, marginTop: 6, fontSize: 15 },
-  body: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 16 },
+  body: { paddingHorizontal: 16, paddingBottom: 80, paddingTop: 16 },
 
   escalationChip: {
     flexDirection: 'row',

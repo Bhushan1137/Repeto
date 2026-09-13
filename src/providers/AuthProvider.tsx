@@ -368,9 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const userId = user?.id ?? deletedAccountInfo?.userId;
     setDeletedAccountInfo(null);
     setUser(null);
-    if (userId) {
-      await userRepository.clear(userId);
-    }
+    await userRepository.clear(userId);
     await cancelAllNotifications();
     try {
       await signOutFirebase();

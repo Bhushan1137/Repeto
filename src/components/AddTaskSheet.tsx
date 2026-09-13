@@ -112,13 +112,17 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalContainer}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <Card style={styles.sheet} mode="elevated">
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             <Text style={styles.heading}>{language === 'hi' ? 'कार्य विवरण' : 'Task Details'}</Text>
             <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
 
@@ -223,7 +227,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 6,
   },
-  body: { paddingHorizontal: 22, paddingBottom: 28 },
+  body: { paddingHorizontal: 22, paddingBottom: 80 },
   stepIndicatorRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -69,8 +69,8 @@ export default function ProfileScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
     >
       <ScrollView
         contentContainerStyle={[
@@ -81,6 +81,7 @@ export default function ProfileScreen() {
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         testID="profile-screen-scroll"
       >
         <OnboardingProgress step={2} />
@@ -111,7 +112,7 @@ export default function ProfileScreen() {
           editable={false}
           error={undefined}
           hint={translate('emailFromGoogle')}
-          testID="profile-name-input"
+          testID="profile-email-input"
         />
 
         <FormField

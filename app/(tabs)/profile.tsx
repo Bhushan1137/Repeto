@@ -501,7 +501,7 @@ export default function ProfileScreen() {
           <Pressable style={styles.backdrop} onPress={() => setShowEditSheet(false)} />
           <Card style={styles.sheet} mode="elevated">
             <View style={styles.modalHandle} />
-            <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
               {/* Header with avatar preview */}
               <View style={styles.editAvatarPreviewRow}>
                 <View style={styles.editAvatarPreview}>
@@ -917,7 +917,7 @@ const styles = StyleSheet.create({
   },
   sheetBody: {
     paddingHorizontal: 22,
-    paddingBottom: 28,
+    paddingBottom: 48,
   },
   editAvatarPreviewRow: {
     flexDirection: 'row',

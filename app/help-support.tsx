@@ -56,8 +56,8 @@ const FAQ_ITEMS: FAQItem[] = [
     category: 'tasks',
     qEn: 'How do repeating tasks & reminders work?',
     qHi: 'रिपीटिंग टास्क और रिमाइंडर कैसे काम करते हैं?',
-    aEn: 'You can set tasks to repeat Daily, Weekly, Monthly, Yearly, or on Custom intervals (e.g. Every 15 days, every 2nd Saturday). Repeato schedules precise local alarms so you get reminded even without internet.',
-    aHi: 'आप कार्यों को दैनिक, साप्ताहिक, मासिक, वार्षिक या कस्टम अंतराल (उदा. हर 15 दिन) पर सेट कर सकते हैं। Repeato सटीक अलार्म सेट करता है ताकि इंटरनेट न होने पर भी रिमाइंडर मिले।',
+    aEn: 'You can set tasks to repeat Daily, Weekly, Monthly, Yearly, or on Custom intervals (e.g. Every 15 days, every 2nd Saturday). Repeto schedules precise local alarms so you get reminded even without internet.',
+    aHi: 'आप कार्यों को दैनिक, साप्ताहिक, मासिक, वार्षिक या कस्टम अंतराल (उदा. हर 15 दिन) पर सेट कर सकते हैं। Repeto सटीक अलार्म सेट करता है ताकि इंटरनेट न होने पर भी रिमाइंडर मिले।',
     icon: 'calendar-outline',
   },
   {
@@ -72,8 +72,8 @@ const FAQ_ITEMS: FAQItem[] = [
   {
     id: 'faq-3',
     category: 'offline',
-    qEn: 'Does Repeato work offline?',
-    qHi: 'क्या Repeato बिना इंटरनेट के काम करता है?',
+    qEn: 'Does Repeto work offline?',
+    qHi: 'क्या Repeto बिना इंटरनेट के काम करता है?',
     aEn: 'Yes! All your routines, tasks, and history are stored safely on your phone using SQLite. You can mark tasks done or add new ones offline — they sync to the cloud automatically once you reconnect.',
     aHi: 'हाँ! आपके सभी कार्य और इतिहास आपके फोन पर सुरक्षित रहते हैं। आप बिना इंटरनेट के भी टास्क पूरे कर सकते हैं — ऑनलाइन आने पर वे अपने आप सिंक हो जाते हैं।',
     icon: 'checkmark-done-outline',
@@ -92,8 +92,8 @@ const FAQ_ITEMS: FAQItem[] = [
     category: 'tasks',
     qEn: 'Why am I not receiving reminders?',
     qHi: 'मुझे रिमाइंडर नोटिफिकेशन क्यों नहीं मिल रहे हैं?',
-    aEn: 'Make sure Notifications are enabled in Profile settings. On Android, check that Battery Optimization is disabled for Repeato so background alarms can fire on time.',
-    aHi: 'जांचें कि प्रोफ़ाइल में सूचनाएं चालू हैं। Android पर, बैटरी ऑप्टिमाइज़ेशन में Repeato के लिए छूट दें ताकि समय पर अलार्म बज सके।',
+    aEn: 'Make sure Notifications are enabled in Profile settings. On Android, check that Battery Optimization is disabled for Repeto so background alarms can fire on time.',
+    aHi: 'जांचें कि प्रोफ़ाइल में सूचनाएं चालू हैं। Android पर, बैटरी ऑप्टिमाइज़ेशन में Repeto के लिए छूट दें ताकि समय पर अलार्म बज सके।',
     icon: 'shield-checkmark-outline',
   },
   {
@@ -217,7 +217,7 @@ export default function HelpSupportScreen() {
     const newTicket: SupportTicket = {
       id: ticketId,
       userId: user.uid,
-      userName: user.displayName || 'Repeato User',
+      userName: user.displayName || 'Repeto User',
       userEmail: user.email || '',
       subject: subject.trim(),
       message: message.trim(),
@@ -382,9 +382,11 @@ export default function HelpSupportScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 16) + 32 },
+          { paddingBottom: Math.max(insets.bottom, 16) + (showNewTicketForm ? 140 : 32) },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {activeTab === 'faq' ? (
           <>
@@ -689,6 +691,8 @@ export default function HelpSupportScreen() {
                 { paddingBottom: 24 },
               ]}
               showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
             >
               {/* Initial User Message */}
               <View style={styles.bubbleUser}>
@@ -712,7 +716,7 @@ export default function HelpSupportScreen() {
                   >
                     <View style={styles.bubbleSenderRow}>
                       <Text style={[styles.bubbleSenderName, isAdmin && styles.bubbleAdminName]}>
-                        {isAdmin ? (isHi ? 'Repeato सहायता टीम' : 'Repeato Support') : (selectedTicket.userName || 'You')}
+                        {isAdmin ? (isHi ? 'Repeto सहायता टीम' : 'Repeto Support') : (selectedTicket.userName || 'You')}
                       </Text>
                       <Text style={styles.bubbleTimestamp}>{formatTime(r.timestamp)}</Text>
                     </View>

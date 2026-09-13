@@ -22,8 +22,8 @@ export default function PrivacyScreen() {
               </Text>
               <Text style={styles.headerSubtitle}>
                 {lang === 'hi'
-                  ? 'Repeato को सरल, सुरक्षित और आपके भरोसे के योग्य बनाने के लिए हम आपका डेटा कैसे संभालते हैं, यहाँ जानें।'
-                  : 'A simple, friendly guide on how Repeato keeps your reminders, routines, and family data safe and private.'}
+                  ? 'Repeto को सरल, सुरक्षित और आपके भरोसे के योग्य बनाने के लिए हम आपका डेटा कैसे संभालते हैं, यहाँ जानें।'
+                  : 'A simple, friendly guide on how Repeto keeps your reminders, routines, and family data safe and private.'}
               </Text>
 
               <SegmentedButtons
@@ -45,7 +45,7 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. Welcome & Our Promise</Text>
                   <Text style={styles.bodyText}>
-                    Welcome to Repeato! We designed this app to make remembering rent, bills, medicines, and chores easy and stress-free for you and your family.
+                    Welcome to Repeto! We designed this app to make remembering rent, bills, medicines, and chores easy and stress-free for you and your family.
                   </Text>
                   <Text style={styles.bodyText}>
                     We believe privacy policies should be easy to read and understand, without confusing legal talk. Our core promise is simple: your routines and notes belong to you. We do not sell your personal data, we do not show advertisements, and we only collect what is strictly necessary to run your reminders reliably.
@@ -55,7 +55,7 @@ export default function PrivacyScreen() {
 
               <Card style={styles.sectionCard} mode="elevated">
                 <Card.Content>
-                  <Text style={styles.sectionTitle}>2. What Information Repeato Collects</Text>
+                  <Text style={styles.sectionTitle}>2. What Information Repeto Collects</Text>
                   <Text style={styles.bodyText}>
                     To provide you with automatic alarms and real-time syncing, we collect the following details:
                   </Text>
@@ -127,7 +127,7 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>6. Device Permissions</Text>
                   <Text style={styles.bodyText}>
-                    Repeato requests minimal device permissions:
+                    Repeto requests minimal device permissions:
                   </Text>
                   <Text style={styles.bulletText}>
                     • <Text style={styles.boldText}>Notifications & Alarms:</Text> To alert you at the exact time a recurring task is due. You can turn this off anytime in your phone settings.
@@ -157,7 +157,7 @@ export default function PrivacyScreen() {
                 <Card.Content>
                   <Text style={styles.sectionTitle}>1. स्वागत और हमारा वादा</Text>
                   <Text style={styles.bodyText}>
-                    Repeato में आपका स्वागत है! हमने यह ऐप इसलिए बनाया है ताकि घर का किराया, बिजली बिल, दवाइयां और घरेलू काम याद रखना आपके और आपके परिवार के लिए आसान और चिंतामुक्त रहे।
+                    Repeto में आपका स्वागत है! हमने यह ऐप इसलिए बनाया है ताकि घर का किराया, बिजली बिल, दवाइयां और घरेलू काम याद रखना आपके और आपके परिवार के लिए आसान और चिंतामुक्त रहे।
                   </Text>
                   <Text style={styles.bodyText}>
                     हमारा वादा सरल है: आपका डेटा केवल आपका है। हम आपकी व्यक्तिगत जानकारी कभी किसी को नहीं बेचते, कोई विज्ञापन नहीं दिखाते, और केवल वही जानकारी लेते हैं जो आपके रिमाइंडर्स को समय पर चलाने के लिए आवश्यक है।

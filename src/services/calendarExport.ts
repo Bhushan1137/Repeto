@@ -5,7 +5,7 @@ export function generateCalendarIcs(tasks: RepeatingTask[]): string {
   const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Repeato//Task Calendar//EN',
+    'PRODID:-//Repeto//Task Calendar//EN',
     'CALSCALE:GREGORIAN',
   ];
 
@@ -23,7 +23,7 @@ export function generateCalendarIcs(tasks: RepeatingTask[]): string {
     };
 
     ics.push('BEGIN:VEVENT');
-    ics.push(`UID:${t.id}@repeato.app`);
+    ics.push(`UID:${t.id}@repeto.app`);
     ics.push(`DTSTAMP:${formatIcsDate(new Date())}`);
     ics.push(`DTSTART:${formatIcsDate(dtstart)}`);
     ics.push(`DTEND:${formatIcsDate(dtend)}`);
@@ -53,7 +53,7 @@ export async function exportCalendar(tasks: RepeatingTask[]): Promise<boolean> {
       const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', 'repeato-tasks.ics');
+      link.setAttribute('download', 'repeto-tasks.ics');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -65,7 +65,7 @@ export async function exportCalendar(tasks: RepeatingTask[]): Promise<boolean> {
     try {
       await Share.share({
         message: icsContent,
-        title: 'repeato-tasks.ics',
+        title: 'repeto-tasks.ics',
       });
       return true;
     } catch {

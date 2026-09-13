@@ -51,13 +51,13 @@ export function RecurrencePickerModal({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalKeyboardAvoiding}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
-          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <Text style={styles.modalTitle}>{translate('howDoesItRepeat')}</Text>
           <Text style={styles.modalSub}>{translate('howDoesItRepeatSub')}</Text>
 
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 80,
   },
   modalTitle: {
     fontFamily: 'Fraunces_700Bold',

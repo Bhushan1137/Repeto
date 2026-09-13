@@ -36,7 +36,7 @@ function getNativeDb() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const SQLite = require('expo-sqlite');
-      nativeDb = SQLite.openDatabaseSync('repeato.db');
+      nativeDb = SQLite.openDatabaseSync('repeto.db');
       
       // Initialize tables
       nativeDb.execSync(`
@@ -154,7 +154,7 @@ export async function saveTasksSqlite(userId: string, tasks: RepeatingTask[]): P
       return;
     } catch (err) {
       try { db.execSync('ROLLBACK'); } catch { /* ignore rollback error */ }
-      console.warn('[Repeato SQLite Native] Error saving tasks, falling back to AsyncStorage:', err);
+      console.warn('[Repeto SQLite Native] Error saving tasks, falling back to AsyncStorage:', err);
     }
   }
   await AsyncStorage.setItem(tasksKey(userId), JSON.stringify(tasks));
@@ -171,7 +171,7 @@ export async function saveSingleTaskSqlite(userId: string, task: RepeatingTask):
       );
       return;
     } catch (err) {
-      console.warn('[Repeato SQLite Native] Error saving single task, falling back to AsyncStorage:', err);
+      console.warn('[Repeto SQLite Native] Error saving single task, falling back to AsyncStorage:', err);
     }
   }
   const current = await loadTasksSqlite(userId);
@@ -188,7 +188,7 @@ export async function deleteSingleTaskSqlite(userId: string, taskId: string): Pr
       db.runSync('DELETE FROM tasks WHERE id = ? AND user_id = ?', [taskId, userId]);
       return;
     } catch (err) {
-      console.warn('[Repeato SQLite Native] Error deleting task, falling back to AsyncStorage:', err);
+      console.warn('[Repeto SQLite Native] Error deleting task, falling back to AsyncStorage:', err);
     }
   }
   const current = await loadTasksSqlite(userId);
@@ -269,9 +269,9 @@ export async function clearAllSqliteData(userId?: string): Promise<void> {
   }
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const repeatoKeys = keys.filter((k) => k.startsWith('@repeato/'));
-    if (repeatoKeys.length > 0) {
-      await Promise.all(repeatoKeys.map((k) => AsyncStorage.removeItem(k)));
+    const storageKeys = keys.filter((k) => k.startsWith('@repeato/') || k.startsWith('@repeto/'));
+    if (storageKeys.length > 0) {
+      await Promise.all(storageKeys.map((k) => AsyncStorage.removeItem(k)));
     }
   } catch {
     await AsyncStorage.removeItem(KEYS.user);

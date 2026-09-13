@@ -7,8 +7,8 @@ import { useAuth } from '@/providers/AuthProvider';
 import { signInWithEmail } from '@/services/authService';
 import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,7 +22,7 @@ const FEATURES = [
   {
     icon: 'chatbox-ellipses-outline',
     title: 'Type Like You Talk',
-    description: "Just type 'Pay rent on the 5th of every month ₹10000'. Repeato sets it up instantly.",
+    description: "Just type 'Pay rent on the 5th of every month ₹10000'. Repeto sets it up instantly.",
     color: Colors.tealDeep,
   },
   {
@@ -59,6 +59,15 @@ export default function SignInScreen() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (emailFormOpen) {
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 120);
+    }
+  }, [emailFormOpen]);
 
   const handleEmailSignIn = async () => {
     if (!agreed) {
@@ -161,16 +170,24 @@ export default function SignInScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.scrollView}
-      contentContainerStyle={[
-        styles.scrollContent,
-        {
-          paddingTop: Math.max(insets.top, 16) + 8,
-          paddingBottom: Math.max(insets.bottom, 16) + 8,
-        },
-      ]}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: Math.max(insets.top, 16) + 8,
+            paddingBottom: Math.max(insets.bottom, 16) + (emailFormOpen ? 160 : 24),
+            justifyContent: emailFormOpen ? 'flex-start' : 'center',
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
       <View style={[styles.contentWrapper, { maxWidth: isLargeScreen ? 800 : 440 }]}>
 
         {/* 1. Progress Bar aligned at the top */}
@@ -402,6 +419,7 @@ export default function SignInScreen() {
         </View>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

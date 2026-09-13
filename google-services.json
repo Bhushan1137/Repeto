@@ -1,33 +1,33 @@
 {
   "project_info": {
-    "project_number": "706229177036",
-    "project_id": "repeato-1c216",
-    "storage_bucket": "repeato-1c216.firebasestorage.app"
+    "project_number": "190445167944",
+    "project_id": "repeto-ff21c",
+    "storage_bucket": "repeto-ff21c.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:706229177036:android:8e7fa490e8b2f3640d9069",
+        "mobilesdk_app_id": "1:190445167944:android:771adf84ac206fc794bf7d",
         "android_client_info": {
-          "package_name": "com.repeato.app"
+          "package_name": "com.repeto.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "706229177036-859mh57hf1htu1apnus349tjib4biu88.apps.googleusercontent.com",
+          "client_id": "190445167944-6nihi0ga32ctvitp3o36e4kv5lhuosss.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyAKMBxEVfd0w25iw2nL6rNEsG-yp0q3eu4"
+          "current_key": "AIzaSyBOi8GOqP-IXOBG-ql-FO9k9pnwVS4_Bwo"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "706229177036-859mh57hf1htu1apnus349tjib4biu88.apps.googleusercontent.com",
+              "client_id": "190445167944-6nihi0ga32ctvitp3o36e4kv5lhuosss.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

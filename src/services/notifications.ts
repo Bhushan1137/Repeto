@@ -146,7 +146,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   }
 
   const content: Notifications.NotificationContentInput = {
-    title: 'Repeato Reminder',
+    title: 'Repeto Reminder',
     body: `Reminder for "${task.title}"`,
     data: { taskId: task.id },
     categoryIdentifier: 'task-actions',
@@ -284,7 +284,7 @@ export async function sendTestNotification(): Promise<boolean> {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Repeato Reminder 🔔',
+        title: 'Repeto Reminder 🔔',
         body: 'Notifications are working properly on your device!',
         categoryIdentifier: 'task-actions',
         sound: true,

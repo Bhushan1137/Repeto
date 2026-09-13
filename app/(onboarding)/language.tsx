@@ -38,7 +38,7 @@ export default function LanguageScreen() {
         </Text>
         <Text style={styles.heroSub}>
           {language === 'hi'
-            ? 'वह भाषा चुनें जिसमें Repeato आपसे बात करे — आप इसे कभी भी बदल सकते हैं।'
+            ? 'वह भाषा चुनें जिसमें Repeto आपसे बात करे — आप इसे कभी भी बदल सकते हैं।'
             : 'Select your preferred language for reminders and navigation — you can update this anytime in Settings.'}
         </Text>
       </View>

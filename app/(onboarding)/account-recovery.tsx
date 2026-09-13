@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/AppIcon';
 import { Button } from '@/components/Button';
 import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
@@ -10,7 +9,6 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function AccountRecoveryScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { deletedAccountInfo, restoreAccount, freshStartAccount, signOut, language } = useAuth();
   const { translate } = useTranslation(language);
