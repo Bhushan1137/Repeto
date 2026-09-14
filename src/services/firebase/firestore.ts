@@ -333,9 +333,9 @@ export async function restoreUserRemote(userId: string): Promise<void> {
 /**
  * Permanently purge a user's data for a fresh start.
  * Deletes all sub-collections (tasks, notifications) and overwrites the user doc
- * with only a minimal "wiped" marker. The Firebase Auth account is kept.
+ * with a clean slate preserving id and email. The Firebase Auth account is kept.
  */
-export async function purgeUserDataRemote(userId: string): Promise<void> {
+export async function purgeUserDataRemote(userId: string, email?: string): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;
 
@@ -355,9 +355,10 @@ export async function purgeUserDataRemote(userId: string): Promise<void> {
     console.warn('[Repeato] purge: failed to delete notifications sub-collection', err);
   }
 
-  // Overwrite the user doc with a clean slate (only id preserved)
+  // Overwrite the user doc with a clean slate (id and email preserved)
   await setDoc(doc(db, 'users', userId), {
     id: userId,
+    email: email || '',
     isDeleted: false,
     purgedAt: new Date().toISOString(),
   });

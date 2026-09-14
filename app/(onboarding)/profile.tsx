@@ -16,21 +16,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { language, setName: setCtxName, setPhone: setCtxPhone, setEmail: setCtxEmail } = useOnboarding();
+  const { language, setName: setCtxName, setPhone: setCtxPhone, setEmail: setCtxEmail, email: ctxEmail } = useOnboarding();
   const { user, updateUser } = useAuth();
   const { translate } = useTranslation(language);
 
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
-  const [email] = useState(user?.email ?? '');
+  const [email, setEmail] = useState(user?.email || ctxEmail || '');
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (user?.name && !name) setName(user.name);
-    if (user?.email) setCtxEmail(user.email);
-  }, [user]);
+    const resolvedEmail = user?.email || ctxEmail || '';
+    if (resolvedEmail && !email) setEmail(resolvedEmail);
+    if (resolvedEmail) setCtxEmail(resolvedEmail);
+  }, [user, ctxEmail]);
 
   const handleContinue = async () => {
     const nameResult = validateName(name);
@@ -50,16 +52,17 @@ export default function ProfileScreen() {
     setLoading(true);
     try {
       const formattedPhone = formatPhone(phone);
+      const finalEmail = user?.email || email || ctxEmail || '';
       await updateUser({
         name: name.trim(),
         phone: formattedPhone || undefined,
-        email: user?.email ?? email,
+        email: finalEmail,
         language,
         profileComplete: true,
       });
       setCtxName(name.trim());
       setCtxPhone(formattedPhone);
-      setCtxEmail(user?.email ?? email);
+      setCtxEmail(finalEmail);
       router.replace('/(onboarding)/categories');
     } finally {
       setLoading(false);
@@ -108,7 +111,7 @@ export default function ProfileScreen() {
 
         <FormField
           label={translate('email')}
-          value={email || user?.email || ''}
+          value={user?.email || email || ctxEmail || ''}
           editable={false}
           error={undefined}
           hint={translate('emailFromGoogle')}

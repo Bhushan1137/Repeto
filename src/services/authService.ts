@@ -10,7 +10,7 @@ export interface SignInResult {
   ok: boolean;
   user?: UserProfile;
   isDeleted?: boolean;
-  deletedAccountInfo?: { deletedAt: string; purgeAfter: string | null; userId: string };
+  deletedAccountInfo?: { deletedAt: string; purgeAfter: string | null; userId: string; email?: string };
   error?: 'auth_unavailable' | 'cancelled' | 'failed' | 'redirect_pending';
   message?: string;
 }
@@ -65,6 +65,7 @@ export async function signInWithGoogle(language: Language): Promise<SignInResult
           deletedAt: remote.deletedAt ?? new Date().toISOString(),
           purgeAfter: remote.purgeAfter ?? null,
           userId: fbUser.uid,
+          email: fbUser.email ?? remote.email ?? '',
         },
       };
     }
@@ -115,6 +116,7 @@ export async function signInWithEmail(
           deletedAt: remote.deletedAt ?? new Date().toISOString(),
           purgeAfter: remote.purgeAfter ?? null,
           userId: fbUser.uid,
+          email: fbUser.email ?? remote.email ?? email.trim(),
         },
       };
     }

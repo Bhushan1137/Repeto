@@ -142,6 +142,7 @@ describe('End-to-End Auth Flow (Sign-Up, Sign-In, Sign-Out)', () => {
       expect(result.isDeleted).toBe(true);
       expect(result.deletedAccountInfo?.deletedAt).toBe('2026-09-01T12:00:00.000Z');
       expect(result.deletedAccountInfo?.userId).toBe('test-user-123');
+      expect(result.deletedAccountInfo?.email).toBe('tester@repeto.app');
     });
   });
 

@@ -45,7 +45,7 @@ interface AuthContextValue {
    * Contains {deletedAt, purgeAfter, userId} so the recovery screen can show the right UI.
    * Null when no deleted account is pending.
    */
-  deletedAccountInfo: { deletedAt: string; purgeAfter: string | null; userId: string } | null;
+  deletedAccountInfo: { deletedAt: string; purgeAfter: string | null; userId: string; email?: string } | null;
   /** Restore a previously deleted account — clears the soft-delete stamp */
   restoreAccount: () => Promise<{ ok: boolean; error?: string }>;
   /** Permanently purge data and begin fresh onboarding */
@@ -57,7 +57,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [deletedAccountInfo, setDeletedAccountInfo] = useState<{ deletedAt: string; purgeAfter: string | null; userId: string } | null>(null);
+  const [deletedAccountInfo, setDeletedAccountInfo] = useState<{ deletedAt: string; purgeAfter: string | null; userId: string; email?: string } | null>(null);
   const [savedLanguage, setSavedLanguage] = useState<Language>('en');
   const [languageSelected, setLanguageSelected] = useState(false);
   const { isOnline } = useNetworkStatus();
@@ -183,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   deletedAt: remote.deletedAt ?? new Date().toISOString(),
                   purgeAfter: remote.purgeAfter ?? null,
                   userId: firebaseUser.uid,
+                  email: firebaseUser.email ?? remote.email ?? '',
                 });
                 setUser(null);
                 setReady(true);
@@ -191,7 +192,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
               const matchingLocal = localUser && localUser.id === firebaseUser.uid ? localUser : null;
               const base = remote
-                ? (matchingLocal ? { ...matchingLocal, ...remote } : remote)
+                ? {
+                    ...(matchingLocal ?? {}),
+                    ...remote,
+                    email: remote.email || firebaseUser.email || matchingLocal?.email || '',
+                  }
                 : (matchingLocal ?? profileFromFirebaseUser(firebaseUser, language));
               const normalized = normalizeHouseholdProfile({
                 ...base,
@@ -707,20 +712,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!deletedAccountInfo) return { ok: false, error: 'no_deleted_account' };
     try {
       const targetUid = deletedAccountInfo.userId;
-      await purgeUserDataRemote(targetUid);
+      const auth = getFirebaseAuth();
+      const fbUser = auth?.currentUser;
+      const userEmail = fbUser?.email || deletedAccountInfo.email || '';
+
+      await purgeUserDataRemote(targetUid, userEmail);
       // Clear local data
       await userRepository.clear(targetUid).catch(() => {});
       await cancelAllNotifications().catch(() => {});
 
       // Build a clean fresh user profile so onboarding begins immediately
-      const auth = getFirebaseAuth();
-      const fbUser = auth?.currentUser;
       const baseProfile: UserProfile = fbUser
-        ? profileFromFirebaseUser(fbUser, savedLanguage)
+        ? {
+            ...profileFromFirebaseUser(fbUser, savedLanguage),
+            email: userEmail,
+          }
         : normalizeHouseholdProfile({
             id: targetUid,
             name: '',
-            email: '',
+            email: userEmail,
             phone: '',
             language: savedLanguage,
             languageSelected: Boolean(languageSelected),
@@ -732,6 +742,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const freshProfile = normalizeHouseholdProfile({
         ...baseProfile,
+        email: userEmail,
         isDeleted: false,
         deletedAt: undefined,
         purgeAfter: undefined,
