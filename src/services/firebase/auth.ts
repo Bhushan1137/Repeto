@@ -7,6 +7,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   sendPasswordResetEmail as firebaseSendPasswordReset,
   type User,
 } from 'firebase/auth';
@@ -105,8 +106,7 @@ export async function signInWithGoogleNative(): Promise<User> {
 }
 
 // ---------------------------------------------------------------------------
-// Email/Password sign-in — existing users only (no sign-up).
-// New users must register via Google sign-in.
+// Email/Password authentication
 // ---------------------------------------------------------------------------
 export async function signInWithEmailPassword(
   email: string,
@@ -118,7 +118,17 @@ export async function signInWithEmailPassword(
   return result.user;
 }
 
-/** Send a password-reset email so existing Google users can set an email/password credential. */
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string
+): Promise<User> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  return result.user;
+}
+
+/** Send a password-reset email */
 export async function sendPasswordResetEmail(email: string): Promise<void> {
   const auth = getFirebaseAuth();
   if (!auth) throw new Error('auth_unavailable');
@@ -146,20 +156,22 @@ export function getAuthErrorMessage(code: string): string {
     case 'auth/network-request-failed':
       return 'Network error. Check your connection and try again.';
     case 'auth/user-not-found':
-      return 'No account found with this email. Please sign in with Google first.';
+      return 'No account found with this email. Please check the email or create an account.';
     case 'auth/wrong-password':
       return 'Incorrect password. Use "Forgot password?" to reset it.';
     case 'auth/invalid-credential':
-      return 'Invalid email or password. New users must sign in with Google.';
+      return 'Invalid email or password. Please check your credentials.';
     case 'auth/invalid-email':
       return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password is too weak. Please use at least 6 characters.';
     case 'auth/too-many-requests':
       return 'Too many attempts. Please try again later.';
     case 'auth/email-already-in-use':
-      return 'An account with this email already exists.';
+      return 'An account with this email already exists. Please sign in instead.';
     case 'redirect_pending':
       return 'Redirecting to Google…';
     default:
-      return 'Sign-in failed. Please try again.';
+      return 'Authentication failed. Please try again.';
   }
 }

@@ -129,6 +129,37 @@ export async function signInWithEmail(
   }
 }
 
+export async function signUpWithEmail(
+  email: string,
+  pass: string,
+  language: Language,
+  name?: string
+): Promise<SignInResult> {
+  try {
+    const { signUpWithEmailPassword } = await import('@/services/firebase/auth');
+    const { saveUserRemote } = await import('@/services/firebase/firestore');
+    const fbUser = await signUpWithEmailPassword(email.trim(), pass);
+    const base = profileFromFirebaseUser(fbUser, language);
+    const user: UserProfile = {
+      ...base,
+      name: name?.trim() || base.name || email.trim().split('@')[0],
+      profileComplete: Boolean(name && name.trim().length >= 2),
+    };
+    try {
+      await saveUserRemote(user);
+    } catch {
+      // Non-blocking if remote save fails temporarily
+    }
+    return { ok: true, user };
+  } catch (err: unknown) {
+    const message =
+      err instanceof FirebaseError
+        ? getAuthErrorMessage(err.code)
+        : 'Sign-up failed. Please check your connection and try again.';
+    return { ok: false, error: 'failed', message };
+  }
+}
+
 /**
  * Soft-delete a user account.
  * Stamps the Firestore user document as deleted, then signs out.

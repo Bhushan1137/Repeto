@@ -14,6 +14,7 @@ export type AppIconName =
   | 'add'
   | 'close'
   | 'close-circle-outline'
+  | 'alert-circle-outline'
   | 'calendar-outline'
   | 'trash-outline'
   | 'share-outline'

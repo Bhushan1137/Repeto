@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { profileFromFirebaseUser, signInWithEmail, signInWithGoogle } from '@/services/authService';
+import { profileFromFirebaseUser, signInWithEmail, signInWithGoogle, signUpWithEmail } from '@/services/authService';
 import * as firebaseConfig from '@/services/firebase/config';
 import type { User } from 'firebase/auth';
 
@@ -37,6 +37,12 @@ describe('services/authService', () => {
 
   it('signInWithEmail returns failed result if auth errors out', async () => {
     const result = await signInWithEmail('test@example.com', 'wrongpass', 'en');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('failed');
+  });
+
+  it('signUpWithEmail returns failed result if signUp auth errors out', async () => {
+    const result = await signUpWithEmail('newuser@example.com', 'short', 'en', 'New User');
     expect(result.ok).toBe(false);
     expect(result.error).toBe('failed');
   });

@@ -7,7 +7,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -41,75 +41,125 @@ const FEATURES = [
 export default function SignInScreen() {
   const router = useRouter();
   const { language } = useOnboarding();
-  const { signInWithGoogle, signInWithEmail } = useAuth();
+  const { signInWithEmail, signUpWithEmail } = useAuth();
   const { translate } = useTranslation(language);
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-  const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  // Email/password form state
-  const [emailFormOpen, setEmailFormOpen] = useState(false);
+  // Mode: 'signin' | 'signup'
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+
+  // Form state
+  const [nameVal, setNameVal] = useState('');
   const [emailVal, setEmailVal] = useState('');
   const [passwordVal, setPasswordVal] = useState('');
+  const [confirmPassVal, setConfirmPassVal] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailError, setEmailError] = useState('');
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    if (emailFormOpen) {
-      setTimeout(() => {
-        scrollRef.current?.scrollToEnd({ animated: true });
-      }, 120);
-    }
-  }, [emailFormOpen]);
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
-  const handleEmailSignIn = async () => {
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
+
+  const isLargeScreen = width > 768;
+
+  const handleSwitchMode = (newMode: 'signin' | 'signup') => {
+    setMode(newMode);
+    setFormError('');
+    setResetSent(false);
+  };
+
+  const handleSignInSubmit = async () => {
     if (!agreed) {
-      setEmailError(translate('agreeRequired'));
+      setFormError(translate('agreeRequired'));
       return;
     }
-    if (!emailVal || !passwordVal) {
-      setEmailError('Please enter your email and password.');
+    if (!emailVal.trim() || !passwordVal) {
+      setFormError('Please enter your email and password.');
       return;
     }
-    setEmailLoading(true);
-    setEmailError('');
+    setLoading(true);
+    setFormError('');
     setResetSent(false);
     try {
       const res = await signInWithEmail(emailVal.trim(), passwordVal);
       if (res.ok && res.isDeleted) {
-        // Soft-deleted account: NavigationGuard handles routing to account-recovery
         return;
       }
       if (!res.ok) {
-        setEmailError(res.message || 'Sign-in failed. Please check your credentials and try again.');
+        setFormError(res.message || 'Sign-in failed. Please check your credentials.');
       }
     } catch {
-      setEmailError('Sign-in failed. Please check your credentials and try again.');
+      setFormError('Sign-in failed. Please check your connection and try again.');
     } finally {
-      setEmailLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const handleSignUpSubmit = async () => {
+    if (!agreed) {
+      setFormError(translate('agreeRequired'));
+      return;
+    }
+    if (!emailVal.trim() || !passwordVal) {
+      setFormError('Please enter your email and password.');
+      return;
+    }
+    if (passwordVal.length < 6) {
+      setFormError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (passwordVal !== confirmPassVal) {
+      setFormError('Passwords do not match. Please verify.');
+      return;
+    }
+    setLoading(true);
+    setFormError('');
+    try {
+      const res = await signUpWithEmail(emailVal.trim(), passwordVal, nameVal.trim());
+      if (!res.ok) {
+        setFormError(res.message || 'Sign-up failed. Please try again.');
+      }
+    } catch {
+      setFormError('Sign-up failed. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
     if (!emailVal.trim()) {
-      setEmailError('Enter your email above, then tap "Forgot password?".');
+      setFormError('Please enter your email above to receive a reset link.');
       return;
     }
-    setEmailLoading(true);
-    setEmailError('');
+    setLoading(true);
+    setFormError('');
     try {
       await sendPasswordResetEmail(emailVal.trim());
       setResetSent(true);
-    } catch (e: any) {
-      setEmailError('Failed to send reset email. Please check your email address and try again.');
+    } catch {
+      setFormError('Failed to send reset email. Please check your email address.');
     } finally {
-      setEmailLoading(false);
+      setLoading(false);
     }
   };
 
@@ -123,39 +173,7 @@ export default function SignInScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const isLargeScreen = width > 768;
   const currentFeature = FEATURES[activeSlide];
-
-  const handleSignIn = async () => {
-    if (!agreed) {
-      setError(translate('agreeRequired'));
-      return;
-    }
-    setLoading(true);
-    setError('');
-    setInfo('');
-    const result = await signInWithGoogle(language);
-    setLoading(false);
-
-    if (!result.ok) {
-      if (result.error === 'cancelled') return;
-      if (result.error === 'redirect_pending') {
-        setInfo(result.message ?? translate('redirectingGoogle'));
-        return;
-      }
-      if (result.message?.includes('Firebase Console')) {
-        setError(result.message);
-        return;
-      }
-      setError(result.message ?? translate('signInFailed'));
-      return;
-    }
-
-    if (result.isDeleted) {
-      // Soft-deleted account: NavigationGuard handles routing to account-recovery
-      return;
-    }
-  };
 
   const handleNextSlide = () => {
     setActiveSlide((prev) => (prev + 1) % FEATURES.length);
@@ -172,177 +190,153 @@ export default function SignInScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: Math.max(insets.top, 16) + 8,
-            paddingBottom: Math.max(insets.bottom, 16) + (emailFormOpen ? 160 : 24),
-            justifyContent: emailFormOpen ? 'flex-start' : 'center',
+            paddingTop: Math.max(insets.top, 16) + (keyboardOpen ? 4 : 8),
+            paddingBottom: Math.max(insets.bottom, 16) + (keyboardOpen ? 300 : 32),
+            justifyContent: keyboardOpen ? 'flex-start' : 'center',
           },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={true}
       >
-      <View style={[styles.contentWrapper, { maxWidth: isLargeScreen ? 800 : 440 }]}>
+        <View style={[styles.contentWrapper, { maxWidth: isLargeScreen ? 820 : 440 }]}>
 
-        {/* 1. Progress Bar aligned at the top */}
-        <OnboardingProgress step={0} />
+          {/* 1. Progress Bar aligned at the top */}
+          {(!keyboardOpen || isLargeScreen) && <OnboardingProgress step={0} />}
 
-        {/* 2. Centered Layout containing everything else */}
-        <View style={[styles.mainLayout, isLargeScreen && styles.mainLayoutRow]}>
-
-          {/* Left Column / Top Section: Brand & Product Features */}
-          <View style={[styles.infoSection, isLargeScreen && styles.infoSectionLarge]}>
-
-            <View style={styles.brandContainer}>
+          {/* Compact Brand Header for Mobile (or Large Header on Desktop) */}
+          {(!keyboardOpen || isLargeScreen) && (
+            <View style={styles.brandHeader}>
               <Image
                 source={require('../../assets/images/icon.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
+              <Text style={styles.brandTitle}>Repeto</Text>
               <Text style={styles.sub}>Never forget what repeats</Text>
             </View>
+          )}
 
-            {/* Premium Animated-like Features Slider */}
-            <View style={styles.sliderContainer}>
-              <Pressable onPress={handleNextSlide} style={styles.slideCard}>
-                <View style={[styles.slideIconContainer, { backgroundColor: currentFeature.color + '15' }]}>
-                  <AppIcon name={currentFeature.icon} size={24} color={currentFeature.color} />
-                </View>
-                <View style={styles.slideContent}>
-                  <Text style={styles.slideTitle}>{currentFeature.title}</Text>
-                  <Text style={styles.slideDesc}>{currentFeature.description}</Text>
-                </View>
-              </Pressable>
+          {/* 2. Main Layout Container */}
+          <View style={[styles.mainLayout, isLargeScreen && styles.mainLayoutRow, keyboardOpen && { justifyContent: 'flex-start' }]}>
 
-              {/* Pagination Dots */}
-              <View style={styles.dotsRow} testID="signin-dots-container">
-                {FEATURES.map((_, idx) => (
-                  <Pressable
-                    key={idx}
-                    onPress={() => setActiveSlide(idx)}
-                    testID={`signin-slide-dot-${idx}`}
-                    style={[
-                      styles.dot,
-                      activeSlide === idx && styles.dotActive
-                    ]}
-                    hitSlop={8}
-                  />
-                ))}
-              </View>
-            </View>
-          </View>
+            {/* Left Column (Desktop / Tablet only): Brand & Product Features */}
+            {isLargeScreen && (
+              <View style={[styles.infoSection, styles.infoSectionLarge]}>
+                <View style={styles.sliderContainer}>
+                  <Pressable onPress={handleNextSlide} style={styles.slideCard}>
+                    <View style={[styles.slideIconContainer, { backgroundColor: currentFeature.color + '15' }]}>
+                      <AppIcon name={currentFeature.icon} size={24} color={currentFeature.color} />
+                    </View>
+                    <View style={styles.slideContent}>
+                      <Text style={styles.slideTitle}>{currentFeature.title}</Text>
+                      <Text style={styles.slideDesc}>{currentFeature.description}</Text>
+                    </View>
+                  </Pressable>
 
-          {/* Right Column / Bottom Section: Action Panel */}
-          <View style={[styles.actionSection, isLargeScreen && styles.actionSectionLarge]} testID="signin-action-section">
-            <View style={styles.actionCard} testID="signin-action-card">
-              <Text style={styles.cardHeaderTitle} testID="signin-card-title">Get Started Securely</Text>
-              <Text style={styles.cardHeaderSub} testID="signin-card-subtitle">
-                We&apos;ll back up your reminders securely so you never lose them, even if you switch phones.
-              </Text>
-
-              {info ? <Text style={styles.info} testID="signin-info-text">{info}</Text> : null}
-              {error ? <Text style={styles.error} testID="signin-error-text">{error}</Text> : null}
-
-              <View style={styles.agreeRow} testID="signin-agree-row">
-                <Pressable
-                  onPress={() => setAgreed(!agreed)}
-                  style={styles.checkboxContainer}
-                  hitSlop={12}
-                  testID="signin-terms-checkbox"
-                >
-                  <View style={[styles.checkbox, agreed && styles.checkboxActive]} testID="signin-checkbox-box">
-                    {agreed && <Text style={styles.checkboxCheck} testID="signin-checkbox-check">✓</Text>}
+                  {/* Pagination Dots */}
+                  <View style={styles.dotsRow} testID="signin-dots-container">
+                    {FEATURES.map((_, idx) => (
+                      <Pressable
+                        key={idx}
+                        onPress={() => setActiveSlide(idx)}
+                        testID={`signin-slide-dot-${idx}`}
+                        style={[
+                          styles.dot,
+                          activeSlide === idx && styles.dotActive
+                        ]}
+                        hitSlop={8}
+                      />
+                    ))}
                   </View>
-                </Pressable>
-                <Text style={styles.agreeText} testID="signin-agree-label">
-                  {language === 'hi' ? 'मैं ' : 'I agree to the '}
-                  <Text style={styles.linkText} onPress={() => router.push('/terms')} testID="signin-terms-link">{translate('termsOfService')}</Text>
-                  {language === 'hi' ? ' और ' : ' and '}
-                  <Text style={styles.linkText} onPress={() => router.push('/privacy')} testID="signin-privacy-link">{translate('privacyPolicy')}</Text>
-                  {language === 'hi' ? ' से सहमत हूँ।' : '.'}
-                </Text>
-              </View>
-
-              <Pressable
-                onPress={handleSignIn}
-                disabled={!agreed || loading}
-                testID="signin-google-btn"
-                style={({ pressed }) => [
-                  styles.customGoogleBtn,
-                  (!agreed || loading) && { opacity: 0.6 },
-                  pressed && styles.customGoogleBtnPressed,
-                ]}
-              >
-                <View style={styles.googleBtnContent} testID="signin-google-btn-content">
-                  <AppIcon name="logo-google" size={18} color={Colors.white} style={{ marginRight: 10 }} />
-                  <Text style={styles.googleBtnText} testID="signin-google-btn-text">
-                    {loading ? 'Signing in...' : 'Continue with Google'}
-                  </Text>
                 </View>
-              </Pressable>
-
-              {Platform.OS === 'web' ? (
-                <Text style={styles.webHint} testID="signin-web-hint">{translate('signInWebHint')}</Text>
-              ) : null}
-
-              {/* ─── Email/Password Sign-In (existing users) ─── */}
-              <View style={styles.orDivider} testID="signin-or-divider">
-                <View style={styles.orLine} />
-                <Text style={styles.orText}>or</Text>
-                <View style={styles.orLine} />
               </View>
+            )}
 
-              <Pressable
-                onPress={() => { setEmailFormOpen(v => !v); setEmailError(''); setResetSent(false); }}
-                testID="signin-email-toggle"
-                style={styles.emailToggleRow}
-              >
-                <AppIcon
-                  name={emailFormOpen ? 'mail-open-outline' : 'mail-outline'}
-                  size={16}
-                  color={Colors.marigoldDeep}
-                />
-                <Text style={styles.emailToggleText}>Sign in with email</Text>
-                <AppIcon
-                  name={emailFormOpen ? 'chevron-up-outline' : 'chevron-down-outline'}
-                  size={16}
-                  color={Colors.marigoldDeep}
-                />
-              </Pressable>
+            {/* Right Column / Primary Action Panel */}
+            <View style={[styles.actionSection, isLargeScreen && styles.actionSectionLarge]} testID="signin-action-section">
+              <View style={styles.actionCard} testID="signin-action-card">
 
-              {emailFormOpen && (
-                <View style={styles.emailForm} testID="signin-email-form">
-                  <Text style={styles.emailSubHint}>
-                    Existing accounts only. New users must continue with Google above.
-                  </Text>
-                  {/* Email input */}
+                {/* Premium Segmented Switch */}
+                <View style={styles.segmentedControl}>
+                  <Pressable
+                    style={[styles.segmentBtn, mode === 'signin' && styles.segmentBtnActive]}
+                    onPress={() => handleSwitchMode('signin')}
+                  >
+                    <Text style={[styles.segmentBtnText, mode === 'signin' && styles.segmentBtnTextActive]}>
+                      Sign In
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.segmentBtn, mode === 'signup' && styles.segmentBtnActive]}
+                    onPress={() => handleSwitchMode('signup')}
+                  >
+                    <Text style={[styles.segmentBtnText, mode === 'signup' && styles.segmentBtnTextActive]}>
+                      Create Account
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.cardHeaderTitle} testID="signin-card-title">
+                  {mode === 'signup' ? 'Start Free with Repeto' : 'Welcome Back'}
+                </Text>
+                <Text style={styles.cardHeaderSub} testID="signin-card-subtitle">
+                  {mode === 'signup'
+                    ? 'Keep daily routines, chores, and bills organized across all devices.'
+                    : 'Sign in with your email to continue where you left off.'}
+                </Text>
+
+                {/* Form Inputs */}
+                <View style={styles.formContainer}>
+
+                  {/* Full Name field (only for signup) */}
+                  {mode === 'signup' && (
+                    <View style={styles.inputWrapper}>
+                      <AppIcon name="person-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Your name"
+                        placeholderTextColor={Colors.inkSoft}
+                        value={nameVal}
+                        onChangeText={setNameVal}
+                        onFocus={handleInputFocus}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                  )}
+
+                  {/* Email Address */}
                   <View style={styles.inputWrapper}>
-                    <AppIcon name="mail-outline" size={16} color={Colors.inkSoft} style={styles.inputIcon} />
+                    <AppIcon name="mail-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
                     <TextInput
                       testID="email-input"
-                      style={styles.emailInput}
-                      placeholder="your@email.com"
+                      style={styles.textInput}
+                      placeholder="Email address"
                       placeholderTextColor={Colors.inkSoft}
                       value={emailVal}
-                      onChangeText={v => { setEmailVal(v); setEmailError(''); setResetSent(false); }}
+                      onChangeText={(v) => { setEmailVal(v); setFormError(''); setResetSent(false); }}
+                      onFocus={handleInputFocus}
                       autoCapitalize="none"
                       keyboardType="email-address"
                       autoComplete="email"
                     />
                   </View>
 
-                  {/* Password input */}
+                  {/* Password */}
                   <View style={styles.inputWrapper}>
-                    <AppIcon name="lock-closed-outline" size={16} color={Colors.inkSoft} style={styles.inputIcon} />
+                    <AppIcon name="lock-closed-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
                     <TextInput
                       testID="password-input"
-                      style={[styles.emailInput, { flex: 1 }]}
+                      style={[styles.textInput, { flex: 1 }]}
                       placeholder="Password"
                       placeholderTextColor={Colors.inkSoft}
                       value={passwordVal}
-                      onChangeText={v => { setPasswordVal(v); setEmailError(''); }}
+                      onChangeText={(v) => { setPasswordVal(v); setFormError(''); }}
+                      onFocus={handleInputFocus}
                       secureTextEntry={!showPassword}
-                      autoComplete="current-password"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     />
-                    <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={8} testID="password-toggle">
+                    <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={10} testID="password-toggle">
                       <AppIcon
                         name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                         size={18}
@@ -351,69 +345,121 @@ export default function SignInScreen() {
                     </Pressable>
                   </View>
 
-                  {/* Error / reset-sent message */}
-                  {emailError ? (
-                    <Text style={styles.emailError} testID="email-error-text">{emailError}</Text>
-                  ) : null}
-                  {resetSent ? (
-                    <Text style={styles.resetSentText} testID="reset-sent-text">
-                      ✓ If an account exists, a reset link was sent. Please check your Inbox and Spam folders.
+                  {/* Confirm Password (only for signup) */}
+                  {mode === 'signup' && (
+                    <View style={styles.inputWrapper}>
+                      <AppIcon name="shield-checkmark-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
+                      <TextInput
+                        style={[styles.textInput, { flex: 1 }]}
+                        placeholder="Confirm password"
+                        placeholderTextColor={Colors.inkSoft}
+                        value={confirmPassVal}
+                        onChangeText={(v) => { setConfirmPassVal(v); setFormError(''); }}
+                        onFocus={handleInputFocus}
+                        secureTextEntry={!showConfirmPass}
+                        autoComplete="new-password"
+                      />
+                      <Pressable onPress={() => setShowConfirmPass(v => !v)} hitSlop={10}>
+                        <AppIcon
+                          name={showConfirmPass ? 'eye-off-outline' : 'eye-outline'}
+                          size={18}
+                          color={Colors.inkSoft}
+                        />
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {/* Password helper */}
+                  {mode === 'signup' && (
+                    <Text style={styles.hintText}>
+                      Password must be at least 6 characters long.
                     </Text>
+                  )}
+
+                  {/* Forgot Password Link (for Sign In mode) */}
+                  {mode === 'signin' && (
+                    <View style={styles.forgotPasswordContainer}>
+                      <Pressable
+                        testID="forgot-password-btn"
+                        onPress={handleForgotPassword}
+                        disabled={loading}
+                      >
+                        <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {/* Error Banner */}
+                  {formError ? (
+                    <View style={styles.errorAlert} testID="email-error-text">
+                      <AppIcon name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                      <Text style={styles.errorAlertText}>{formError}</Text>
+                    </View>
                   ) : null}
 
-                  {/* Sign In button */}
+                  {/* Reset Sent Banner */}
+                  {resetSent ? (
+                    <View style={styles.successAlert} testID="reset-sent-text">
+                      <AppIcon name="checkmark-circle-outline" size={16} color={Colors.tealDeep} style={{ marginRight: 6 }} />
+                      <Text style={styles.successAlertText}>
+                        Password reset link sent! Please check your Inbox and Spam folders.
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Terms Agreement Checkbox */}
+                  <View style={styles.agreeRow} testID="signin-agree-row">
+                    <Pressable
+                      onPress={() => setAgreed(!agreed)}
+                      style={styles.checkboxContainer}
+                      hitSlop={12}
+                      testID="signin-terms-checkbox"
+                    >
+                      <View style={[styles.checkbox, agreed && styles.checkboxActive]} testID="signin-checkbox-box">
+                        {agreed && <Text style={styles.checkboxCheck} testID="signin-checkbox-check">✓</Text>}
+                      </View>
+                    </Pressable>
+                    <Text style={styles.agreeText} testID="signin-agree-label">
+                      {language === 'hi' ? 'मैं ' : 'I agree to the '}
+                      <Text style={styles.linkText} onPress={() => router.push('/terms')} testID="signin-terms-link">{translate('termsOfService')}</Text>
+                      {language === 'hi' ? ' और ' : ' and '}
+                      <Text style={styles.linkText} onPress={() => router.push('/privacy')} testID="signin-privacy-link">{translate('privacyPolicy')}</Text>
+                      {language === 'hi' ? ' से सहमत हूँ।' : '.'}
+                    </Text>
+                  </View>
+
+                  {/* Primary Submit Button */}
                   <Pressable
                     testID="email-submit-btn"
-                    onPress={() => handleEmailSignIn()}
-                    disabled={emailLoading}
+                    onPress={mode === 'signup' ? handleSignUpSubmit : handleSignInSubmit}
+                    disabled={loading}
                     style={({ pressed }) => [
-                      styles.emailSignInBtn,
-                      emailLoading && { opacity: 0.6 },
-                      pressed && { opacity: 0.85 },
+                      styles.primaryActionBtn,
+                      loading && { opacity: 0.65 },
+                      pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
                     ]}
                   >
-                    <Text style={styles.emailSignInBtnText}>
-                      {emailLoading ? 'Signing in…' : 'Sign In'}
+                    <Text style={styles.primaryActionBtnText}>
+                      {loading
+                        ? (mode === 'signup' ? 'Creating account…' : 'Signing in…')
+                        : (mode === 'signup' ? 'Create Account' : 'Sign In')}
                     </Text>
                   </Pressable>
 
-                  {/* Forgot password */}
-                  <Pressable
-                    testID="forgot-password-btn"
-                    onPress={handleForgotPassword}
-                    disabled={emailLoading}
-                    style={styles.forgotPasswordRow}
-                  >
-                    <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-                  </Pressable>
+                  {/* 
+                  Google Sign-In button temporarily commented out per user request:
+                  <Pressable onPress={handleSignIn} ...>
+                    <Text>Continue with Google</Text>
+                  </Pressable> 
+                */}
+
                 </View>
-              )}
+              </View>
             </View>
 
-            {/* Premium True Ghost Back Button */}
-            <Pressable
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  router.replace('/(onboarding)/language');
-                }
-              }}
-              testID="signin-back-btn"
-              style={({ pressed }) => [
-                styles.customBackBtn,
-                pressed && { opacity: 0.6 }
-              ]}
-            >
-              <Text style={styles.customBackBtnText} testID="signin-back-btn-text">
-                {translate('backBtn')}
-              </Text>
-            </Pressable>
           </View>
-
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -505,55 +551,64 @@ const styles = StyleSheet.create({
     width: 14,
     backgroundColor: Colors.marigold,
   },
-  brandContainer: {
+  brandHeader: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 14,
+    marginTop: 4,
+    marginBottom: 8,
   },
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 48,
+    height: 48,
     borderRadius: Radius.md,
-    marginBottom: 10,
+    marginBottom: 4,
     ...Shadows.sm,
   },
+  brandTitle: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 17,
+    color: Colors.indigo950,
+    letterSpacing: -0.2,
+  },
   sub: {
-    fontFamily: 'Manrope_600SemiBold',
-    fontSize: 13,
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11.5,
     color: Colors.inkSoft,
     textAlign: 'center',
+    marginTop: 1,
   },
   actionSection: {
     width: '100%',
     justifyContent: 'center',
-    paddingVertical: 6,
+    paddingVertical: 2,
   },
   actionSectionLarge: {
     flex: 0.9,
   },
   actionCard: {
     backgroundColor: Colors.white,
-    borderColor: 'rgba(27,31,59,0.05)',
+    borderColor: 'rgba(27,31,59,0.06)',
     borderWidth: 1,
-    borderRadius: Radius.md,
-    padding: 16,
-    marginVertical: 8,
+    borderRadius: Radius.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginVertical: 4,
     ...Shadows.sm,
   },
   cardHeaderTitle: {
     fontFamily: 'Manrope_800ExtraBold',
     fontSize: 14.5,
     color: Colors.indigo950,
-    marginBottom: 4,
+    marginBottom: 3,
     textAlign: 'center',
   },
   cardHeaderSub: {
     fontFamily: 'Manrope_500Medium',
     fontSize: 11.5,
     color: Colors.inkSoft,
-    lineHeight: 16,
+    lineHeight: 15.5,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   info: {
     color: Colors.tealDeep,
@@ -639,50 +694,37 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_700Bold',
     textDecorationLine: 'underline',
   },
-  customBackBtn: {
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  customBackBtnText: {
-    fontFamily: 'Manrope_700Bold',
-    fontSize: 13.5,
-    color: Colors.inkSoft,
-  },
-  // ─── Email/Password form styles ───
-  orDivider: {
+  // ─── Segmented Control & Auth Form Styles ───
+  segmentedControl: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 14,
-    gap: 8,
+    backgroundColor: '#EEF2F6',
+    borderRadius: Radius.full,
+    padding: 3,
+    marginBottom: 16,
   },
-  orLine: {
+  segmentBtn: {
     flex: 1,
-    height: 1,
-    backgroundColor: Colors.ivoryLine,
-  },
-  orText: {
-    fontSize: 12,
-    color: Colors.inkSoft,
-    fontFamily: 'Manrope_500Medium',
-  },
-  emailToggleRow: {
-    flexDirection: 'row',
+    paddingVertical: 9,
+    borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
   },
-  emailToggleText: {
-    fontSize: 13.5,
-    color: Colors.marigoldDeep,
+  segmentBtnActive: {
+    backgroundColor: Colors.white,
+    ...Shadows.sm,
+  },
+  segmentBtnText: {
     fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.inkSoft,
   },
-  emailForm: {
+  segmentBtnTextActive: {
+    fontFamily: 'Manrope_800ExtraBold',
+    color: Colors.indigo950,
+  },
+  formContainer: {
     gap: 10,
     marginTop: 4,
-    paddingTop: 4,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -691,61 +733,88 @@ const styles = StyleSheet.create({
     borderColor: Colors.ivoryLine,
     borderRadius: Radius.md,
     backgroundColor: Colors.white,
-    paddingHorizontal: 12,
+    paddingHorizontal: 13,
     paddingVertical: 10,
-    gap: 8,
+    gap: 10,
   },
   inputIcon: {
     flexShrink: 0,
   },
-  emailInput: {
+  textInput: {
     flex: 1,
     fontSize: 14,
     color: Colors.ink,
     fontFamily: 'Manrope_500Medium',
     outlineStyle: 'none',
   } as any,
-  emailSubHint: {
+  hintText: {
     fontSize: 11.5,
-    color: Colors.inkFaint,
+    color: Colors.inkSoft,
     fontFamily: 'Manrope_500Medium',
-    textAlign: 'center',
-    marginBottom: 4,
+    marginTop: -4,
+    marginBottom: 2,
+    paddingHorizontal: 4,
   },
-  emailError: {
-    fontSize: 12,
-    color: '#e53e3e',
-    fontFamily: 'Manrope_500Medium',
-    textAlign: 'center',
-  },
-  resetSentText: {
-    fontSize: 12,
-    color: Colors.tealDeep,
-    fontFamily: 'Manrope_600SemiBold',
-    textAlign: 'center',
-  },
-  emailSignInBtn: {
-    backgroundColor: Colors.marigoldDeep,
-    borderRadius: Radius.md,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 2,
-    ...Shadows.sm,
-  },
-  emailSignInBtnText: {
-    color: Colors.white,
-    fontFamily: 'Manrope_700Bold',
-    fontSize: 15,
-    letterSpacing: 0.2,
-  },
-  forgotPasswordRow: {
-    alignItems: 'center',
-    paddingVertical: 6,
+  forgotPasswordContainer: {
+    alignItems: 'flex-end',
+    marginTop: -2,
+    marginBottom: 2,
+    paddingHorizontal: 2,
   },
   forgotPasswordText: {
     fontSize: 12.5,
-    color: Colors.inkSoft,
-    fontFamily: 'Manrope_500Medium',
-    textDecorationLine: 'underline',
+    color: Colors.marigoldDeep,
+    fontFamily: 'Manrope_700Bold',
+  },
+  errorAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginVertical: 2,
+  },
+  errorAlertText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#DC2626',
+    fontFamily: 'Manrope_600SemiBold',
+    lineHeight: 16,
+  },
+  successAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginVertical: 2,
+  },
+  successAlertText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.tealDeep,
+    fontFamily: 'Manrope_600SemiBold',
+    lineHeight: 16,
+  },
+  primaryActionBtn: {
+    backgroundColor: Colors.marigoldDeep,
+    borderRadius: Radius.md,
+    paddingVertical: 13.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    ...Shadows.sm,
+  },
+  primaryActionBtnText: {
+    color: Colors.white,
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
 });
