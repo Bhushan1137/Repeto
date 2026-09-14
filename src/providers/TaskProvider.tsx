@@ -301,7 +301,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         showToast(translate(toastKey));
 
         if (user?.id) {
-          await taskRepository.saveSingleLocal(mutated, user.id).catch((err) => {
+          taskRepository.saveSingleLocal(mutated, user.id).catch((err) => {
             console.warn('[Repeato] Local save error:', err);
           });
         }

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, Pressable, StyleProp, ViewStyle } from 'react-native';
-import { Text, TouchableRipple } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius, Typography } from '@/constants/theme';
@@ -94,7 +94,7 @@ function TaskCardComponent({
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={200}
+      delayLongPress={onLongPress ? 220 : undefined}
       android_ripple={{ color: 'rgba(0, 0, 0, 0.04)' }}
       testID={defaultId}
     >
@@ -163,18 +163,18 @@ function TaskCardComponent({
             testID={`${defaultId}-progress-ring`}
           />
           {!selected && !selectionMode && onCompletePress ? (
-            <TouchableRipple
+            <Pressable
               style={styles.quickCompleteBtn}
               testID={`${defaultId}-quick-complete-btn`}
               onPress={(e) => {
                 e.stopPropagation();
                 onCompletePress();
               }}
-              borderless
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.08)', borderless: true, radius: 20 }}
             >
               <AppIcon name="checkmark-circle-outline" size={26} color={overdue ? Colors.clay : Colors.inkFaint} />
-            </TouchableRipple>
+            </Pressable>
           ) : !selectionMode ? (
             <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
           ) : null}

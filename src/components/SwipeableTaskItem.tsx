@@ -282,7 +282,15 @@ function SwipeableTaskItemComponent({
   );
 }
 
-export const SwipeableTaskItem = React.memo(SwipeableTaskItemComponent);
+export const SwipeableTaskItem = React.memo(SwipeableTaskItemComponent, (prev, next) => {
+  return (
+    prev.enabled === next.enabled &&
+    prev.language === next.language &&
+    Boolean(prev.onComplete) === Boolean(next.onComplete) &&
+    Boolean(prev.onSnooze) === Boolean(next.onSnooze) &&
+    prev.children === next.children
+  );
+});
 
 const styles = StyleSheet.create({
   wrapper: {

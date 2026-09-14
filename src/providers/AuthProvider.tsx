@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { HouseholdContext, Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
@@ -63,6 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isOnline } = useNetworkStatus();
   const firebaseReady = isFirebaseConfigured() && initFirebase();
 
+  const isDeletingAccountRef = useRef(false);
+  const unsubscribeProfileRef = useRef<(() => void) | null>(null);
+  const unsubscribeHouseholdsRef = useRef<(() => void) | null>(null);
+
   const language: Language = user?.language ?? savedLanguage;
 
   useEffect(() => {
@@ -117,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
         if (cancelled) return;
+        if (isDeletingAccountRef.current) return;
 
         if (unsubscribeProfile) {
           unsubscribeProfile();
@@ -126,6 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unsubscribeHouseholds();
           unsubscribeHouseholds = null;
         }
+        unsubscribeProfileRef.current = null;
+        unsubscribeHouseholdsRef.current = null;
 
         if (!firebaseUser) {
           // If offline and we have an existing local user session, retain it
@@ -163,13 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const db = getFirestoreDb();
         if (db) {
           unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
-            if (cancelled) return;
+            if (cancelled || isDeletingAccountRef.current) return;
 
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
 
               // ── Re-entry guard: surface recovery UI if account was soft-deleted ──
               if (remote?.isDeleted === true) {
+                if (isDeletingAccountRef.current) return;
                 console.warn('[Repeato] Soft-deleted account detected — showing recovery screen.');
                 setDeletedAccountInfo({
                   deletedAt: remote.deletedAt ?? new Date().toISOString(),
@@ -187,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 : (matchingLocal ?? profileFromFirebaseUser(firebaseUser, language));
               const normalized = normalizeHouseholdProfile({
                 ...base,
-                profileComplete: base.profileComplete ?? base.name.trim().length >= 2,
+                profileComplete: base.profileComplete ?? ((base.name || '').trim().length >= 2),
               });
               // Run migration from legacy single-household to multi-household (idempotent)
               const migrationNeeded = !normalized.households || normalized.households.length === 0;
@@ -246,11 +254,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             setReady(true);
           });
+          unsubscribeProfileRef.current = unsubscribeProfile;
 
           // Subscribe to top-level /households where user is a member for instant real-time sync across devices
           const hhQuery = query(collection(db, 'households'), where('memberUids', 'array-contains', firebaseUser.uid));
           unsubscribeHouseholds = onSnapshot(hhQuery, (snap) => {
-            if (cancelled) return;
+            if (cancelled || isDeletingAccountRef.current) return;
             const remoteHhs = snap.docs.map((d) => d.data() as HouseholdContext);
             setUser((prevUser) => {
               if (!prevUser) return null;
@@ -268,7 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const isDuplicateStarter =
                   (localHh.members?.length ?? 0) <= 1 &&
                   localHh.ownerUid === prevUser.id &&
-                  remoteHhs.some((rh) => rh.name.trim().toLowerCase() === localHh.name.trim().toLowerCase());
+                  remoteHhs.some((rh) => (rh.name || '').trim().toLowerCase() === (localHh.name || '').trim().toLowerCase());
 
                 if (!isDuplicateStarter) {
                   hhMap.set(localHh.id, localHh);
@@ -289,6 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, (err) => {
             console.warn('[Repeato] Household query snapshot listener failed:', err);
           });
+          unsubscribeHouseholdsRef.current = unsubscribeHouseholds;
         } else {
           setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
           setReady(true);
@@ -299,6 +309,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (unsubscribeAuth) unsubscribeAuth();
         if (unsubscribeProfile) unsubscribeProfile();
         if (unsubscribeHouseholds) unsubscribeHouseholds();
+        unsubscribeProfileRef.current = null;
+        unsubscribeHouseholdsRef.current = null;
       };
     }
 
@@ -615,27 +627,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (deletionReason = 'user_requested'): Promise<{ ok: boolean; error?: string }> => {
       if (!user) return { ok: false, error: 'not_signed_in' };
       const userId = user.id;
+      isDeletingAccountRef.current = true;
 
-      // 1. Leave all households: removes self from member lists, notifies owners
-      const userHouseholds = user.households ?? [];
-      await Promise.allSettled(
-        userHouseholds.map((hh) => leaveHousehold(hh.id))
-      );
+      try {
+        // 1. Immediately unsubscribe real-time Firestore listeners
+        // This prevents the snapshot listener from firing on the soft-delete marker and flashing the recovery screen
+        if (unsubscribeProfileRef.current) {
+          unsubscribeProfileRef.current();
+          unsubscribeProfileRef.current = null;
+        }
+        if (unsubscribeHouseholdsRef.current) {
+          unsubscribeHouseholdsRef.current();
+          unsubscribeHouseholdsRef.current = null;
+        }
 
-      // 2. Stamp Firestore with soft-delete marker and sign out Firebase Auth
-      const result = await deleteAccountSoft(userId, deletionReason);
-      if (!result.ok) {
-        // Non-blocking: still proceed with local cleanup even if remote stamp failed
-        console.warn('[Repeato] Remote soft-delete stamp failed:', result.error);
+        // 2. Clear state and recovery info immediately so UI does not flash recovery screen
+        setDeletedAccountInfo(null);
+
+        // 3. Leave all households: removes self from member lists, notifies owners
+        const userHouseholds = user.households ?? [];
+        await Promise.allSettled(
+          userHouseholds.map((hh) => leaveHousehold(hh.id))
+        );
+
+        // 4. Stamp Firestore with soft-delete marker and sign out Firebase Auth
+        const result = await deleteAccountSoft(userId, deletionReason);
+        if (!result.ok) {
+          // Non-blocking: still proceed with local cleanup even if remote stamp failed
+          console.warn('[Repeato] Remote soft-delete stamp failed:', result.error);
+        }
+
+        // 5. Clear local data and session
+        setUser(null);
+        setDeletedAccountInfo(null);
+        await userRepository.clear(userId).catch(() => {});
+        await cancelAllNotifications().catch(() => {});
+
+        return { ok: true };
+      } finally {
+        setTimeout(() => {
+          isDeletingAccountRef.current = false;
+        }, 1500);
       }
-
-      // 3. Clear local data and session
-      setUser(null);
-      setDeletedAccountInfo(null);
-      await userRepository.clear(userId).catch(() => {});
-      await cancelAllNotifications().catch(() => {});
-
-      return { ok: true };
     },
     [user, leaveHousehold]
   );
@@ -682,28 +715,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Build a clean fresh user profile so onboarding begins immediately
       const auth = getFirebaseAuth();
       const fbUser = auth?.currentUser;
-      if (fbUser && fbUser.uid === targetUid) {
-        const freshProfile = normalizeHouseholdProfile({
-          ...profileFromFirebaseUser(fbUser, savedLanguage),
-          languageSelected: false,
-          profileComplete: false,
-          onboardingComplete: false,
-        });
-        await userRepository.save(freshProfile);
-        setUser(freshProfile);
-        setDeletedAccountInfo(null);
-      } else {
-        await signOutFirebase().catch(() => {});
-        setDeletedAccountInfo(null);
-        setUser(null);
-      }
+      const baseProfile: UserProfile = fbUser
+        ? profileFromFirebaseUser(fbUser, savedLanguage)
+        : normalizeHouseholdProfile({
+            id: targetUid,
+            name: '',
+            email: '',
+            phone: '',
+            language: savedLanguage,
+            languageSelected: Boolean(languageSelected),
+            pushOptIn: true,
+            profileComplete: false,
+            onboardingComplete: false,
+            plan: 'free',
+          });
+
+      const freshProfile = normalizeHouseholdProfile({
+        ...baseProfile,
+        isDeleted: false,
+        deletedAt: undefined,
+        purgeAfter: undefined,
+        deletionReason: undefined,
+        languageSelected: Boolean(languageSelected),
+        profileComplete: false,
+        onboardingComplete: false,
+      });
+
+      await userRepository.save(freshProfile);
+      setUser(freshProfile);
+      setDeletedAccountInfo(null);
       return { ok: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[Repeato] freshStartAccount failed:', msg);
       return { ok: false, error: msg };
     }
-  }, [deletedAccountInfo, savedLanguage]);
+  }, [deletedAccountInfo, savedLanguage, languageSelected]);
 
   const value = useMemo(
     () => ({

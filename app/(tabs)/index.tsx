@@ -4,8 +4,7 @@ import { Button } from '@/components/Button';
 import { CalendarView } from '@/components/CalendarView';
 import { EmptyState, ScreenShell, SectionHeader } from '@/components/ScreenShell';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
-import { TaskCard } from '@/components/TaskCard';
-import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
+import { TaskItemRow } from '@/components/TaskItemRow';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { TodayFocusSection } from '@/components/TodayFocusSection';
@@ -28,7 +27,7 @@ import { useToast } from '@/providers/ToastProvider';
 import type { CategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import { Card } from 'react-native-paper';
 
@@ -87,22 +86,63 @@ export default function HomeScreen() {
     }
   }, [completedRecommendation?.id, logImpression]);
 
+  const { selectedIds, toggleSelect, selectAll, clearSelection, isSelecting } = useTaskSelection();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
+  const isSelectingRef = useRef(isSelecting);
+  isSelectingRef.current = isSelecting;
+
   const completeTask = useCallback(
     async (taskId: string, note?: string, options?: { maxEarlyDays?: number }) => {
-      const taskObj = tasks.find((t) => t.id === taskId);
+      const taskObj = tasksRef.current.find((t) => t.id === taskId);
       if (taskObj) {
         setCompletedTaskName(taskObj.title);
-        const match = findMatch(taskObj);
-        if (match) {
-          setCompletedRecommendation(match);
-        }
+        setTimeout(() => {
+          const match = findMatch(taskObj);
+          if (match) {
+            setCompletedRecommendation(match);
+          }
+        }, 50);
       }
       await rawCompleteTask(taskId, note, options);
     },
-    [tasks, rawCompleteTask, findMatch]
+    [rawCompleteTask, findMatch]
   );
-  const { selectedIds, toggleSelect, selectAll, clearSelection, isSelecting } = useTaskSelection();
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const handleTaskRowPress = useCallback(
+    (taskId: string) => {
+      if (isSelectingRef.current) {
+        toggleSelect(taskId);
+      } else {
+        setSelectedTaskId(taskId);
+      }
+    },
+    [toggleSelect]
+  );
+
+  const handleTaskRowLongPress = useCallback(
+    (taskId: string) => {
+      toggleSelect(taskId);
+    },
+    [toggleSelect]
+  );
+
+  const handleTaskRowComplete = useCallback(
+    (taskId: string) => {
+      completeTask(taskId);
+    },
+    [completeTask]
+  );
+
+  const handleTaskRowSnooze = useCallback(
+    (taskId: string, days?: number) => {
+      snoozeTask(taskId, days || 2);
+    },
+    [snoozeTask]
+  );
 
   // Automatically open task when tapped from notification or external focus
   useEffect(() => {
@@ -634,10 +674,10 @@ export default function HomeScreen() {
               <TodayFocusSection
                 tasks={tasks}
                 language={language}
-                onSelectTask={(taskId) => setSelectedTaskId(taskId)}
-                onCompleteTask={(taskId) => completeTask(taskId)}
-                onSnoozeTask={(taskId, days) => snoozeTask(taskId, days || 2)}
-                onToggleSelect={(taskId) => toggleSelect(taskId)}
+                onSelectTask={handleTaskRowPress}
+                onCompleteTask={handleTaskRowComplete}
+                onSnoozeTask={handleTaskRowSnooze}
+                onToggleSelect={handleTaskRowLongPress}
                 selectedIds={selectedIds}
                 isSelecting={isSelecting}
               />
@@ -652,30 +692,19 @@ export default function HomeScreen() {
                   const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
                   const canSnooze = canSnoozeTask(task).allowed;
                   return (
-                    <SwipeableTaskItem
-                      key={`pinned-swipe-${task.id}`}
+                    <TaskItemRow
+                      key={`pinned-task-${task.id}`}
+                      task={task}
                       language={language}
-                      enabled={!isSelecting}
-                      onComplete={canComplete ? () => completeTask(task.id) : undefined}
-                      onSnooze={canSnooze ? (days) => snoozeTask(task.id, days || 2) : undefined}
-                    >
-                      <TaskCard
-                        task={task}
-                        language={language}
-                        selected={isItemSelected}
-                        selectionMode={isSelecting}
-                        style={{ marginBottom: 0 }}
-                        onPress={() => {
-                          if (isSelecting) {
-                            toggleSelect(task.id);
-                          } else {
-                            setSelectedTaskId(task.id);
-                          }
-                        }}
-                        onLongPress={() => toggleSelect(task.id)}
-                        onCompletePress={!isSelecting && canComplete ? () => completeTask(task.id) : undefined}
-                      />
-                    </SwipeableTaskItem>
+                      selected={isItemSelected}
+                      selectionMode={isSelecting}
+                      canComplete={canComplete}
+                      canSnooze={canSnooze}
+                      onPress={handleTaskRowPress}
+                      onLongPress={handleTaskRowLongPress}
+                      onComplete={handleTaskRowComplete}
+                      onSnooze={handleTaskRowSnooze}
+                    />
                   );
                 })}
               </View>
@@ -718,30 +747,19 @@ export default function HomeScreen() {
                     const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
                     const canSnooze = canSnoozeTask(task).allowed;
                     return (
-                      <SwipeableTaskItem
-                        key={`task-swipe-${task.id}`}
+                      <TaskItemRow
+                        key={`group-task-${task.id}`}
+                        task={task}
                         language={language}
-                        enabled={!isSelecting}
-                        onComplete={canComplete ? () => completeTask(task.id) : undefined}
-                        onSnooze={canSnooze ? (days) => snoozeTask(task.id, days || 2) : undefined}
-                      >
-                        <TaskCard
-                          task={task}
-                          language={language}
-                          selected={isItemSelected}
-                          selectionMode={isSelecting}
-                          style={{ marginBottom: 0 }}
-                          onPress={() => {
-                            if (isSelecting) {
-                              toggleSelect(task.id);
-                            } else {
-                              setSelectedTaskId(task.id);
-                            }
-                          }}
-                          onLongPress={() => toggleSelect(task.id)}
-                          onCompletePress={!isSelecting && canComplete ? () => completeTask(task.id) : undefined}
-                        />
-                      </SwipeableTaskItem>
+                        selected={isItemSelected}
+                        selectionMode={isSelecting}
+                        canComplete={canComplete}
+                        canSnooze={canSnooze}
+                        onPress={handleTaskRowPress}
+                        onLongPress={handleTaskRowLongPress}
+                        onComplete={handleTaskRowComplete}
+                        onSnooze={handleTaskRowSnooze}
+                      />
                     );
                   })}
                 </View>
@@ -805,53 +823,57 @@ export default function HomeScreen() {
         />
       )}
 
-      <TaskDetailSheet
-        task={selectedTask}
-        visible={!!selectedTask}
-        language={language}
-        translate={translate}
-        onClose={() => setSelectedTaskId(null)}
-        onComplete={(id, note, options) => handleAction(() => completeTask(id, note, options))}
-        onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
-        onSkip={(id) => handleAction(() => skipTask(id))}
-        onUndoSkip={(id) => handleAction(() => undoSkipTask(id))}
-        onUndoComplete={(id) => handleAction(() => undoCompleteTask(id))}
-        onDelete={(id) => handleAction(() => deleteTask(id))}
-        onArchive={(id) => handleAction(() => archiveTask(id))}
-        onPin={(id) => handleAction(() => pinTask(id))}
-        onDuplicate={(id) => { duplicateTask(id); setSelectedTaskId(null); }}
-        onEdit={(id) => {
-          setSelectedTaskId(null);
-          setEditingTaskId(id);
-        }}
-        onSetDueDate={(id, date) => handleAction(() => setTaskDueDate(id, date))}
-        onDeleteHistoryEntry={deleteHistoryEntry}
-        onClaim={(id) => handleAction(() => claimTask(id))}
-        onNudge={(id) => {
-          const t = tasks.find((x) => x.id === id);
-          if (t) {
-            handleNudge(t);
-          }
-        }}
-      />
+      {Boolean(selectedTask) && (
+        <TaskDetailSheet
+          task={selectedTask}
+          visible={!!selectedTask}
+          language={language}
+          translate={translate}
+          onClose={() => setSelectedTaskId(null)}
+          onComplete={(id, note, options) => handleAction(() => completeTask(id, note, options))}
+          onSnooze={(id, days) => handleAction(() => snoozeTask(id, days))}
+          onSkip={(id) => handleAction(() => skipTask(id))}
+          onUndoSkip={(id) => handleAction(() => undoSkipTask(id))}
+          onUndoComplete={(id) => handleAction(() => undoCompleteTask(id))}
+          onDelete={(id) => handleAction(() => deleteTask(id))}
+          onArchive={(id) => handleAction(() => archiveTask(id))}
+          onPin={(id) => handleAction(() => pinTask(id))}
+          onDuplicate={(id) => { duplicateTask(id); setSelectedTaskId(null); }}
+          onEdit={(id) => {
+            setSelectedTaskId(null);
+            setEditingTaskId(id);
+          }}
+          onSetDueDate={(id, date) => handleAction(() => setTaskDueDate(id, date))}
+          onDeleteHistoryEntry={deleteHistoryEntry}
+          onClaim={(id) => handleAction(() => claimTask(id))}
+          onNudge={(id) => {
+            const t = tasks.find((x) => x.id === id);
+            if (t) {
+              handleNudge(t);
+            }
+          }}
+        />
+      )}
 
-      <TaskFormSheet
-        visible={!!editingTask}
-        language={language}
-        translate={translate}
-        heading={translate('editTask')}
-        initial={editingTask ? taskToFormValues(editingTask, language) : null}
-        initialShared={editingTask?.sharedWith}
-        editingTaskId={editingTask?.id}
-        mode="edit"
-        saveLabel={translate('savePreset')}
-        onClose={() => setEditingTaskId(null)}
-        onSave={async (values, shared) => {
-          if (!editingTaskId) return;
-          await updateTask(editingTaskId, values, shared);
-          setEditingTaskId(null);
-        }}
-      />
+      {Boolean(editingTask) && (
+        <TaskFormSheet
+          visible={!!editingTask}
+          language={language}
+          translate={translate}
+          heading={translate('editTask')}
+          initial={editingTask ? taskToFormValues(editingTask, language) : null}
+          initialShared={editingTask?.sharedWith}
+          editingTaskId={editingTask?.id}
+          mode="edit"
+          saveLabel={translate('savePreset')}
+          onClose={() => setEditingTaskId(null)}
+          onSave={async (values, shared) => {
+            if (!editingTaskId) return;
+            await updateTask(editingTaskId, values, shared);
+            setEditingTaskId(null);
+          }}
+        />
+      )}
 
       {/* Celebration & Recommendation Modal */}
       <Modal

@@ -1,13 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
-import { hasCompletedToday } from '@/domain/task';
-import { TaskCard } from '@/components/TaskCard';
-import { SwipeableTaskItem } from '@/components/SwipeableTaskItem';
+import { hasCompletedToday, canCompleteTask, canSnoozeTask } from '@/domain/task';
+import { TaskItemRow } from '@/components/TaskItemRow';
 import { AppIcon } from '@/components/AppIcon';
 import { formatTime12 } from '@/utils/timeFormat';
 
@@ -22,7 +21,7 @@ interface TodayFocusSectionProps {
   isSelecting?: boolean;
 }
 
-export function TodayFocusSection({
+function TodayFocusSectionComponent({
   tasks,
   language,
   onSelectTask,
@@ -34,6 +33,24 @@ export function TodayFocusSection({
 }: TodayFocusSectionProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleRowPress = useCallback(
+    (taskId: string) => {
+      if (isSelecting && onToggleSelect) {
+        onToggleSelect(taskId);
+      } else {
+        onSelectTask(taskId);
+      }
+    },
+    [isSelecting, onToggleSelect, onSelectTask]
+  );
+
+  const handleRowLongPress = useCallback(
+    (taskId: string) => {
+      onToggleSelect?.(taskId);
+    },
+    [onToggleSelect]
+  );
 
   const isSameDay = (d1: Date, d2: Date) =>
     d1.getFullYear() === d2.getFullYear() &&
@@ -211,31 +228,22 @@ export function TodayFocusSection({
         {itemsToDisplay.map((item, idx) => {
           if (item.type === 'pending') {
             const isSelected = selectedIds?.has(item.task.id);
+            const canComplete = canCompleteTask(item.task, { maxEarlyDays: 0 }).allowed;
+            const canSnooze = canSnoozeTask(item.task).allowed;
             return (
-              <SwipeableTaskItem
-                key={`pending-swipe-${item.task.id}-${idx}`}
+              <TaskItemRow
+                key={`today-task-${item.task.id}`}
+                task={item.task}
                 language={language}
-                enabled={!isSelecting}
-                onComplete={() => onCompleteTask(item.task.id)}
-                onSnooze={(days) => onSnoozeTask?.(item.task.id, days)}
-              >
-                <TaskCard
-                  task={item.task}
-                  language={language}
-                  selected={isSelected}
-                  selectionMode={isSelecting}
-                  style={{ marginBottom: 0 }}
-                  onPress={() => {
-                    if (isSelecting && onToggleSelect) {
-                      onToggleSelect(item.task.id);
-                    } else {
-                      onSelectTask(item.task.id);
-                    }
-                  }}
-                  onLongPress={() => onToggleSelect?.(item.task.id)}
-                  onCompletePress={isSelecting ? undefined : () => onCompleteTask(item.task.id)}
-                />
-              </SwipeableTaskItem>
+                selected={isSelected}
+                selectionMode={isSelecting}
+                canComplete={canComplete}
+                canSnooze={canSnooze}
+                onPress={handleRowPress}
+                onLongPress={handleRowLongPress}
+                onComplete={onCompleteTask}
+                onSnooze={onSnoozeTask}
+              />
             );
           }
 
@@ -514,3 +522,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+export const TodayFocusSection = React.memo(TodayFocusSectionComponent);

@@ -43,7 +43,7 @@ interface TaskFormSheetProps {
   editingTaskId?: string;
 }
 
-export function TaskFormSheet({
+function TaskFormSheetComponent({
   visible,
   language,
   translate,
@@ -76,7 +76,7 @@ export function TaskFormSheet({
     setSaving(false);
   }, [initial, visible, initialShared, mode, activeHousehold]);
 
-  if (!formState) return null;
+  if (!visible || !formState) return null;
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -218,3 +218,6 @@ const styles = StyleSheet.create({
   heading: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginBottom: 2 },
   subHeading: { fontFamily: 'Manrope_500Medium', fontSize: 13, color: Colors.inkSoft, marginBottom: 16 },
 });
+
+export const TaskFormSheet = React.memo(TaskFormSheetComponent);
+

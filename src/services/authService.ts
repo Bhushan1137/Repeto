@@ -42,7 +42,7 @@ async function buildProfile(fbUser: User, language: Language): Promise<UserProfi
       photoUrl: remote.photoUrl || base.photoUrl,
       language: remote.language || language,
       languageSelected: remote.languageSelected ?? true,
-      profileComplete: remote.profileComplete ?? remote.name.trim().length >= 2,
+      profileComplete: remote.profileComplete ?? ((remote.name || '').trim().length >= 2),
     });
   }
 

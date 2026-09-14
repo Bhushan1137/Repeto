@@ -110,7 +110,6 @@ export default function ProfileScreen() {
       }
       resetTasks();
       showToast(translate('deleteAccountSuccess'));
-      router.replace('/(onboarding)/sign-in');
     } catch {
       showToast(translate('deleteAccountError'));
       setDeleting(false);

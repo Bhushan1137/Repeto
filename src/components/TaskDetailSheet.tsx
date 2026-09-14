@@ -74,7 +74,7 @@ interface TaskDetailSheetProps {
   onNudge?: (taskId: string) => void;
 }
 
-export function TaskDetailSheet({
+function TaskDetailSheetComponent({
   task,
   visible,
   language,
@@ -174,7 +174,7 @@ export function TaskDetailSheet({
     return member ? member.name : (language === 'hi' ? 'अन्य सदस्य' : 'Other Member');
   }, [task?.assignedTo, user, hhContext, language]);
 
-  if (!task) return null;
+  if (!task || !visible) return null;
 
   const cat = CATEGORY_MAP[task.category];
   const hex = AccentHex[cat.accent];
@@ -1517,3 +1517,16 @@ const styles = StyleSheet.create({
     color: '#92400E',
   },
 });
+
+export const TaskDetailSheet = React.memo(TaskDetailSheetComponent, (prev, next) => {
+  return (
+    prev.visible === next.visible &&
+    prev.task?.id === next.task?.id &&
+    prev.task?.updatedAt === next.task?.updatedAt &&
+    prev.task?.nextDueDate === next.task?.nextDueDate &&
+    prev.task?.title === next.task?.title &&
+    prev.task?.history?.length === next.task?.history?.length &&
+    prev.language === next.language
+  );
+});
+
