@@ -154,9 +154,9 @@ describe('Bulk Tasks End-to-End Flows (Done, Snooze, Skip, Undo, Pin)', () => {
     expect(new Date(undoneTasks[0].nextDueDate).getMonth()).toBe(new Date(tasks[0].nextDueDate).getMonth());
     expect(new Date(undoneTasks[0].nextDueDate).getDate()).toBe(new Date(tasks[0].nextDueDate).getDate());
 
-    // Task 2: History removed, nextDueDate rolled back from tomorrow (Sep 13) to today (Sep 12)
+    // Task 2: History removed, nextDueDate rolled back from tomorrow (Sep 13) to original overdue cycle (Sep 11)
     expect(undoneTasks[1].history).toHaveLength(0);
-    expect(new Date(undoneTasks[1].nextDueDate).getDate()).toBe(12);
+    expect(new Date(undoneTasks[1].nextDueDate).getDate()).toBe(11);
 
     // Task 3: Remained untouched
     expect(undoneTasks[2].history).toHaveLength(0);

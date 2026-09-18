@@ -28,6 +28,7 @@ import {
 } from '@/domain/task';
 import type { RepeatingTask } from '@/types';
 import type { TaskFormValues } from '@/domain/taskForm';
+import { daysUntilDue } from '@/domain/recurrence';
 
 describe('domain/task', () => {
   beforeEach(() => {
@@ -449,6 +450,45 @@ describe('domain/task', () => {
     const undone = undoSkipTask(skipped);
     expect(undone.history).toHaveLength(0);
     expect(new Date(undone.nextDueDate).getDate()).toBe(new Date(originalDue).getDate());
+  });
+
+  it('undoCompleteTaskInstance restores overdue task back to its exact overdue date instead of today', () => {
+    // Overdue task due 10 days ago
+    const overdueDate = new Date(Date.now() - 10 * 86400000).toISOString();
+    const task: RepeatingTask = {
+      ...createTaskFromPreset('Overdue Electric Bill', 'bills', 'Daily'),
+      recurrence: { type: 'daily' },
+      nextDueDate: overdueDate,
+    };
+
+    // 1. Mark overdue task as Done
+    const completed = completeTaskInstance(task, 'Paid late', 'user-1');
+    expect(completed.history[0].status).toBe('late');
+    expect(completed.history[0].previousDueDate).toBe(overdueDate);
+
+    // 2. Undo completion
+    const undone = undoCompleteTaskInstance(completed);
+    expect(undone.history).toHaveLength(0);
+    // nextDueDate should be restored to the exact overdue date, NOT today!
+    expect(undone.nextDueDate).toBe(overdueDate);
+    expect(daysUntilDue(undone.nextDueDate)).toBeLessThan(0);
+  });
+
+  it('undoSkipTask restores overdue task back to its exact overdue date', () => {
+    const overdueDate = new Date(Date.now() - 5 * 86400000).toISOString();
+    const task: RepeatingTask = {
+      ...createTaskFromPreset('Overdue Filter Cleaning', 'home', 'Daily'),
+      recurrence: { type: 'daily' },
+      nextDueDate: overdueDate,
+    };
+
+    const skipped = skipTaskInstance(task, 'user-1');
+    expect(skipped.history[0].status).toBe('skipped');
+    expect(skipped.history[0].previousDueDate).toBe(overdueDate);
+
+    const undone = undoSkipTask(skipped);
+    expect(undone.nextDueDate).toBe(overdueDate);
+    expect(daysUntilDue(undone.nextDueDate)).toBeLessThan(0);
   });
 
   it('Bulk flows: correctly performs bulk done, snooze, skip, undo, and pin on multiple tasks', () => {

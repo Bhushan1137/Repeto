@@ -80,6 +80,7 @@ function TodayFocusSectionComponent({
       completedAt: string;
       note?: string;
       historyIndex: number;
+      status: 'on_time' | 'late';
     }[] = [];
 
     for (const t of tasks) {
@@ -94,6 +95,7 @@ function TodayFocusSectionComponent({
             completedAt: h.completedAt,
             note: h.note,
             historyIndex: idx,
+            status: h.status,
           });
         }
       });
@@ -112,7 +114,7 @@ function TodayFocusSectionComponent({
   // Items to display based on selected tab
   const itemsToDisplay = useMemo(() => {
     if (activeTab === 'pending') {
-      return pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined }));
+      return pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined, status: undefined }));
     }
     if (activeTab === 'completed') {
       return completedTodayEntries.map((e) => ({
@@ -121,17 +123,19 @@ function TodayFocusSectionComponent({
         completedAt: e.completedAt,
         note: e.note,
         historyIndex: e.historyIndex,
+        status: e.status,
       }));
     }
     // 'all' tab shows pending first, then completed today
     return [
-      ...pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined })),
+      ...pendingTodayTasks.map((t) => ({ type: 'pending' as const, task: t, historyIndex: undefined, status: undefined })),
       ...completedTodayEntries.map((e) => ({
         type: 'completed' as const,
         task: e.task,
         completedAt: e.completedAt,
         note: e.note,
         historyIndex: e.historyIndex,
+        status: e.status,
       })),
     ];
   }, [activeTab, pendingTodayTasks, completedTodayEntries]);
@@ -305,9 +309,11 @@ function TodayFocusSectionComponent({
                   </View>
 
                   {/* Status Badge */}
-                  <View style={styles.doneBadge}>
-                    <Text style={styles.doneBadgeText}>
-                      {language === 'hi' ? 'संपन्न' : 'Done'}
+                  <View style={item.status === 'late' ? styles.doneLateBadge : styles.doneBadge}>
+                    <Text style={item.status === 'late' ? styles.doneLateBadgeText : styles.doneBadgeText}>
+                      {item.status === 'late'
+                        ? (language === 'hi' ? 'विलंबित संपन्न' : 'Done (Late)')
+                        : (language === 'hi' ? 'संपन्न' : 'Done')}
                     </Text>
                   </View>
                 </View>
@@ -485,6 +491,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_700Bold',
     fontSize: 10.5,
     color: '#059669',
+  },
+  doneLateBadge: {
+    backgroundColor: 'rgba(217, 119, 6, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+  },
+  doneLateBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10.5,
+    color: '#D97706',
   },
 
   // Celebration Collapsed Styles

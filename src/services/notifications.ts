@@ -42,12 +42,12 @@ try {
       {
         identifier: 'MARK_DONE',
         buttonTitle: 'Mark Done',
-        options: { opensAppToForeground: true },
+        options: { opensAppToForeground: false },
       },
       {
         identifier: 'SNOOZE_2D',
         buttonTitle: 'Snooze 2 Days',
-        options: { opensAppToForeground: true },
+        options: { opensAppToForeground: false },
       },
     ]).catch(() => {});
   }
@@ -62,12 +62,12 @@ export async function setupNotificationCategories(isHi = false): Promise<void> {
       {
         identifier: 'MARK_DONE',
         buttonTitle: isHi ? 'पूरा करें (Mark Done)' : 'Mark Done',
-        options: { opensAppToForeground: true },
+        options: { opensAppToForeground: false },
       },
       {
         identifier: 'SNOOZE_2D',
         buttonTitle: isHi ? '2 दिन स्नूज़ (Snooze)' : 'Snooze 2 Days',
-        options: { opensAppToForeground: true },
+        options: { opensAppToForeground: false },
       },
     ]);
   } catch (error) {

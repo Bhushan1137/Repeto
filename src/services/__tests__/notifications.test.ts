@@ -89,7 +89,7 @@ describe('services/notifications', () => {
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-4');
   });
 
-  it('setupNotificationCategories configures foreground action options', async () => {
+  it('setupNotificationCategories configures background action options', async () => {
     const { setupNotificationCategories } = await import('@/services/notifications');
     await setupNotificationCategories(false);
     expect(Notifications.setNotificationCategoryAsync).toHaveBeenCalledWith(
@@ -97,11 +97,11 @@ describe('services/notifications', () => {
       expect.arrayContaining([
         expect.objectContaining({
           identifier: 'MARK_DONE',
-          options: { opensAppToForeground: true },
+          options: { opensAppToForeground: false },
         }),
         expect.objectContaining({
           identifier: 'SNOOZE_2D',
-          options: { opensAppToForeground: true },
+          options: { opensAppToForeground: false },
         }),
       ])
     );

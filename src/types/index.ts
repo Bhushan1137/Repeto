@@ -90,6 +90,7 @@ export interface TaskHistoryEntry {
   completedBy?: string;
   previousAssignee?: string;
   rotatedTo?: string;
+  previousDueDate?: string;
 }
 
 export interface RepeatingTask {

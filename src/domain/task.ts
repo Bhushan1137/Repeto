@@ -251,6 +251,7 @@ export function completeTaskInstance(task: RepeatingTask, note?: string, complet
         completedBy,
         previousAssignee: task.assignedTo,
         rotatedTo,
+        previousDueDate: task.nextDueDate,
       },
     ],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
@@ -277,10 +278,11 @@ export function undoSkipTask(task: RepeatingTask): RepeatingTask {
   const lastIndex = history.map((h) => h.status).lastIndexOf('skipped');
   if (lastIndex === -1) return task;
 
+  const targetEntry = history[lastIndex];
   const isLastEntry = lastIndex === history.length - 1;
   history.splice(lastIndex, 1);
   const nextDueDate = isLastEntry
-    ? computePreviousDueDate(task.recurrence, task.nextDueDate)
+    ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
     : task.nextDueDate;
 
   return {
@@ -310,7 +312,7 @@ export function undoCompleteTaskInstance(task: RepeatingTask, historyIndex?: num
   const isLastEntry = targetIdx === history.length - 1;
   const nextHistory = history.filter((_, idx) => idx !== targetIdx);
   const nextDueDate = isLastEntry
-    ? computePreviousDueDate(task.recurrence, task.nextDueDate)
+    ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
     : task.nextDueDate;
   const nextAssignee =
     isLastEntry && targetEntry.previousAssignee !== undefined
@@ -396,7 +398,16 @@ export function skipTaskInstance(task: RepeatingTask, userId?: string): Repeatin
   const baseDate = base >= today ? base : today;
   return {
     ...task,
-    history: [...(task.history ?? []).slice(-12), { month: getMonthLabel(), status: 'skipped', completedAt: now, completedBy: userId }],
+    history: [
+      ...(task.history ?? []).slice(-12),
+      {
+        month: getMonthLabel(),
+        status: 'skipped',
+        completedAt: now,
+        completedBy: userId,
+        previousDueDate: task.nextDueDate,
+      },
+    ],
     nextDueDate: computeNextDueDate(task.recurrence, baseDate),
     escalationCount: 0,
     snoozedUntil: undefined,
