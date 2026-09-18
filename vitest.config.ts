@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 
 export default defineConfig({
+  define: {
+    __DEV__: true,
+  },
   test: {
     globals: false,
     environment: 'node',
@@ -17,6 +20,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       'react-native': 'react-native-web',
+      'expo-constants': path.resolve(__dirname, './src/__mocks__/expoConstantsMock.ts'),
       '@react-native-async-storage/async-storage': path.resolve(__dirname, './src/__mocks__/asyncStorageMock.ts'),
     },
   },

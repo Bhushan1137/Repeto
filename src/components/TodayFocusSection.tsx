@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
-import type { Language, RepeatingTask, CategoryKey } from '@/types';
+import type { Language, RepeatingTask, CategoryKey, HouseholdMemberProfile } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -19,6 +19,11 @@ interface TodayFocusSectionProps {
   onToggleSelect?: (taskId: string) => void;
   selectedIds?: Set<string>;
   isSelecting?: boolean;
+  currentUserId?: string;
+  currentUserCode?: string;
+  householdMembers?: HouseholdMemberProfile[];
+  onTakeOver?: (taskId: string) => void;
+  onNudge?: (taskId: string) => void;
 }
 
 function TodayFocusSectionComponent({
@@ -30,6 +35,11 @@ function TodayFocusSectionComponent({
   onToggleSelect,
   selectedIds,
   isSelecting,
+  currentUserId,
+  currentUserCode,
+  householdMembers,
+  onTakeOver,
+  onNudge,
 }: TodayFocusSectionProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [collapsed, setCollapsed] = useState(false);
@@ -228,7 +238,11 @@ function TodayFocusSectionComponent({
         {itemsToDisplay.map((item, idx) => {
           if (item.type === 'pending') {
             const isSelected = selectedIds?.has(item.task.id);
-            const canComplete = canCompleteTask(item.task, { maxEarlyDays: 0 }).allowed;
+            const canComplete = canCompleteTask(item.task, {
+              maxEarlyDays: 0,
+              currentUserId,
+              currentUserCode,
+            }).allowed;
             const canSnooze = canSnoozeTask(item.task).allowed;
             return (
               <TaskItemRow
@@ -239,10 +253,15 @@ function TodayFocusSectionComponent({
                 selectionMode={isSelecting}
                 canComplete={canComplete}
                 canSnooze={canSnooze}
+                currentUserId={currentUserId}
+                currentUserCode={currentUserCode}
+                householdMembers={householdMembers}
                 onPress={handleRowPress}
                 onLongPress={handleRowLongPress}
                 onComplete={onCompleteTask}
                 onSnooze={onSnoozeTask}
+                onTakeOver={onTakeOver}
+                onNudge={onNudge}
               />
             );
           }

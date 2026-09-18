@@ -13,6 +13,7 @@ vi.mock('expo-notifications', () => ({
   scheduleNotificationAsync: vi.fn().mockResolvedValue('notif-id'),
   cancelScheduledNotificationAsync: vi.fn().mockResolvedValue(true),
   dismissNotificationAsync: vi.fn().mockResolvedValue(undefined),
+  getExpoPushTokenAsync: vi.fn().mockResolvedValue({ data: 'ExponentPushToken[mock-token-123]' }),
   SchedulableTriggerInputTypes: {
     DATE: 'date',
     DAILY: 'daily',
@@ -174,6 +175,46 @@ describe('services/notifications', () => {
         }),
       })
     );
+  });
+
+  it('registerForPushNotificationsAsync obtains expo push token when granted', async () => {
+    const { registerForPushNotificationsAsync } = await import('@/services/notifications');
+    const token = await registerForPushNotificationsAsync();
+    expect(token).toBe('ExponentPushToken[mock-token-123]');
+  });
+
+  it('sendRemotePushNotification posts payload to Expo Push REST API', async () => {
+    const { sendRemotePushNotification } = await import('@/services/notifications');
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ data: { status: 'ok' } }),
+    });
+    global.fetch = mockFetch;
+
+    try {
+      const sent = await sendRemotePushNotification(
+        'ExponentPushToken[user-target]',
+        'Test Title',
+        'Test Body',
+        { taskId: 'task-1' }
+      );
+      expect(sent).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://exp.host/--/api/v2/push/send',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"to":"ExponentPushToken[user-target]"'),
+        })
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('sendRemotePushNotification rejects invalid or missing push tokens', async () => {
+    const { sendRemotePushNotification } = await import('@/services/notifications');
+    const res = await sendRemotePushNotification('', 'Title', 'Body');
+    expect(res).toBe(false);
   });
 });
 

@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { RepeatingTask } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
@@ -19,6 +20,12 @@ try {
   if (Platform.OS === 'android') {
     Notifications.setNotificationChannelAsync('default', {
       name: 'Task Reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync('household', {
+      name: 'Household & Nudges',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     }).catch(() => {});
@@ -359,6 +366,76 @@ export async function getScheduledNotifications(): Promise<Notifications.Notific
     return await Notifications.getAllScheduledNotificationsAsync();
   } catch {
     return [];
+  }
+}
+
+/**
+ * Request permission and obtain Expo Push Token for remote push notifications
+ */
+export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      return null;
+    }
+
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      (Constants as any).easConfig?.projectId ??
+      'dc3bf5ae-77fe-4235-83b7-47a896e72430';
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    return tokenResponse.data;
+  } catch (error) {
+    console.warn('[Repeato] Failed to get Expo push token:', error);
+    return null;
+  }
+}
+
+/**
+ * Dispatch remote push notification directly via Expo Push API
+ * Does not require any Node.js Firebase functions
+ */
+export async function sendRemotePushNotification(
+  toToken: string,
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+): Promise<boolean> {
+  if (!toToken || !toToken.startsWith('ExponentPushToken')) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: toToken,
+        sound: 'default',
+        title,
+        body,
+        data: data ?? {},
+        channelId: Platform.OS === 'android' ? 'household' : 'default',
+      }),
+    });
+
+    const resJson = await response.json();
+    return resJson?.data?.status === 'ok';
+  } catch (err) {
+    console.warn('[Repeato] Error sending remote push notification:', err);
+    return false;
   }
 }
 

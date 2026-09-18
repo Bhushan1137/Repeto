@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import type { Language, RepeatingTask } from '@/types';
+import type { Language, RepeatingTask, HouseholdMemberProfile } from '@/types';
 import { TaskCard } from './TaskCard';
 import { SwipeableTaskItem } from './SwipeableTaskItem';
 
@@ -15,6 +15,11 @@ export interface TaskItemRowProps {
   onComplete?: (taskId: string) => void;
   onSnooze?: (taskId: string, days?: number) => void;
   testID?: string;
+  currentUserId?: string;
+  currentUserCode?: string;
+  householdMembers?: HouseholdMemberProfile[];
+  onTakeOver?: (taskId: string) => void;
+  onNudge?: (taskId: string) => void;
 }
 
 function TaskItemRowComponent({
@@ -29,6 +34,11 @@ function TaskItemRowComponent({
   onComplete,
   onSnooze,
   testID,
+  currentUserId,
+  currentUserCode,
+  householdMembers,
+  onTakeOver,
+  onNudge,
 }: TaskItemRowProps) {
   const taskId = task.id;
 
@@ -51,11 +61,26 @@ function TaskItemRowComponent({
     [onSnooze, taskId]
   );
 
+  const handleTakeOver = useCallback(() => {
+    onTakeOver?.(taskId);
+  }, [onTakeOver, taskId]);
+
+  const handleNudge = useCallback(() => {
+    onNudge?.(taskId);
+  }, [onNudge, taskId]);
+
+  const isAssignedToMe = (
+    (Boolean(currentUserId) && task.assignedTo === currentUserId) ||
+    (Boolean(currentUserCode) && task.assignedTo === currentUserCode)
+  );
+  const isAssignedToOther = Boolean(task.householdId && task.assignedTo && !isAssignedToMe);
+  const effectiveCanComplete = canComplete && !isAssignedToOther;
+
   return (
     <SwipeableTaskItem
       language={language}
-      enabled={!selectionMode}
-      onComplete={canComplete && onComplete ? handleComplete : undefined}
+      enabled={!selectionMode && !isAssignedToOther}
+      onComplete={effectiveCanComplete && onComplete ? handleComplete : undefined}
       onSnooze={canSnooze && onSnooze ? handleSnooze : undefined}
     >
       <TaskCard
@@ -66,8 +91,13 @@ function TaskItemRowComponent({
         style={{ marginBottom: 0 }}
         onPress={handlePress}
         onLongPress={onLongPress ? handleLongPress : undefined}
-        onCompletePress={!selectionMode && canComplete && onComplete ? handleComplete : undefined}
+        onCompletePress={!selectionMode && effectiveCanComplete && onComplete ? handleComplete : undefined}
         testID={testID}
+        currentUserId={currentUserId}
+        currentUserCode={currentUserCode}
+        householdMembers={householdMembers}
+        onTakeOver={onTakeOver ? handleTakeOver : undefined}
+        onNudge={onNudge ? handleNudge : undefined}
       />
     </SwipeableTaskItem>
   );
@@ -81,14 +111,20 @@ export const TaskItemRow = React.memo(TaskItemRowComponent, (prev, next) => {
     prev.task.title === next.task.title &&
     prev.task.pinned === next.task.pinned &&
     prev.task.escalationCount === next.task.escalationCount &&
+    prev.task.assignedTo === next.task.assignedTo &&
+    prev.task.householdId === next.task.householdId &&
     prev.selected === next.selected &&
     prev.selectionMode === next.selectionMode &&
     prev.canComplete === next.canComplete &&
     prev.canSnooze === next.canSnooze &&
     prev.language === next.language &&
+    prev.currentUserId === next.currentUserId &&
+    prev.currentUserCode === next.currentUserCode &&
     prev.onPress === next.onPress &&
     prev.onLongPress === next.onLongPress &&
     prev.onComplete === next.onComplete &&
-    prev.onSnooze === next.onSnooze
+    prev.onSnooze === next.onSnooze &&
+    prev.onTakeOver === next.onTakeOver &&
+    prev.onNudge === next.onNudge
   );
 });

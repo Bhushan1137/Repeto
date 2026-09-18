@@ -40,6 +40,7 @@ export type AppIconName =
   | 'camera-outline'
   | 'mail-outline'
   | 'logo-google'
+  | 'lock-closed-outline'
   | 'warning-outline';
 
 interface AppIconProps {

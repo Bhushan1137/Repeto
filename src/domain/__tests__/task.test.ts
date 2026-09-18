@@ -329,6 +329,24 @@ describe('domain/task', () => {
       reason: 'archived',
       daysUntilDue: 0,
     });
+
+    // 7. Household task assigned to someone else
+    const householdTaskOther: RepeatingTask = {
+      ...taskDueToday,
+      householdId: 'hh-123',
+      assignedTo: 'user-bob',
+    };
+    // Disallowed for Alice
+    expect(canCompleteTask(householdTaskOther, { today, currentUserId: 'user-alice' })).toEqual({
+      allowed: false,
+      reason: 'assigned_to_other',
+      daysUntilDue: 0,
+    });
+    // Allowed for Bob
+    expect(canCompleteTask(householdTaskOther, { today, currentUserId: 'user-bob' })).toEqual({
+      allowed: true,
+      daysUntilDue: 0,
+    });
   });
 
   it('canSnoozeTask restricts snooze to today and this week (days <= 7)', () => {

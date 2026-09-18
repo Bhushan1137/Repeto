@@ -152,19 +152,34 @@ export function hasCompletedToday(task: RepeatingTask, today: Date = new Date())
 
 export interface TaskCompletionEligibility {
   allowed: boolean;
-  reason?: 'already_completed_today' | 'future_task' | 'archived';
+  reason?: 'already_completed_today' | 'future_task' | 'archived' | 'assigned_to_other';
   daysUntilDue: number;
 }
 
 export function canCompleteTask(
   task: RepeatingTask,
-  options?: { maxEarlyDays?: number; today?: Date }
+  options?: {
+    maxEarlyDays?: number;
+    today?: Date;
+    currentUserId?: string;
+    currentUserCode?: string;
+  }
 ): TaskCompletionEligibility {
   const today = options?.today ?? new Date();
   const days = daysUntilDue(task.nextDueDate, today);
 
   if (task.archived) {
     return { allowed: false, reason: 'archived', daysUntilDue: days };
+  }
+
+  // If this task belongs to a household and is assigned to someone else, block completion
+  if (task.householdId && task.assignedTo && (options?.currentUserId || options?.currentUserCode)) {
+    const isAssignedToMe =
+      (options.currentUserId && task.assignedTo === options.currentUserId) ||
+      (options.currentUserCode && task.assignedTo === options.currentUserCode);
+    if (!isAssignedToMe) {
+      return { allowed: false, reason: 'assigned_to_other', daysUntilDue: days };
+    }
   }
 
   if (hasCompletedToday(task, today)) {
@@ -312,6 +327,17 @@ export function undoCompleteTaskInstance(task: RepeatingTask, historyIndex?: num
 }
 
 export function claimTaskInstance(
+  task: RepeatingTask,
+  claimantUserId: string
+): RepeatingTask {
+  return {
+    ...task,
+    assignedTo: claimantUserId,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function takeOverTask(
   task: RepeatingTask,
   claimantUserId: string
 ): RepeatingTask {

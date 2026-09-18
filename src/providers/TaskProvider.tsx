@@ -35,10 +35,11 @@ import {
   setNextDueDate,
   duplicateTask,
   cleanupTasksOnRemoval,
-  claimTaskInstance,
+  takeOverTask,
   mergeTasksLocalAndRemote,
 } from '@/domain/task';
 import { cancelTaskReminder, scheduleTaskReminder, setupNotificationCategories } from '@/services/notifications';
+import { broadcastHouseholdTaskEvent } from '@/services/householdBroadcastService';
 import { useRouter } from 'expo-router';
 import { subscribeToUserTasksAndHouseholds } from '@/services/firebase/taskListener';
 import { computePreviousDueDate } from '@/domain/recurrence';
@@ -87,6 +88,7 @@ interface TaskContextValue {
   unshareAllLocalTasks: () => Promise<void>;
   mergeHouseholds: (sourceHhId: string, targetHhId: string) => Promise<void>;
   claimTask: (taskId: string) => Promise<void>;
+  takeOverTask: (taskId: string) => Promise<void>;
   refreshTasks: () => Promise<void>;
   focusTaskId: string | null;
   setFocusTaskId: (id: string | null) => void;
@@ -344,6 +346,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
               await addNotification(actionType, title, body, { taskId: mutated.id });
 
+              // Broadcast to household members if this is a household task
+              if (mutated.householdId && user) {
+                const isRotation = Boolean(
+                  mutated.isRotating &&
+                  mutated.assignedTo &&
+                  mutated.assignedTo !== user.id &&
+                  mutated.assignedTo !== user.userCode
+                );
+                broadcastHouseholdTaskEvent({
+                  eventType: isRotation ? 'task_completed_rotation' : 'task_completed',
+                  task: mutated,
+                  actorUser: user,
+                  allMembers: activeHousehold?.members,
+                  nextAssigneeId: isRotation ? mutated.assignedTo : undefined,
+                }).catch((err) => console.warn('[Repeato] Household broadcast failed:', err));
+              }
+
               for (const member of mutated.sharedWith) {
                 if (member.userId && member.userId !== user?.id) {
                   const peerTitle = lastHistory.status === 'snoozed'
@@ -379,16 +398,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         showToast(translate('saveError'));
       }
     },
-    [syncTask, showToast, translate, addNotification, user]
+    [syncTask, showToast, translate, addNotification, user, activeHousehold?.members]
   );
 
   const completeTask = useCallback(
     async (taskId: string, note?: string, options?: { maxEarlyDays?: number }) => {
       const existing = tasksRef.current.find((t) => t.id === taskId);
       if (!existing) return;
-      const eligibility = canCompleteTask(existing, { maxEarlyDays: options?.maxEarlyDays ?? 0 });
+      const eligibility = canCompleteTask(existing, {
+        maxEarlyDays: options?.maxEarlyDays ?? 0,
+        currentUserId: user?.id,
+        currentUserCode: user?.userCode,
+      });
       if (!eligibility.allowed) {
-        if (eligibility.reason === 'already_completed_today') {
+        if (eligibility.reason === 'assigned_to_other') {
+          showToast(
+            user?.language === 'hi'
+              ? 'यह कार्य किसी अन्य सदस्य को सौंपा गया है'
+              : 'Assigned to another member. Take over the task first!'
+          );
+        } else if (eligibility.reason === 'already_completed_today') {
           showToast(
             user?.language === 'hi'
               ? 'यह कार्य आज पहले ही पूरा हो चुका है'
@@ -405,7 +434,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       await applyMutation(taskId, (t) => completeTaskInstance(t, note, user?.id), 'markedDone');
     },
-    [applyMutation, user?.id, user?.language, showToast]
+    [applyMutation, user?.id, user?.userCode, user?.language, showToast]
   );
 
   const snoozeTask = useCallback(
@@ -997,15 +1026,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       const target = currentTasks.find((t) => t.id === taskId);
       if (!target) return;
 
-      const updated = claimTaskInstance(target, user.id);
+      const previousAssignee = target.assignedTo;
+      const updated = takeOverTask(target, user.id);
       const nextTasks = updateTaskInList(currentTasks, taskId, () => updated);
       setTasks(nextTasks);
       tasksRef.current = nextTasks;
-      showToast(user.language === 'hi' ? 'कार्य आपके नाम पर दर्ज हो गया!' : 'Task claimed!');
+      showToast(user.language === 'hi' ? 'कार्य आपके नाम पर दर्ज हो गया!' : 'Task assigned to you!');
       await persistAll(nextTasks);
       syncTask(updated, 'update').catch(() => {});
+
+      if (updated.householdId) {
+        broadcastHouseholdTaskEvent({
+          eventType: 'task_taken_over',
+          task: updated,
+          actorUser: user,
+          allMembers: activeHousehold?.members,
+          previousAssigneeId: previousAssignee,
+        }).catch((err) => console.warn('[Repeato] Takeover broadcast failed:', err));
+      }
     },
-    [user, persistAll, syncTask, showToast]
+    [user, persistAll, syncTask, showToast, activeHousehold?.members]
   );
 
   // Setup notification categories (with localized button titles)
@@ -1156,6 +1196,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       unshareAllLocalTasks,
       mergeHouseholds: mergeHouseholdsCb,
       claimTask: claimTaskCb,
+      takeOverTask: claimTaskCb,
       refreshTasks,
       focusTaskId,
       setFocusTaskId,

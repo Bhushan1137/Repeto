@@ -4,6 +4,7 @@ import {
   buildNudgeNotification,
   getRemainingNudgeCooldown,
 } from '@/domain/nudge';
+import { sendRemotePushNotification } from './notifications';
 
 const STORAGE_PREFIX = '@repeato/nudge_cooldown_';
 
@@ -77,6 +78,22 @@ export async function sendTaskNudge({
     const notif = buildNudgeNotification(taskId, taskTitle, fromUser);
     await userRepository.saveNotification(targetUserId, notif);
     await recordNudgeSent(taskId, targetUserId);
+
+    // Also dispatch native push notification directly to recipient's device if push token exists
+    try {
+      const targetUser = await userRepository.loadRemote(targetUserId);
+      if (targetUser?.expoPushToken && targetUser?.pushOptIn !== false) {
+        await sendRemotePushNotification(
+          targetUser.expoPushToken,
+          'Repeto Nudge 👉',
+          `${fromUser.name} nudged you to complete "${taskTitle}"!`,
+          { taskId, type: 'nudge' }
+        );
+      }
+    } catch (pushErr) {
+      console.warn('[Repeato Nudge] Remote push delivery failed (non-blocking):', pushErr);
+    }
+
     return { success: true };
   } catch (err) {
     console.warn('[Repeato Nudge] Failed to send nudge notification:', err);

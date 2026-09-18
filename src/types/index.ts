@@ -130,6 +130,7 @@ export interface UserProfile {
   language: Language;
   languageSelected?: boolean;
   pushOptIn: boolean;
+  expoPushToken?: string;
   profileComplete: boolean;
   onboardingComplete: boolean;
   plan: 'free' | 'plus';

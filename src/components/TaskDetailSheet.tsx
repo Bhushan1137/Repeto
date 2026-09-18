@@ -331,14 +331,27 @@ function TaskDetailSheetComponent({
                       style={{ minWidth: 90, marginVertical: 0 }}
                     />
                   )}
-                  {task.assignedTo && task.assignedTo !== user?.id && task.assignedTo !== user?.userCode && onNudge && (
-                    <Button
-                      title={language === 'hi' ? '👉 नज़ करें' : '👉 Nudge'}
-                      variant="outline"
-                      compact
-                      onPress={() => onNudge(task.id)}
-                      style={{ minWidth: 80, marginVertical: 0, borderColor: '#F59E0B' }}
-                    />
+                  {task.assignedTo && task.assignedTo !== user?.id && task.assignedTo !== user?.userCode && (
+                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                      {onNudge && (
+                        <Button
+                          title={language === 'hi' ? '👉 नज़' : '👉 Nudge'}
+                          variant="outline"
+                          compact
+                          onPress={() => onNudge(task.id)}
+                          style={{ minWidth: 70, marginVertical: 0, borderColor: '#F59E0B' }}
+                        />
+                      )}
+                      {onClaim && (
+                        <Button
+                          title={language === 'hi' ? 'स्वयं को सौंपें' : 'Take Over'}
+                          variant="outline"
+                          compact
+                          onPress={() => onClaim(task.id)}
+                          style={{ minWidth: 80, marginVertical: 0, borderColor: Colors.tealDeep }}
+                        />
+                      )}
+                    </View>
                   )}
                 </View>
                 {task.isRotating && (

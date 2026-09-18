@@ -7,6 +7,7 @@ export interface AppNotification {
   read: boolean;
   metadata?: {
     taskId?: string;
+    householdId?: string;
     amount?: number;
     memberCode?: string;
     fromUserId?: string;

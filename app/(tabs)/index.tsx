@@ -144,6 +144,27 @@ export default function HomeScreen() {
     [snoozeTask]
   );
 
+  const householdMembers = useMemo(() => {
+    return activeHousehold?.members ?? user?.householdMembers ?? [];
+  }, [activeHousehold?.members, user?.householdMembers]);
+
+  const handleTaskNudge = useCallback(
+    (taskId: string) => {
+      const target = tasks.find((t) => t.id === taskId);
+      if (target) {
+        handleNudge(target);
+      }
+    },
+    [tasks, handleNudge]
+  );
+
+  const handleTaskTakeOver = useCallback(
+    (taskId: string) => {
+      claimTask(taskId);
+    },
+    [claimTask]
+  );
+
   // Automatically open task when tapped from notification or external focus
   useEffect(() => {
     if (focusTaskId) {
@@ -211,8 +232,15 @@ export default function HomeScreen() {
   }, [tasks, selectedIds]);
 
   const completableCount = useMemo(() => {
-    return selectedTasks.filter((t) => canCompleteTask(t, { maxEarlyDays: 0 }).allowed).length;
-  }, [selectedTasks]);
+    return selectedTasks.filter(
+      (t) =>
+        canCompleteTask(t, {
+          maxEarlyDays: 0,
+          currentUserId: user?.id,
+          currentUserCode: user?.userCode,
+        }).allowed
+    ).length;
+  }, [selectedTasks, user?.id, user?.userCode]);
 
   const snoozableCount = useMemo(() => {
     return selectedTasks.filter((t) => canSnoozeTask(t).allowed).length;
@@ -680,6 +708,11 @@ export default function HomeScreen() {
                 onToggleSelect={handleTaskRowLongPress}
                 selectedIds={selectedIds}
                 isSelecting={isSelecting}
+                currentUserId={user?.id}
+                currentUserCode={user?.userCode}
+                householdMembers={householdMembers}
+                onTakeOver={handleTaskTakeOver}
+                onNudge={handleTaskNudge}
               />
             )}
 
@@ -689,7 +722,11 @@ export default function HomeScreen() {
                 <SectionHeader label={language === 'hi' ? 'पिन किए गए' : 'Pinned'} count={pinnedTasks.length} />
                 {pinnedTasks.map((task) => {
                   const isItemSelected = selectedIds.has(task.id);
-                  const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
+                  const canComplete = canCompleteTask(task, {
+                    maxEarlyDays: 0,
+                    currentUserId: user?.id,
+                    currentUserCode: user?.userCode,
+                  }).allowed;
                   const canSnooze = canSnoozeTask(task).allowed;
                   return (
                     <TaskItemRow
@@ -700,10 +737,15 @@ export default function HomeScreen() {
                       selectionMode={isSelecting}
                       canComplete={canComplete}
                       canSnooze={canSnooze}
+                      currentUserId={user?.id}
+                      currentUserCode={user?.userCode}
+                      householdMembers={householdMembers}
                       onPress={handleTaskRowPress}
                       onLongPress={handleTaskRowLongPress}
                       onComplete={handleTaskRowComplete}
                       onSnooze={handleTaskRowSnooze}
+                      onTakeOver={handleTaskTakeOver}
+                      onNudge={handleTaskNudge}
                     />
                   );
                 })}
@@ -744,7 +786,11 @@ export default function HomeScreen() {
                   )}
                   {showItems && items.map((task) => {
                     const isItemSelected = selectedIds.has(task.id);
-                    const canComplete = canCompleteTask(task, { maxEarlyDays: 0 }).allowed;
+                    const canComplete = canCompleteTask(task, {
+                      maxEarlyDays: 0,
+                      currentUserId: user?.id,
+                      currentUserCode: user?.userCode,
+                    }).allowed;
                     const canSnooze = canSnoozeTask(task).allowed;
                     return (
                       <TaskItemRow
@@ -755,10 +801,15 @@ export default function HomeScreen() {
                         selectionMode={isSelecting}
                         canComplete={canComplete}
                         canSnooze={canSnooze}
+                        currentUserId={user?.id}
+                        currentUserCode={user?.userCode}
+                        householdMembers={householdMembers}
                         onPress={handleTaskRowPress}
                         onLongPress={handleTaskRowLongPress}
                         onComplete={handleTaskRowComplete}
                         onSnooze={handleTaskRowSnooze}
+                        onTakeOver={handleTaskTakeOver}
+                        onNudge={handleTaskNudge}
                       />
                     );
                   })}
@@ -781,7 +832,14 @@ export default function HomeScreen() {
           onClear={clearSelection}
           onComplete={async () => {
             const eligible = selectedTasks
-              .filter((t) => canCompleteTask(t, { maxEarlyDays: 0 }).allowed)
+              .filter(
+                (t) =>
+                  canCompleteTask(t, {
+                    maxEarlyDays: 0,
+                    currentUserId: user?.id,
+                    currentUserCode: user?.userCode,
+                  }).allowed
+              )
               .map((t) => t.id);
             if (eligible.length > 0) {
               await completeTasks(eligible);

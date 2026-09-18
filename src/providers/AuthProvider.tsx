@@ -11,7 +11,7 @@ import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { restoreUserRemote, purgeUserDataRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
-import { cancelAllNotifications } from '@/services/notifications';
+import { cancelAllNotifications, registerForPushNotificationsAsync } from '@/services/notifications';
 
 interface AuthContextValue {
   ready: boolean;
@@ -411,6 +411,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [user, persistUser]
   );
+
+  // Register and sync Expo push token for remote push notifications
+  useEffect(() => {
+    if (!user?.id || user.pushOptIn === false) return;
+
+    registerForPushNotificationsAsync()
+      .then((token) => {
+        if (token && token !== user.expoPushToken) {
+          updateUser({ expoPushToken: token }).catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('[Repeato] Failed to sync push token:', err);
+      });
+  }, [user?.id, user?.pushOptIn, user?.expoPushToken, updateUser]);
 
   const setLanguage = useCallback(
     async (lang: Language) => {
