@@ -64,20 +64,7 @@ function StaticProgressRing({
           />
         </G>
       </Svg>
-      {label ? (
-        <Text
-          style={[
-            styles.label,
-            {
-              color: labelColor,
-              fontSize: size < 50 ? 9 : 10.5,
-              lineHeight: size < 50 ? 9.5 : 12,
-            },
-          ]}
-        >
-          {label}
-        </Text>
-      ) : null}
+      {label ? renderProgressRingLabel(label, labelColor, size) : null}
     </View>
   );
 }
@@ -138,21 +125,38 @@ function AnimatedProgressRing({
           />
         </G>
       </Svg>
-      {label ? (
-        <Text
-          style={[
-            styles.label,
-            {
-              color: labelColor,
-              fontSize: size < 50 ? 9 : 10.5,
-              lineHeight: size < 50 ? 9.5 : 12,
-            },
-          ]}
-        >
-          {label}
-        </Text>
-      ) : null}
+      {label ? renderProgressRingLabel(label, labelColor, size) : null}
     </View>
+  );
+}
+
+function renderProgressRingLabel(label: string, labelColor: string, size: number) {
+  const isMultiLine = label.includes('\n');
+  const isLongSingleWord = !isMultiLine && label.length > 6;
+  const fontSize = isMultiLine
+    ? (size < 50 ? 8.5 : 9.5)
+    : (isLongSingleWord ? 8.2 : (size < 50 ? 9.5 : 11));
+  const lineHeight = isMultiLine
+    ? (size < 50 ? 9.5 : 11)
+    : (isLongSingleWord ? 10 : 13);
+
+  return (
+    <Text
+      numberOfLines={isMultiLine ? 2 : 1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+      style={[
+        styles.label,
+        {
+          color: labelColor,
+          fontSize,
+          lineHeight,
+          letterSpacing: isLongSingleWord ? -0.4 : 0,
+        },
+      ]}
+    >
+      {label}
+    </Text>
   );
 }
 
@@ -168,6 +172,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     fontFamily: 'Manrope_700Bold',
     textAlign: 'center',
-    width: '90%',
+    width: '92%',
+    alignSelf: 'center',
   },
 });

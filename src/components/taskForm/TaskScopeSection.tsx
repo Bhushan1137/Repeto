@@ -182,6 +182,9 @@ export function TaskScopeSection({
     <View style={styles.container}>
       {/* ── TIER 1: TASK SCOPE ─────────────────────────────────────────── */}
       <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionBadgeNum}>5</Text>
+        </View>
         <Text style={styles.sectionLabel}>{translate('taskScopeLabel')}</Text>
       </View>
 
@@ -436,16 +439,44 @@ export function TaskScopeSection({
 
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(228, 219, 199, 0.7)',
+    shadowColor: '#171B36',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
     marginTop: 18,
     marginBottom: 8,
   },
   sectionHeaderRow: {
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  sectionBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(245, 197, 110, 0.25)',
+    borderWidth: 1,
+    borderColor: Colors.marigoldDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionBadgeNum: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 11,
+    color: Colors.marigoldDeep,
   },
   sectionLabel: {
-    ...Typography.label,
-    fontSize: 11,
-    color: Colors.inkSoft,
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12.5,
+    color: Colors.ink,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },

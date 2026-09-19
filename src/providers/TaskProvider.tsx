@@ -38,7 +38,7 @@ import {
   takeOverTask,
   mergeTasksLocalAndRemote,
 } from '@/domain/task';
-import { cancelTaskReminder, scheduleTaskReminder, setupNotificationCategories } from '@/services/notifications';
+import { cancelTaskReminder, scheduleTaskReminder, setupNotificationCategories, cancelOverdueReminders, syncOverdueNotifications } from '@/services/notifications';
 import { broadcastHouseholdTaskEvent } from '@/services/householdBroadcastService';
 import { useRouter } from 'expo-router';
 import { subscribeToUserTasksAndHouseholds } from '@/services/firebase/taskListener';
@@ -72,7 +72,7 @@ interface TaskContextValue {
   pinTask: (taskId: string) => Promise<void>;
   duplicateTask: (taskId: string) => Promise<boolean>;
   setTaskDueDate: (taskId: string, date: Date) => Promise<void>;
-  completeTasks: (taskIds: string[]) => Promise<void>;
+  completeTasks: (taskIds: string[], options?: { maxEarlyDays?: number }) => Promise<void>;
   snoozeTasks: (taskIds: string[], days?: number) => Promise<void>;
   skipTasks: (taskIds: string[]) => Promise<void>;
   undoCompleteTasks: (taskIds: string[]) => Promise<void>;
@@ -161,6 +161,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled && userIdRef.current === user.id) {
           setTasks(localTasks);
           setHydrated(true);
+          // Sync overdue push notifications from local data (covers offline start)
+          syncOverdueNotifications(localTasks).catch(() => {});
         }
       } catch (err) {
         console.warn('[Repeato] Failed to load local tasks:', err);
@@ -189,6 +191,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             if (newerLocalTasks.length > 0) {
               Promise.all(newerLocalTasks.map((t) => taskRepository.saveOne(t, user.id, 'update'))).catch(() => {});
             }
+
+            // Sync overdue push notifications after tasks are merged and up-to-date
+            syncOverdueNotifications(merged).catch(() => {});
           }
         },
         async (error) => {
@@ -237,9 +242,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
       if (task.archived) {
         await cancelTaskReminder(task.id);
+        await cancelOverdueReminders(task.id);
       } else if (user.pushOptIn !== false || task.reminderTime) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
+        // Cancel overdue reminders whenever the task is mutated (completed/snoozed/skipped/updated).
+        // syncOverdueNotifications will re-add them on next app load if still overdue.
+        await cancelOverdueReminders(task.id);
       }
     },
     [user?.id, user?.pushOptIn]
@@ -462,6 +471,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       setTasks(loaded);
       tasksRef.current = loaded;
       setHydrated(true);
+      // Re-sync overdue notifications after manual refresh
+      syncOverdueNotifications(loaded).catch(() => {});
     } catch (err) {
       console.warn('[Repeato] Failed to refresh tasks:', err);
     }
@@ -636,13 +647,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const completeTasks = useCallback(
-    async (taskIds: string[]) => {
+    async (taskIds: string[], options?: { maxEarlyDays?: number }) => {
+      const maxEarlyDays = options?.maxEarlyDays ?? 0;
       const currentTasks = tasksRef.current;
       let next = [...currentTasks];
       const completedTasksList: RepeatingTask[] = [];
       for (const id of taskIds) {
         const existing = next.find((t) => t.id === id);
-        if (existing && canCompleteTask(existing, { maxEarlyDays: 0 }).allowed) {
+        if (
+          existing &&
+          canCompleteTask(existing, {
+            maxEarlyDays,
+            currentUserId: user?.id,
+            currentUserCode: user?.userCode,
+          }).allowed
+        ) {
           const mutated = completeTaskInstance(existing, undefined, user?.id);
           next = updateTaskInList(next, id, () => mutated);
           completedTasksList.push(mutated);
@@ -668,7 +687,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, user?.language, persistAll, syncTask, showToast, translate]
+    [user?.id, user?.userCode, user?.language, persistAll, syncTask, showToast, translate]
   );
 
   const snoozeTasks = useCallback(

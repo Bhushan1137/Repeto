@@ -28,7 +28,7 @@ import type { CategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import { Card } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth' | 'secLater'> = {
@@ -235,7 +235,7 @@ export default function HomeScreen() {
     return selectedTasks.filter(
       (t) =>
         canCompleteTask(t, {
-          maxEarlyDays: 0,
+          maxEarlyDays: 2,
           currentUserId: user?.id,
           currentUserCode: user?.userCode,
         }).allowed
@@ -835,14 +835,14 @@ export default function HomeScreen() {
               .filter(
                 (t) =>
                   canCompleteTask(t, {
-                    maxEarlyDays: 0,
+                    maxEarlyDays: 2,
                     currentUserId: user?.id,
                     currentUserCode: user?.userCode,
                   }).allowed
               )
               .map((t) => t.id);
             if (eligible.length > 0) {
-              await completeTasks(eligible);
+              await completeTasks(eligible, { maxEarlyDays: 2 });
             }
             clearSelection();
           }}
@@ -858,8 +858,8 @@ export default function HomeScreen() {
           onDisabledComplete={() => {
             showToast(
               language === 'hi'
-                ? 'केवल आज या बकाया कार्य ही पूरे किए जा सकते हैं'
-                : 'Only tasks due today or overdue can be marked Done'
+                ? 'केवल आज, बकाया या अगले 2 दिनों के कार्य ही पूरे किए जा सकते हैं'
+                : 'Only tasks due today, overdue, or due within 2 days can be marked Done'
             );
           }}
           onDisabledSnooze={() => {
@@ -873,9 +873,25 @@ export default function HomeScreen() {
             await skipTasks(Array.from(selectedIds));
             clearSelection();
           }}
-          onDelete={async () => {
-            await deleteTasks(Array.from(selectedIds));
-            clearSelection();
+          onDelete={() => {
+            const count = selectedIds.size;
+            Alert.alert(
+              language === 'hi' ? 'कार्य हटाएं' : 'Delete Tasks',
+              language === 'hi'
+                ? `क्या आप वाकई ${count} चुने गए कार्यों को हटाना चाहते हैं?`
+                : `Are you sure you want to delete ${count} selected ${count === 1 ? 'task' : 'tasks'}?`,
+              [
+                { text: language === 'hi' ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+                {
+                  text: language === 'hi' ? 'हटाएं' : 'Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await deleteTasks(Array.from(selectedIds));
+                    clearSelection();
+                  },
+                },
+              ]
+            );
           }}
           language={language}
         />

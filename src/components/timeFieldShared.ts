@@ -15,8 +15,10 @@ export function parseTime(value: string | null): Date {
     d.setHours(9, 0, 0, 0);
     return d;
   }
-  const [h, m] = value.split(':').map(Number);
-  d.setHours(h || 9, m || 0, 0, 0);
+  const [hStr, mStr] = value.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  d.setHours(!isNaN(h) ? h : 9, !isNaN(m) ? m : 0, 0, 0);
   return d;
 }
 

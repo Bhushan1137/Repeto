@@ -91,6 +91,8 @@ export interface TaskHistoryEntry {
   previousAssignee?: string;
   rotatedTo?: string;
   previousDueDate?: string;
+  doseIndex?: number;
+  doseTime?: string;
 }
 
 export interface RepeatingTask {
@@ -105,6 +107,8 @@ export interface RepeatingTask {
   amount?: number;
   finance: boolean;
   reminderTime?: string;
+  timesPerDay?: number;
+  reminderTimes?: string[];
   startDate?: string;
   sharedWith: SharedMember[];
   assignedTo?: string;
@@ -160,6 +164,12 @@ export interface AppState {
   tasks: RepeatingTask[];
 }
 
+export interface DetectedToken {
+  id: 'amount' | 'time' | 'recurrence' | 'category' | 'doses';
+  label: string;
+  icon: string;
+}
+
 export interface ParsedTaskInput {
   title: string;
   icon?: string;
@@ -168,8 +178,13 @@ export interface ParsedTaskInput {
   amount?: number;
   category: CategoryKey;
   reminderTime?: string;
+  timesPerDay?: number;
+  isMultiTime?: boolean;
+  reminderTimes?: string[];
   startDate?: string;
   assignedTo?: string;
   isRotating?: boolean;
   rotationMembers?: string[];
+  detectedTokens?: DetectedToken[];
 }
+

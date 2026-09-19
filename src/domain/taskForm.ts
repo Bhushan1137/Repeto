@@ -11,6 +11,8 @@ export interface TaskFormValues {
   amount?: number;
   finance: boolean;
   reminderTime?: string;
+  timesPerDay?: number;
+  reminderTimes?: string[];
   startDate?: string;
   assignedTo?: string;
   householdId?: string;
@@ -32,6 +34,9 @@ export interface TaskFormState {
   amountText: string;
   finance: boolean;
   reminderTime: string | null;
+  isMultiTime: boolean;
+  timesPerDay: number;
+  reminderTimes: string[];
   startDate: string | null;
   assignedTo: string | null;
   householdId: string | null;
@@ -115,9 +120,38 @@ export function recurrenceToFormState(rule: RecurrenceRule): Pick<
   };
 }
 
+export function getDefaultDoseTimes(timesPerDay: number): string[] {
+  switch (timesPerDay) {
+    case 2:
+      return ['08:00', '20:00'];
+    case 3:
+      return ['08:00', '14:00', '20:00'];
+    case 4:
+      return ['08:00', '12:00', '16:00', '20:00'];
+    case 5:
+      return ['07:00', '10:00', '13:00', '17:00', '21:00'];
+    default:
+      return ['09:00'];
+  }
+}
+
+export function normalizeReminderTimes(timesPerDay?: number, reminderTimes?: string[]): string[] {
+  if (!timesPerDay || timesPerDay <= 1) {
+    return reminderTimes && reminderTimes.length > 0 ? [reminderTimes[0]] : ['09:00'];
+  }
+  const count = Math.min(5, Math.max(2, timesPerDay));
+  const defaults = getDefaultDoseTimes(count);
+  const result: string[] = [];
+  for (let i = 0; i < count; i++) {
+    result.push(reminderTimes && reminderTimes[i] ? reminderTimes[i] : defaults[i]);
+  }
+  return result;
+}
+
 export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
+  const defaultTime = config.defaultReminderTime ?? '09:00';
   return {
     title: '',
     category,
@@ -125,6 +159,9 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
     amountText: '',
     finance: config.showFinance,
     reminderTime: config.defaultReminderTime ?? null,
+    isMultiTime: false,
+    timesPerDay: 1,
+    reminderTimes: [defaultTime],
     startDate: null,
     assignedTo: null,
     householdId: null,
@@ -137,13 +174,22 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
 
 export function formStateFromValues(values: TaskFormValues): TaskFormState {
   const rec = recurrenceToFormState(values.recurrence);
+  const isMulti = Boolean(values.timesPerDay && values.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, values.timesPerDay || 2)) : 1;
+  const times = isMulti
+    ? (values.reminderTimes && values.reminderTimes.length > 0 ? values.reminderTimes : getDefaultDoseTimes(timesCount))
+    : (values.reminderTime ? [values.reminderTime] : ['09:00']);
+
   return {
     title: values.title,
     category: values.category,
     ...rec,
     amountText: values.amount ? String(values.amount) : '',
     finance: values.finance,
-    reminderTime: values.reminderTime ?? null,
+    reminderTime: values.reminderTime ?? (times[0] || null),
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
     startDate: values.startDate ?? null,
     assignedTo: values.assignedTo ?? null,
     householdId: values.householdId ?? null,
@@ -159,13 +205,23 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
   const rec = recurrenceToFormState(parsed.recurrence);
   const rule = buildRecurrenceRule(rec);
   const startDate = computeNextDueDate(rule, new Date()).slice(0, 10);
+  const isMulti = Boolean(parsed.isMultiTime && parsed.timesPerDay && parsed.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, parsed.timesPerDay || 2)) : 1;
+  const defaultTime = parsed.reminderTime ?? config.defaultReminderTime ?? '09:00';
+  const times = isMulti
+    ? (parsed.reminderTimes && parsed.reminderTimes.length > 0 ? parsed.reminderTimes : getDefaultDoseTimes(timesCount))
+    : (parsed.reminderTime ? [parsed.reminderTime] : [defaultTime]);
+
   return {
     title: parsed.title,
     category: parsed.category,
     ...rec,
     amountText: parsed.amount ? String(parsed.amount) : '',
     finance: config.showFinance && !!parsed.amount,
-    reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? null,
+    reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? (times[0] || null),
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
     startDate,
     assignedTo: null,
     householdId: null,
@@ -178,13 +234,23 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
 
 export function formStateFromTask(task: RepeatingTask): TaskFormState {
   const rec = recurrenceToFormState(task.recurrence);
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, task.timesPerDay || 2)) : 1;
+  const fallbackTime = task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? '09:00';
+  const times = isMulti
+    ? (task.reminderTimes && task.reminderTimes.length > 0 ? task.reminderTimes : getDefaultDoseTimes(timesCount))
+    : [fallbackTime];
+
   return {
     title: task.title,
     category: task.category,
     ...rec,
     amountText: task.amount ? String(task.amount) : '',
     finance: task.finance,
-    reminderTime: task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? null,
+    reminderTime: task.reminderTime ?? fallbackTime,
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
     startDate: task.startDate ?? null,
     assignedTo: task.assignedTo ?? null,
     householdId: task.householdId ?? null,
@@ -220,14 +286,30 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
   const amountDigits = state.amountText.replace(/\D/g, '');
   const amount = state.finance && amountDigits ? Number(amountDigits) : undefined;
 
+  const isMulti = state.isMultiTime && state.timesPerDay > 1;
+  const timesPerDay = isMulti ? Math.min(5, Math.max(2, state.timesPerDay)) : undefined;
+  const reminderTimes = isMulti
+    ? normalizeReminderTimes(timesPerDay!, state.reminderTimes)
+    : undefined;
+  const primaryReminderTime = isMulti && reminderTimes && reminderTimes.length > 0
+    ? reminderTimes[0]
+    : (state.reminderTime ? state.reminderTime : undefined);
+
+  let freqLabel = frequencyLabelFromRule(recurrence, lang);
+  if (isMulti && timesPerDay && recurrence.type === 'daily') {
+    freqLabel = lang === 'hi' ? `${timesPerDay} बार प्रतिदिन` : `${timesPerDay} times a day`;
+  }
+
   return {
     title: state.title.trim(),
     category: state.category,
     recurrence,
-    freq: frequencyLabelFromRule(recurrence, lang),
+    freq: freqLabel,
     amount,
     finance: state.finance,
-    reminderTime: state.reminderTime ? state.reminderTime : undefined,
+    reminderTime: primaryReminderTime,
+    timesPerDay,
+    reminderTimes,
     startDate: state.startDate ? state.startDate : undefined,
     assignedTo: state.assignedTo || undefined,
     householdId: state.householdId || undefined,

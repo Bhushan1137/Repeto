@@ -82,11 +82,89 @@ describe('services/notifications', () => {
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(5);
   });
 
-  it('cancelTaskReminder cancels scheduled notifications for all task IDs', async () => {
+  it('cancelTaskReminder cancels scheduled notifications for all task IDs including dose IDs', async () => {
     await cancelTaskReminder('t123');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-0');
-    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-4');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-dose-0');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-t123-dose-1');
+  });
+
+  it('scheduleTaskReminder schedules separate notifications for each dose of a multi-time task', async () => {
+    const task = createTaskFromPreset('Vitamins', 'health', '3 times a day');
+    task.timesPerDay = 3;
+    task.reminderTimes = ['08:00', '14:00', '20:00'];
+    task.recurrence = { type: 'daily' };
+
+    await scheduleTaskReminder(task);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: `task-${task.id}-dose-0`,
+        trigger: expect.objectContaining({
+          type: 'daily',
+          hour: 8,
+          minute: 0,
+        }),
+      })
+    );
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: `task-${task.id}-dose-1`,
+        trigger: expect.objectContaining({
+          type: 'daily',
+          hour: 14,
+          minute: 0,
+        }),
+      })
+    );
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: `task-${task.id}-dose-2`,
+        trigger: expect.objectContaining({
+          type: 'daily',
+          hour: 20,
+          minute: 0,
+        }),
+      })
+    );
+  });
+
+  it('scheduleTaskReminder schedules future date notification for doses already completed today', async () => {
+    const task = createTaskFromPreset('Vitamins', 'health', '2 times a day');
+    task.timesPerDay = 2;
+    task.reminderTimes = ['08:00', '20:00'];
+    task.recurrence = { type: 'daily' };
+    task.history = [
+      {
+        month: 'Sep 2026',
+        status: 'on_time',
+        completedAt: new Date().toISOString(), // Completed dose 0 today
+        doseIndex: 0,
+        doseTime: '08:00',
+      },
+    ];
+
+    await scheduleTaskReminder(task);
+    // Dose 0 completed -> scheduled with a DATE trigger for tomorrow or next due date
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: `task-${task.id}-dose-0`,
+        trigger: expect.objectContaining({
+          type: 'date',
+        }),
+      })
+    );
+    // Dose 1 still pending -> scheduled with a DAILY trigger
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: `task-${task.id}-dose-1`,
+        trigger: expect.objectContaining({
+          type: 'daily',
+          hour: 20,
+          minute: 0,
+        }),
+      })
+    );
   });
 
   it('setupNotificationCategories configures background action options', async () => {

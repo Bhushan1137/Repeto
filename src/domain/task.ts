@@ -7,6 +7,8 @@ import type {
   UserProfile,
 } from '@/types';
 import type { TaskFormValues } from '@/domain/taskForm';
+import { normalizeReminderTimes } from '@/domain/taskForm';
+export { normalizeReminderTimes };
 import {
   computeInitialDueDate,
   computeNextDueDate,
@@ -55,10 +57,18 @@ export function createTaskFromFormValues(
     category: values.category,
     recurrence: values.recurrence,
     frequencyLabel: values.freq,
-    nextDueDate: computeInitialDueDate(values.recurrence, values.startDate, values.reminderTime),
+    nextDueDate: computeInitialDueDate(
+      values.recurrence,
+      values.startDate,
+      values.reminderTime,
+      new Date(),
+      values.reminderTimes
+    ),
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
+    timesPerDay: values.timesPerDay,
+    reminderTimes: values.reminderTimes,
     startDate: values.startDate,
     sharedWith: shared,
     assignedTo: values.assignedTo,
@@ -141,13 +151,119 @@ export function isSameDay(d1: Date, d2: Date): boolean {
   );
 }
 
+export interface TodayDoseProgress {
+  totalDoses: number;
+  completedCount: number;
+  completedIndices: number[];
+  nextDoseIndex: number;
+  isAllDone: boolean;
+  times: string[];
+}
+
+export function getTodayDoseProgress(task: RepeatingTask, today: Date = new Date()): TodayDoseProgress {
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  const totalDoses = isMulti ? Math.min(5, Math.max(2, task.timesPerDay!)) : 1;
+  const times = isMulti
+    ? normalizeReminderTimes(totalDoses, task.reminderTimes)
+    : (task.reminderTime ? [task.reminderTime] : ['09:00']);
+
+  if (!task.history || task.history.length === 0) {
+    return {
+      totalDoses,
+      completedCount: 0,
+      completedIndices: [],
+      nextDoseIndex: 0,
+      isAllDone: false,
+      times,
+    };
+  }
+
+  // Find all completion entries for today (excluding skipped and snoozed)
+  const todayEntries = task.history.filter((h) => {
+    if (h.status === 'skipped' || h.status === 'snoozed') return false;
+    if (!h.completedAt) return false;
+    return isSameDay(new Date(h.completedAt), today);
+  });
+
+  const completedIndices: number[] = [];
+  todayEntries.forEach((entry) => {
+    if (entry.doseIndex !== undefined && entry.doseIndex >= 0 && entry.doseIndex < totalDoses) {
+      if (!completedIndices.includes(entry.doseIndex)) {
+        completedIndices.push(entry.doseIndex);
+      }
+    } else {
+      const nextAvailable = Array.from({ length: totalDoses }, (_, i) => i).find(
+        (i) => !completedIndices.includes(i)
+      );
+      if (nextAvailable !== undefined) {
+        completedIndices.push(nextAvailable);
+      }
+    }
+  });
+
+  let nextDoseIndex = 0;
+  for (let i = 0; i < totalDoses; i++) {
+    if (!completedIndices.includes(i)) {
+      nextDoseIndex = i;
+      break;
+    }
+  }
+
+  const completedCount = completedIndices.length;
+  const isAllDone = completedCount >= totalDoses;
+
+  return {
+    totalDoses,
+    completedCount,
+    completedIndices,
+    nextDoseIndex: isAllDone ? totalDoses - 1 : nextDoseIndex,
+    isAllDone,
+    times,
+  };
+}
+
 export function hasCompletedToday(task: RepeatingTask, today: Date = new Date()): boolean {
+  if (task.timesPerDay && task.timesPerDay > 1) {
+    return getTodayDoseProgress(task, today).isAllDone;
+  }
   if (!task.history || task.history.length === 0) return false;
   return task.history.some((h) => {
     if (h.status === 'skipped' || h.status === 'snoozed') return false;
     if (!h.completedAt) return false;
     return isSameDay(new Date(h.completedAt), today);
   });
+}
+
+/**
+ * Returns true when a task is due TODAY, its scheduled reminder time (default 09:00)
+ * has already passed, and it hasn't been completed yet.
+ * Used to show an "Overdue" badge inside Today's Focus & Activity card.
+ */
+export function isOverdueToday(task: RepeatingTask, now: Date = new Date()): boolean {
+  // Must be due today
+  const due = new Date(task.nextDueDate);
+  const today = now;
+  if (
+    due.getFullYear() !== today.getFullYear() ||
+    due.getMonth() !== today.getMonth() ||
+    due.getDate() !== today.getDate()
+  ) {
+    return false;
+  }
+  // Must not be already completed
+  if (hasCompletedToday(task, now)) return false;
+  // Compare current time against reminderTime (default 09:00)
+  const timeStr = task.reminderTime ?? '09:00';
+  const [h, m] = timeStr.split(':').map(Number);
+  const reminderHour = Number.isNaN(h) ? 9 : h;
+  const reminderMinute = Number.isNaN(m) ? 0 : m;
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  // Current time must be past the reminder time
+  return (
+    currentHour > reminderHour ||
+    (currentHour === reminderHour && currentMinute >= reminderMinute)
+  );
 }
 
 export interface TaskCompletionEligibility {
@@ -223,7 +339,34 @@ export function statusForCompletion(dueDateIso: string, completedAt: Date = new 
   return daysUntilDue(dueDateIso, completedAt) < 0 ? 'late' : 'on_time';
 }
 
-export function completeTaskInstance(task: RepeatingTask, note?: string, completedBy?: string): RepeatingTask {
+export function completeTaskInstance(
+  task: RepeatingTask,
+  note?: string,
+  completedBy?: string,
+  specificDoseIndex?: number
+): RepeatingTask {
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  const totalDoses = isMulti ? Math.min(5, Math.max(2, task.timesPerDay!)) : 1;
+  const times = isMulti
+    ? normalizeReminderTimes(totalDoses, task.reminderTimes)
+    : (task.reminderTime ? [task.reminderTime] : ['09:00']);
+  const progress = isMulti ? getTodayDoseProgress(task) : null;
+
+  let doseIndex: number | undefined;
+  if (isMulti && progress) {
+    if (
+      specificDoseIndex !== undefined &&
+      specificDoseIndex >= 0 &&
+      specificDoseIndex < totalDoses &&
+      !progress.completedIndices.includes(specificDoseIndex)
+    ) {
+      doseIndex = specificDoseIndex;
+    } else {
+      doseIndex = progress.nextDoseIndex;
+    }
+  }
+  const doseTime = doseIndex !== undefined ? times[doseIndex] : task.reminderTime;
+
   const status = statusForCompletion(task.nextDueDate);
   const base = new Date(task.nextDueDate);
   const today = new Date();
@@ -238,9 +381,35 @@ export function completeTaskInstance(task: RepeatingTask, note?: string, complet
     rotatedTo = nextAssignee;
   }
 
+  let nextDueDate: string;
+  let nextReminderTime = task.reminderTime;
+
+  if (isMulti) {
+    const isNewDose = doseIndex !== undefined && !progress?.completedIndices.includes(doseIndex);
+    const newCompletedCount = isNewDose
+      ? (progress?.completedCount || 0) + 1
+      : (progress?.completedCount || 0);
+
+    if (newCompletedCount >= totalDoses) {
+      nextDueDate = computeNextDueDate(task.recurrence, baseDate);
+      nextReminderTime = times[0];
+    } else {
+      nextDueDate = baseDate.toISOString();
+      const nextIncomplete = Array.from({ length: totalDoses }, (_, i) => i).find(
+        (i) => i !== doseIndex && !progress?.completedIndices.includes(i)
+      );
+      if (nextIncomplete !== undefined && times[nextIncomplete]) {
+        nextReminderTime = times[nextIncomplete];
+      }
+    }
+  } else {
+    nextDueDate = computeNextDueDate(task.recurrence, baseDate);
+  }
+
   return {
     ...task,
     assignedTo: nextAssignee,
+    reminderTime: nextReminderTime,
     history: [
       ...(task.history ?? []).slice(-12),
       {
@@ -252,9 +421,11 @@ export function completeTaskInstance(task: RepeatingTask, note?: string, complet
         previousAssignee: task.assignedTo,
         rotatedTo,
         previousDueDate: task.nextDueDate,
+        doseIndex,
+        doseTime,
       },
     ],
-    nextDueDate: computeNextDueDate(task.recurrence, baseDate),
+    nextDueDate,
     escalationCount: 0,
     snoozedUntil: undefined,
     updatedAt: new Date().toISOString(),
@@ -285,8 +456,18 @@ export function undoSkipTask(task: RepeatingTask): RepeatingTask {
     ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
     : task.nextDueDate;
 
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  let reminderTime = task.reminderTime;
+  if (isMulti) {
+    const tempTask = { ...task, history };
+    const progress = getTodayDoseProgress(tempTask);
+    const times = normalizeReminderTimes(task.timesPerDay, task.reminderTimes);
+    reminderTime = times[progress.nextDoseIndex] || times[0];
+  }
+
   return {
     ...task,
+    reminderTime,
     history,
     nextDueDate,
     updatedAt: new Date().toISOString(),
@@ -311,9 +492,30 @@ export function undoCompleteTaskInstance(task: RepeatingTask, historyIndex?: num
   const targetEntry = history[targetIdx];
   const isLastEntry = targetIdx === history.length - 1;
   const nextHistory = history.filter((_, idx) => idx !== targetIdx);
-  const nextDueDate = isLastEntry
-    ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
-    : task.nextDueDate;
+
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+
+  let nextDueDate: string;
+  let reminderTime = task.reminderTime;
+
+  if (isMulti) {
+    const tempTask = { ...task, history: nextHistory };
+    const progress = getTodayDoseProgress(tempTask);
+    const times = normalizeReminderTimes(task.timesPerDay, task.reminderTimes);
+    if (progress.completedCount < (task.timesPerDay || 1)) {
+      nextDueDate = targetEntry.previousDueDate || new Date().toISOString();
+      reminderTime = times[progress.nextDoseIndex] || times[0];
+    } else {
+      nextDueDate = isLastEntry
+        ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
+        : task.nextDueDate;
+    }
+  } else {
+    nextDueDate = isLastEntry
+      ? (targetEntry.previousDueDate || computePreviousDueDate(task.recurrence, task.nextDueDate))
+      : task.nextDueDate;
+  }
+
   const nextAssignee =
     isLastEntry && targetEntry.previousAssignee !== undefined
       ? targetEntry.previousAssignee
@@ -322,6 +524,7 @@ export function undoCompleteTaskInstance(task: RepeatingTask, historyIndex?: num
   return {
     ...task,
     assignedTo: nextAssignee,
+    reminderTime,
     history: nextHistory,
     nextDueDate,
     updatedAt: new Date().toISOString(),
@@ -396,8 +599,13 @@ export function skipTaskInstance(task: RepeatingTask, userId?: string): Repeatin
   const base = new Date(task.nextDueDate);
   const today = new Date();
   const baseDate = base >= today ? base : today;
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  const times = isMulti ? normalizeReminderTimes(task.timesPerDay, task.reminderTimes) : [];
+  const nextReminderTime = isMulti && times.length > 0 ? times[0] : task.reminderTime;
+
   return {
     ...task,
+    reminderTime: nextReminderTime,
     history: [
       ...(task.history ?? []).slice(-12),
       {
@@ -429,10 +637,18 @@ function recurrenceChanged(a: RepeatingTask['recurrence'], b: TaskFormValues['re
 export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): RepeatingTask {
   // Recalculate nextDueDate when the recurrence rule, start date, or reminder time changes.
   const startChanged = task.startDate !== values.startDate;
-  const timeChanged = task.reminderTime !== values.reminderTime;
+  const timeChanged = task.reminderTime !== values.reminderTime ||
+    task.timesPerDay !== values.timesPerDay ||
+    JSON.stringify(task.reminderTimes) !== JSON.stringify(values.reminderTimes);
   const recChanged = recurrenceChanged(task.recurrence, values.recurrence);
   const nextDueDate = (recChanged || startChanged || timeChanged)
-    ? computeInitialDueDate(values.recurrence, values.startDate, values.reminderTime)
+    ? computeInitialDueDate(
+        values.recurrence,
+        values.startDate,
+        values.reminderTime,
+        new Date(),
+        values.reminderTimes
+      )
     : task.nextDueDate;
 
   return {
@@ -444,6 +660,8 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     amount: values.amount,
     finance: values.finance || !!values.amount,
     reminderTime: values.reminderTime,
+    timesPerDay: values.timesPerDay,
+    reminderTimes: values.reminderTimes,
     startDate: values.startDate,
     assignedTo: values.assignedTo !== undefined ? values.assignedTo : task.assignedTo,
     isRotating: values.isRotating !== undefined ? values.isRotating : task.isRotating,

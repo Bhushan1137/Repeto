@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { View, StyleSheet, Platform, Pressable, type PressableProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,6 +50,9 @@ export default function TabLayout() {
   const { message } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const bottomPad = Math.max(insets.bottom, 12);
+
+  const pathname = usePathname();
+  const isHouseholdTab = !!(pathname && pathname.includes('household'));
 
   return (
     <View style={styles.root}>
@@ -116,7 +119,11 @@ export default function TabLayout() {
       </Tabs>
 
       {/* Modal sheet opened by FAB — no navigation, no reload */}
-      <AddTaskSheet visible={showAdd} onClose={() => setShowAdd(false)} />
+      <AddTaskSheet
+        visible={showAdd}
+        onClose={() => setShowAdd(false)}
+        defaultToHousehold={isHouseholdTab}
+      />
 
       <Toast message={message} />
     </View>

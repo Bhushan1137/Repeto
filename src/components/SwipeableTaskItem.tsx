@@ -262,6 +262,8 @@ function SwipeableTaskItemComponent({
         rightThreshold={46}
         overshootLeft={false}
         overshootRight={false}
+        dragOffsetFromLeft={20}
+        dragOffsetFromRight={-20}
         animationOptions={{
           damping: 28,
           stiffness: 240,

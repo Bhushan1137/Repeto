@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
 import type { Language, RepeatingTask, CategoryKey, HouseholdMemberProfile } from '@/types';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
-import { hasCompletedToday, canCompleteTask, canSnoozeTask } from '@/domain/task';
+import { hasCompletedToday, canCompleteTask, canSnoozeTask, isOverdueToday } from '@/domain/task';
 import { TaskItemRow } from '@/components/TaskItemRow';
 import { AppIcon } from '@/components/AppIcon';
 import { formatTime12 } from '@/utils/timeFormat';
@@ -43,6 +43,13 @@ function TodayFocusSectionComponent({
 }: TodayFocusSectionProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [collapsed, setCollapsed] = useState(false);
+  // 1-minute ticker so the overdue badge updates without requiring a page reload
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleRowPress = useCallback(
     (taskId: string) => {
@@ -248,25 +255,37 @@ function TodayFocusSectionComponent({
               currentUserCode,
             }).allowed;
             const canSnooze = canSnoozeTask(item.task).allowed;
+            const isOverdueNow = isOverdueToday(item.task, now);
             return (
-              <TaskItemRow
-                key={`today-task-${item.task.id}`}
-                task={item.task}
-                language={language}
-                selected={isSelected}
-                selectionMode={isSelecting}
-                canComplete={canComplete}
-                canSnooze={canSnooze}
-                currentUserId={currentUserId}
-                currentUserCode={currentUserCode}
-                householdMembers={householdMembers}
-                onPress={handleRowPress}
-                onLongPress={handleRowLongPress}
-                onComplete={onCompleteTask}
-                onSnooze={onSnoozeTask}
-                onTakeOver={onTakeOver}
-                onNudge={onNudge}
-              />
+              <View key={`today-task-${item.task.id}`}>
+                <TaskItemRow
+                  task={item.task}
+                  language={language}
+                  selected={isSelected}
+                  selectionMode={isSelecting}
+                  canComplete={canComplete}
+                  canSnooze={canSnooze}
+                  currentUserId={currentUserId}
+                  currentUserCode={currentUserCode}
+                  householdMembers={householdMembers}
+                  onPress={handleRowPress}
+                  onLongPress={handleRowLongPress}
+                  onComplete={onCompleteTask}
+                  onSnooze={onSnoozeTask}
+                  onTakeOver={onTakeOver}
+                  onNudge={onNudge}
+                />
+                {isOverdueNow && (
+                  <View style={styles.overdueBadgeRow}>
+                    <View style={styles.overdueBadge}>
+                      <AppIcon name="alert-circle-outline" size={11} color="#B45309" />
+                      <Text style={styles.overdueBadgeText}>
+                        {language === 'hi' ? 'विलंबित' : 'Overdue'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             );
           }
 
@@ -556,6 +575,29 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // Overdue badge (shown inside Today's Focus when reminder time has passed)
+  overdueBadgeRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+    alignItems: 'flex-start',
+  },
+  overdueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(180, 83, 9, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+  },
+  overdueBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10.5,
+    color: '#B45309',
   },
 });
 

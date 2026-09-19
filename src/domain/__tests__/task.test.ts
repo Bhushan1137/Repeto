@@ -14,6 +14,7 @@ import {
   createTaskFromPreset,
   duplicateTask,
   hasCompletedToday,
+  isOverdueToday,
   restoreTask,
   undoCompleteTaskInstance,
   undoSkipTask,
@@ -25,6 +26,8 @@ import {
   updateTaskDetails,
   updateTaskInList,
   mergeTasksLocalAndRemote,
+  getTodayDoseProgress,
+  normalizeReminderTimes,
 } from '@/domain/task';
 import type { RepeatingTask } from '@/types';
 import type { TaskFormValues } from '@/domain/taskForm';
@@ -673,6 +676,478 @@ describe('domain/task', () => {
       expect(result.merged).toHaveLength(1);
       expect(result.merged[0].history).toHaveLength(1);
       expect(result.newerLocalTasks).toHaveLength(1);
+    });
+  });
+
+  describe('Multi-time / multi-dose tasks', () => {
+    it('creates multi-time task with timesPerDay and reminderTimes', () => {
+      const values: TaskFormValues = {
+        title: 'Paracetamol 650mg',
+        category: 'medicines',
+        recurrence: { type: 'daily' },
+        freq: '3 times a day',
+        finance: false,
+        reminderTime: '08:00',
+        timesPerDay: 3,
+        reminderTimes: ['08:00', '14:00', '20:00'],
+      };
+      const task = createTaskFromFormValues(values);
+      expect(task.timesPerDay).toBe(3);
+      expect(task.reminderTimes).toEqual(['08:00', '14:00', '20:00']);
+      expect(task.frequencyLabel).toBe('3 times a day');
+
+      const progress = getTodayDoseProgress(task);
+      expect(progress.totalDoses).toBe(3);
+      expect(progress.completedCount).toBe(0);
+      expect(progress.nextDoseIndex).toBe(0);
+      expect(progress.isAllDone).toBe(false);
+      expect(hasCompletedToday(task)).toBe(false);
+      expect(canCompleteTask(task).allowed).toBe(true);
+    });
+
+    it('completes doses sequentially: 1/3, 2/3, and 3/3 advances nextDueDate', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Daily Vitamins', 'medicines', '3 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 3,
+        reminderTimes: ['08:00', '14:00', '20:00'],
+        reminderTime: '08:00',
+      };
+
+      // Dose 1 completed
+      const afterDose1 = completeTaskInstance(task, 'Morning dose taken');
+      expect(afterDose1.history).toHaveLength(1);
+      expect(afterDose1.history[0].doseIndex).toBe(0);
+      expect(afterDose1.history[0].doseTime).toBe('08:00');
+      expect(afterDose1.reminderTime).toBe('14:00');
+      // Still due today because only 1 of 3 doses is completed
+      expect(daysUntilDue(afterDose1.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(0);
+      expect(hasCompletedToday(afterDose1)).toBe(false);
+      expect(canCompleteTask(afterDose1).allowed).toBe(true);
+
+      const progress1 = getTodayDoseProgress(afterDose1);
+      expect(progress1.completedCount).toBe(1);
+      expect(progress1.nextDoseIndex).toBe(1);
+      expect(progress1.isAllDone).toBe(false);
+
+      // Dose 2 completed
+      const afterDose2 = completeTaskInstance(afterDose1, 'Afternoon dose taken');
+      expect(afterDose2.history).toHaveLength(2);
+      expect(afterDose2.history[1].doseIndex).toBe(1);
+      expect(afterDose2.history[1].doseTime).toBe('14:00');
+      expect(afterDose2.reminderTime).toBe('20:00');
+      expect(daysUntilDue(afterDose2.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(0);
+      expect(hasCompletedToday(afterDose2)).toBe(false);
+      expect(canCompleteTask(afterDose2).allowed).toBe(true);
+
+      const progress2 = getTodayDoseProgress(afterDose2);
+      expect(progress2.completedCount).toBe(2);
+      expect(progress2.nextDoseIndex).toBe(2);
+      expect(progress2.isAllDone).toBe(false);
+
+      // Dose 3 completed (All 3 done!)
+      const afterDose3 = completeTaskInstance(afterDose2, 'Night dose taken');
+      expect(afterDose3.history).toHaveLength(3);
+      expect(afterDose3.history[2].doseIndex).toBe(2);
+      expect(afterDose3.history[2].doseTime).toBe('20:00');
+      expect(afterDose3.reminderTime).toBe('08:00');
+      // All doses completed today -> advances to tomorrow
+      expect(daysUntilDue(afterDose3.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(1);
+      expect(hasCompletedToday(afterDose3)).toBe(true);
+      expect(canCompleteTask(afterDose3).allowed).toBe(false);
+
+      const progress3 = getTodayDoseProgress(afterDose3);
+      expect(progress3.completedCount).toBe(3);
+      expect(progress3.isAllDone).toBe(true);
+
+      // Undoing dose 3 restores the task to pending today with 2 of 3 completed
+      const undone = undoCompleteTaskInstance(afterDose3);
+      expect(undone.history).toHaveLength(2);
+      expect(daysUntilDue(undone.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(0);
+      expect(hasCompletedToday(undone)).toBe(false);
+      expect(canCompleteTask(undone).allowed).toBe(true);
+      const undoneProgress = getTodayDoseProgress(undone);
+      expect(undoneProgress.completedCount).toBe(2);
+      expect(undoneProgress.nextDoseIndex).toBe(2);
+    });
+
+    it('updateTaskDetails preserves and updates multi-time configuration', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Water Intake', 'health', 'Daily'),
+        recurrence: { type: 'daily' },
+        timesPerDay: 2,
+        reminderTimes: ['08:00', '18:00'],
+      };
+
+      const updated = updateTaskDetails(task, {
+        title: 'Water Intake (Hydrate)',
+        category: 'health',
+        recurrence: { type: 'daily' },
+        freq: '4 times a day',
+        finance: false,
+        reminderTime: '08:00',
+        timesPerDay: 4,
+        reminderTimes: ['08:00', '12:00', '16:00', '20:00'],
+      });
+
+      expect(updated.title).toBe('Water Intake (Hydrate)');
+      expect(updated.timesPerDay).toBe(4);
+      expect(updated.reminderTimes).toEqual(['08:00', '12:00', '16:00', '20:00']);
+      expect(updated.frequencyLabel).toBe('4 times a day');
+    });
+
+    it('handles out-of-order dose completions (e.g. Dose 2 taken before Dose 1)', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Daily Eye Drops', 'health', '3 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 3,
+        reminderTimes: ['08:00', '14:00', '20:00'],
+        reminderTime: '08:00',
+      };
+
+      // User takes Dose 2 (index 1) first
+      const afterDose2 = completeTaskInstance(task, 'Afternoon dose taken first', undefined, 1);
+      expect(afterDose2.history).toHaveLength(1);
+      expect(afterDose2.history[0].doseIndex).toBe(1);
+      expect(afterDose2.history[0].doseTime).toBe('14:00');
+      // Next pending dose should now be Dose 1 (index 0)
+      const progress = getTodayDoseProgress(afterDose2);
+      expect(progress.completedCount).toBe(1);
+      expect(progress.completedIndices).toEqual([1]);
+      expect(progress.nextDoseIndex).toBe(0);
+      expect(afterDose2.reminderTime).toBe('08:00');
+      expect(hasCompletedToday(afterDose2)).toBe(false);
+
+      // Now user takes Dose 1 (index 0)
+      const afterDose1 = completeTaskInstance(afterDose2, 'Morning dose taken late', undefined, 0);
+      expect(afterDose1.history).toHaveLength(2);
+      expect(afterDose1.history[1].doseIndex).toBe(0);
+      const progress2 = getTodayDoseProgress(afterDose1);
+      expect(progress2.completedCount).toBe(2);
+      expect(progress2.completedIndices).toContain(0);
+      expect(progress2.completedIndices).toContain(1);
+      expect(progress2.nextDoseIndex).toBe(2);
+      expect(afterDose1.reminderTime).toBe('20:00');
+
+      // Now user takes Dose 3 (index 2) -> all done today!
+      const afterDose3 = completeTaskInstance(afterDose1, 'Night dose taken', undefined, 2);
+      expect(afterDose3.history).toHaveLength(3);
+      expect(getTodayDoseProgress(afterDose3).isAllDone).toBe(true);
+      expect(hasCompletedToday(afterDose3)).toBe(true);
+      expect(daysUntilDue(afterDose3.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(1);
+      expect(afterDose3.reminderTime).toBe('08:00');
+    });
+
+    it('ignores duplicate or already-completed specificDoseIndex without double counting', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Iron Supplement', 'health', '2 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 2,
+        reminderTimes: ['09:00', '21:00'],
+      };
+
+      // Take Dose 1
+      const step1 = completeTaskInstance(task, 'Dose 1', undefined, 0);
+      expect(getTodayDoseProgress(step1).completedCount).toBe(1);
+
+      // Erroneously call complete on Dose 1 again
+      const step2 = completeTaskInstance(step1, 'Dose 1 again', undefined, 0);
+      // It should gracefully pick the remaining pending dose (index 1)
+      expect(step2.history[1].doseIndex).toBe(1);
+      const progress = getTodayDoseProgress(step2);
+      expect(progress.completedCount).toBe(2);
+      expect(progress.isAllDone).toBe(true);
+    });
+
+    it('handles out-of-range specificDoseIndex gracefully (-1, 99)', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Multivitamin', 'health', '2 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 2,
+        reminderTimes: ['09:00', '21:00'],
+      };
+
+      // Pass out-of-range index 99
+      const step1 = completeTaskInstance(task, 'Test 99', undefined, 99);
+      expect(step1.history[0].doseIndex).toBe(0); // Safely defaulted to next pending dose (0)
+
+      // Pass negative index -1
+      const step2 = completeTaskInstance(step1, 'Test -1', undefined, -1);
+      expect(step2.history[1].doseIndex).toBe(1); // Safely defaulted to next pending dose (1)
+      expect(getTodayDoseProgress(step2).isAllDone).toBe(true);
+    });
+
+    it('skipping multi-dose task resets reminderTime to dose 1, and undoing skip restores pending dose reminderTime', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Blood Pressure Med', 'health', '3 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 3,
+        reminderTimes: ['08:00', '14:00', '20:00'],
+        reminderTime: '08:00',
+      };
+
+      // Complete dose 1
+      const afterDose1 = completeTaskInstance(task, 'Morning taken');
+      expect(afterDose1.reminderTime).toBe('14:00');
+
+      // User skips the rest of today's schedule
+      const skipped = skipTaskInstance(afterDose1, 'user-1');
+      expect(skipped.history).toHaveLength(2);
+      expect(skipped.history[1].status).toBe('skipped');
+      expect(daysUntilDue(skipped.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(1);
+      // For tomorrow, reminder time resets back to dose 1 (08:00)
+      expect(skipped.reminderTime).toBe('08:00');
+
+      // User undoes the skip
+      const unskipped = undoSkipTask(skipped);
+      expect(unskipped.history).toHaveLength(1);
+      expect(daysUntilDue(unskipped.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(0);
+      // Reminder time restores back to pending Dose 2 (14:00)
+      expect(unskipped.reminderTime).toBe('14:00');
+    });
+
+    it('handles overdue multi-dose task completion and undo properly', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Antibiotic', 'health', '2 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-10T00:00:00.000Z', // 2 days overdue relative to 2026-09-12
+        timesPerDay: 2,
+        reminderTimes: ['09:00', '21:00'],
+        reminderTime: '09:00',
+      };
+
+      // Take Dose 1 today
+      const afterDose1 = completeTaskInstance(task, 'Dose 1 taken late');
+      expect(afterDose1.history).toHaveLength(1);
+      expect(afterDose1.history[0].previousDueDate).toBe('2026-09-10T00:00:00.000Z');
+      // Task is now active today for dose 2
+      expect(daysUntilDue(afterDose1.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(0);
+
+      // Undoing dose 1 restores exact overdue date
+      const undone = undoCompleteTaskInstance(afterDose1);
+      expect(undone.nextDueDate).toBe('2026-09-10T00:00:00.000Z');
+
+      // Completing all doses on overdue task advances to tomorrow (2026-09-13), not yesterday
+      const step1 = completeTaskInstance(undone);
+      const step2 = completeTaskInstance(step1);
+      expect(getTodayDoseProgress(step2).isAllDone).toBe(true);
+      expect(daysUntilDue(step2.nextDueDate, new Date('2026-09-12T10:00:00.000Z'))).toBe(1);
+    });
+
+    it('normalizes missing or short reminderTimes array seamlessly', () => {
+      const normalized2 = normalizeReminderTimes(2, []);
+      expect(normalized2).toEqual(['08:00', '20:00']);
+
+      const normalized3 = normalizeReminderTimes(3, ['07:00']);
+      expect(normalized3).toEqual(['07:00', '14:00', '20:00']);
+
+      const normalized5 = normalizeReminderTimes(5, ['06:00', '09:00']);
+      expect(normalized5).toEqual(['06:00', '09:00', '13:00', '17:00', '21:00']);
+
+      const single = normalizeReminderTimes(1, ['11:00']);
+      expect(single).toEqual(['11:00']);
+
+      // Task with missing reminderTimes still computes progress cleanly
+      const partialTask: RepeatingTask = {
+        ...createTaskFromPreset('Hydration', 'health', '3 times a day'),
+        recurrence: { type: 'daily' },
+        timesPerDay: 3,
+        reminderTimes: undefined,
+      };
+      const progress = getTodayDoseProgress(partialTask);
+      expect(progress.totalDoses).toBe(3);
+      expect(progress.times).toEqual(['08:00', '14:00', '20:00']);
+    });
+
+    it('isolates today dose progress from previous days history entries', () => {
+      const task: RepeatingTask = {
+        ...createTaskFromPreset('Allergy Medicine', 'health', '2 times a day'),
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 2,
+        reminderTimes: ['08:00', '20:00'],
+        history: [
+          {
+            month: 'Sep 2026',
+            status: 'on_time',
+            completedAt: '2026-09-11T10:00:00.000Z', // Yesterday dose 1
+            doseIndex: 0,
+            doseTime: '08:00',
+          },
+          {
+            month: 'Sep 2026',
+            status: 'on_time',
+            completedAt: '2026-09-11T12:00:00.000Z', // Yesterday dose 2
+            doseIndex: 1,
+            doseTime: '20:00',
+          },
+        ],
+      };
+
+      // Today (2026-09-12) is completely fresh
+      const progress = getTodayDoseProgress(task, new Date('2026-09-12T10:00:00.000Z'));
+      expect(progress.completedCount).toBe(0);
+      expect(progress.completedIndices).toEqual([]);
+      expect(progress.nextDoseIndex).toBe(0);
+      expect(hasCompletedToday(task, new Date('2026-09-12T10:00:00.000Z'))).toBe(false);
+      expect(canCompleteTask(task, { today: new Date('2026-09-12T10:00:00.000Z') }).allowed).toBe(true);
+    });
+
+    it('mergeTasksLocalAndRemote preserves multi-dose task configuration and completion history', () => {
+      const localTask: RepeatingTask = {
+        ...createTaskFromPreset('Calcium Tablet', 'health', '2 times a day'),
+        id: 'task-calcium',
+        recurrence: { type: 'daily' },
+        nextDueDate: '2026-09-12T00:00:00.000Z',
+        timesPerDay: 2,
+        reminderTimes: ['09:00', '21:00'],
+        history: [
+          {
+            month: 'Sep 2026',
+            status: 'on_time',
+            completedAt: '2026-09-12T09:05:00.000Z',
+            doseIndex: 0,
+            doseTime: '09:00',
+          },
+        ],
+        updatedAt: '2026-09-12T09:06:00.000Z',
+      };
+
+      const remoteTask: RepeatingTask = {
+        ...localTask,
+        history: [],
+        updatedAt: '2026-09-12T08:00:00.000Z',
+      };
+
+      const result = mergeTasksLocalAndRemote([localTask], [remoteTask]);
+      expect(result.merged).toHaveLength(1);
+      expect(result.merged[0].timesPerDay).toBe(2);
+      expect(result.merged[0].history).toHaveLength(1);
+      expect(result.merged[0].history[0].doseIndex).toBe(0);
+      expect(result.newerLocalTasks).toHaveLength(1);
+    });
+  });
+
+  // ─── isOverdueToday ────────────────────────────────────────────────────────
+  describe('isOverdueToday', () => {
+    // The outer beforeEach pins time to 2026-09-12T10:00:00.000Z (UTC),
+    // which is 15:30 IST — well past 09:00 local.
+    // We work in local calendar date helpers, so we construct dates using local time.
+
+    function makeTask(overrides: Partial<RepeatingTask> = {}): RepeatingTask {
+      const todayLocal = new Date();
+      // Build a nextDueDate that is today (midnight local)
+      const todayMidnight = new Date(
+        todayLocal.getFullYear(),
+        todayLocal.getMonth(),
+        todayLocal.getDate(),
+        0, 0, 0, 0
+      );
+      return {
+        id: 'test-overdue',
+        title: 'Test Task',
+        category: 'home',
+        householdId: null,
+        recurrence: { type: 'daily' },
+        frequencyLabel: 'Every day',
+        nextDueDate: todayMidnight.toISOString(),
+        finance: false,
+        sharedWith: [],
+        history: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        escalationCount: 0,
+        ...overrides,
+      };
+    }
+
+    it('returns false when current time is before the reminderTime', () => {
+      // System time is 10:00 UTC (15:30 IST). We explicitly pass a "now" at 08:00 local.
+      const earlyNow = new Date();
+      earlyNow.setHours(8, 0, 0, 0);
+      const task = makeTask({ reminderTime: '09:00' });
+      expect(isOverdueToday(task, earlyNow)).toBe(false);
+    });
+
+    it('returns true when current time is past the reminderTime and task not completed', () => {
+      const lateNow = new Date();
+      lateNow.setHours(10, 30, 0, 0); // 10:30 local — past 09:00
+      const task = makeTask({ reminderTime: '09:00' });
+      expect(isOverdueToday(task, lateNow)).toBe(true);
+    });
+
+    it('returns true exactly at the reminderTime (boundary — inclusive)', () => {
+      const exactNow = new Date();
+      exactNow.setHours(9, 0, 0, 0);
+      const task = makeTask({ reminderTime: '09:00' });
+      expect(isOverdueToday(task, exactNow)).toBe(true);
+    });
+
+    it('defaults to 09:00 when reminderTime is not set, and marks overdue after 09:00', () => {
+      const afterNineNow = new Date();
+      afterNineNow.setHours(9, 30, 0, 0);
+      const task = makeTask({ reminderTime: undefined });
+      expect(isOverdueToday(task, afterNineNow)).toBe(true);
+    });
+
+    it('defaults to 09:00 when reminderTime is not set, and NOT overdue before 09:00', () => {
+      const beforeNineNow = new Date();
+      beforeNineNow.setHours(8, 59, 0, 0);
+      const task = makeTask({ reminderTime: undefined });
+      expect(isOverdueToday(task, beforeNineNow)).toBe(false);
+    });
+
+    it('returns false when task is already completed today', () => {
+      const lateNow = new Date();
+      lateNow.setHours(12, 0, 0, 0);
+      const task = makeTask({
+        reminderTime: '09:00',
+        history: [
+          {
+            month: 'Sep 2026',
+            status: 'on_time',
+            completedAt: lateNow.toISOString(),
+          },
+        ],
+      });
+      expect(isOverdueToday(task, lateNow)).toBe(false);
+    });
+
+    it('returns false when task nextDueDate is tomorrow', () => {
+      const now = new Date();
+      now.setHours(12, 0, 0, 0);
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const task = makeTask({ nextDueDate: tomorrow.toISOString(), reminderTime: '09:00' });
+      expect(isOverdueToday(task, now)).toBe(false);
+    });
+
+    it('returns false when task nextDueDate is yesterday (already in overdue group)', () => {
+      const now = new Date();
+      now.setHours(12, 0, 0, 0);
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const task = makeTask({ nextDueDate: yesterday.toISOString(), reminderTime: '09:00' });
+      expect(isOverdueToday(task, now)).toBe(false);
+    });
+
+    it('respects custom reminderTime — not overdue at 10:00 when scheduled for 14:00', () => {
+      const tenAM = new Date();
+      tenAM.setHours(10, 0, 0, 0);
+      const task = makeTask({ reminderTime: '14:00' });
+      expect(isOverdueToday(task, tenAM)).toBe(false);
+    });
+
+    it('respects custom reminderTime — overdue at 15:00 when scheduled for 14:00', () => {
+      const threePM = new Date();
+      threePM.setHours(15, 0, 0, 0);
+      const task = makeTask({ reminderTime: '14:00' });
+      expect(isOverdueToday(task, threePM)).toBe(true);
     });
   });
 });

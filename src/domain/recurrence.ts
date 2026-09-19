@@ -228,7 +228,8 @@ export function computeInitialDueDate(
   rule: RecurrenceRule,
   startDate?: string | null,
   reminderTime?: string | null,
-  now: Date = new Date()
+  now: Date = new Date(),
+  reminderTimes?: string[] | null
 ): string {
   let base: Date;
   if (startDate) {
@@ -243,23 +244,30 @@ export function computeInitialDueDate(
   }
   base = startOfDay(base);
 
-  let hour = 9;
-  let minute = 0;
-  if (reminderTime) {
-    const [h, m] = reminderTime.split(':').map(Number);
-    if (!isNaN(h)) hour = h;
-    if (!isNaN(m)) minute = m;
-  }
+  const timesToCheck =
+    reminderTimes && reminderTimes.length > 0
+      ? reminderTimes
+      : (reminderTime ? [reminderTime] : ['09:00']);
 
-  const targetWithTime = new Date(
-    base.getFullYear(),
-    base.getMonth(),
-    base.getDate(),
-    hour,
-    minute,
-    0,
-    0
-  );
+  let hasFutureTimeToday = false;
+  for (const timeStr of timesToCheck) {
+    const [h, m] = timeStr.split(':').map(Number);
+    const hour = !isNaN(h) ? h : 9;
+    const minute = !isNaN(m) ? m : 0;
+    const targetWithTime = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate(),
+      hour,
+      minute,
+      0,
+      0
+    );
+    if (targetWithTime.getTime() > now.getTime()) {
+      hasFutureTimeToday = true;
+      break;
+    }
+  }
 
   const todayStart = startOfDay(now);
 
@@ -271,7 +279,7 @@ export function computeInitialDueDate(
   // If start date is today:
   if (base.getTime() === todayStart.getTime()) {
     // If target reminder time is later than now, today is valid!
-    if (targetWithTime.getTime() > now.getTime() && matchesRecurrenceOnDate(rule, base)) {
+    if (hasFutureTimeToday && matchesRecurrenceOnDate(rule, base)) {
       return base.toISOString();
     }
     // Target time already passed today (or today doesn't match rule): advance to next occurrence
@@ -285,11 +293,37 @@ export function computeInitialDueDate(
 export function parseFrequencyLabel(label: string): RecurrenceRule {
   const lower = label.toLowerCase().trim();
 
-  if (/every day|daily|हर दिन/i.test(lower)) return { type: 'daily' };
-  if (/every week|weekly|हर हफ्ते/i.test(lower)) return { type: 'weekly' };
-  if (/every year|yearly|annual|हर साल/i.test(lower)) return { type: 'yearly' };
-  if (/every month|monthly|हर महीने/i.test(lower)) return { type: 'monthly' };
+  // 1. Specific day of month (e.g. "every month on 5th", "monthly on 5th", "monthly 5th", "5th of month", "5 तारीख")
+  const explicitMonthDayMatch = lower.match(/(\d{1,2})(?:st|nd|rd|th)?\s+of\s+month/i)
+    || lower.match(/(?:every\s+month|monthly)\s+(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?/i)
+    || lower.match(/(\d{1,2})\s*तारीख/);
 
+  if (explicitMonthDayMatch) {
+    const day = parseInt(explicitMonthDayMatch[1], 10);
+    if (day >= 1 && day <= 31) {
+      return { type: 'monthDay', dayOfMonth: day };
+    }
+  }
+
+  // 2. Nth weekday (e.g. "2nd Saturday", "every 1st Sunday")
+  const nthWeekdayMatch = lower.match(
+    /(?:every\s+)?(\d+)(?:st|nd|rd|th)?\s+\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i
+  );
+  if (nthWeekdayMatch) {
+    const weekday = WEEKDAY_NAMES[nthWeekdayMatch[2].toLowerCase()];
+    return { type: 'nthWeekday', nthWeekday: parseInt(nthWeekdayMatch[1], 10), weekday };
+  }
+
+  // 3. Specific weekday (e.g. "every monday", "every sunday")
+  const weekdayMatch = lower.match(
+    /(?:every|weekly\s+on)\s+\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i
+  );
+  if (weekdayMatch) {
+    const weekday = WEEKDAY_NAMES[weekdayMatch[1].toLowerCase()];
+    return { type: 'weekly', weekday };
+  }
+
+  // 4. Interval months (e.g. "every 2 months", "हर 3 महीने")
   const monthsMatch = lower.match(/every\s+(\d+)\s+months?/i);
   if (monthsMatch) {
     const n = parseInt(monthsMatch[1], 10);
@@ -302,6 +336,7 @@ export function parseFrequencyLabel(label: string): RecurrenceRule {
     return { type: 'interval', interval: parseInt(hindiMonthsMatch[1], 10), intervalUnit: 'months' };
   }
 
+  // 5. Interval days (e.g. "every 15 days", "हर 10 दिन")
   const intervalMatch = lower.match(/every\s+(\d+)\s+days?/i);
   if (intervalMatch) {
     return { type: 'interval', interval: parseInt(intervalMatch[1], 10), intervalUnit: 'days' };
@@ -312,19 +347,11 @@ export function parseFrequencyLabel(label: string): RecurrenceRule {
     return { type: 'interval', interval: parseInt(hindiDaysMatch[1], 10), intervalUnit: 'days' };
   }
 
-  const nthWeekdayMatch = lower.match(
-    /(?:every\s+)?(\d+)(?:st|nd|rd|th)?\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)/i
-  );
-  if (nthWeekdayMatch) {
-    const weekday = WEEKDAY_NAMES[nthWeekdayMatch[2].toLowerCase()];
-    return { type: 'nthWeekday', nthWeekday: parseInt(nthWeekdayMatch[1], 10), weekday };
-  }
-
-  const monthDayMatch = lower.match(/(\d+)(?:st|nd|rd|th)?\s+of\s+month/i);
-  if (monthDayMatch) return { type: 'monthDay', dayOfMonth: parseInt(monthDayMatch[1], 10) };
-
-  const hindiDayMatch = lower.match(/(\d+)\s*तारीख/);
-  if (hindiDayMatch) return { type: 'monthDay', dayOfMonth: parseInt(hindiDayMatch[1], 10) };
+  // 6. Common base frequencies
+  if (/every day|daily|हर दिन|रोज़|रोज/i.test(lower)) return { type: 'daily' };
+  if (/every week|weekly|हर हफ्ते/i.test(lower)) return { type: 'weekly' };
+  if (/every year|yearly|annual|annually|हर साल/i.test(lower)) return { type: 'yearly' };
+  if (/every month|monthly|हर महीने/i.test(lower)) return { type: 'monthly' };
 
   return { type: 'monthly' };
 }

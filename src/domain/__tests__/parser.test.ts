@@ -1,42 +1,150 @@
 import { describe, expect, it } from 'vitest';
 import { parseTaskInput } from '@/domain/parser';
 
-describe('parseTaskInput with time and amount', () => {
-  it('parses English inputs with 12-hour AM/PM time and amounts', () => {
-    const result = parseTaskInput('Pay maid every month ₹3,500 at 9am');
-    expect(result.title).toBe('Pay maid');
-    expect(result.amount).toBe(3500);
-    expect(result.reminderTime).toBe('09:00');
-    expect(result.category).toBe('help');
+describe('parseTaskInput natural language engine', () => {
+  describe('Legacy & standard formats', () => {
+    it('parses English inputs with 12-hour AM/PM time and amounts', () => {
+      const result = parseTaskInput('Pay maid every month ₹3,500 at 9am');
+      expect(result.title).toBe('Pay maid');
+      expect(result.amount).toBe(3500);
+      expect(result.reminderTime).toBe('09:00');
+      expect(result.category).toBe('help');
+    });
+
+    it('parses English inputs with PM times and cleans title', () => {
+      const result = parseTaskInput('Netflix subscription every month ₹199 at 7:30 pm');
+      expect(result.title).toBe('Netflix subscription');
+      expect(result.amount).toBe(199);
+      expect(result.reminderTime).toBe('19:30');
+      expect(result.category).toBe('subs');
+    });
+
+    it('parses English 24-hour time', () => {
+      const result = parseTaskInput('Check car engine every 15 days at 18:00');
+      expect(result.title).toBe('Check car engine');
+      expect(result.reminderTime).toBe('18:00');
+      expect(result.category).toBe('vehicle');
+    });
   });
 
-  it('parses English inputs with PM times and cleans title', () => {
-    const result = parseTaskInput('Netflix subscription every month ₹199 at 7:30 pm');
-    expect(result.title).toBe('Netflix subscription');
-    expect(result.amount).toBe(199);
-    expect(result.reminderTime).toBe('19:30');
-    expect(result.category).toBe('subs');
+  describe('Flexible amount recognition', () => {
+    it('parses plain numbers without currency symbols', () => {
+      const result = parseTaskInput('House rent 15000 monthly on 5th');
+      expect(result.title).toBe('House rent');
+      expect(result.amount).toBe(15000);
+      expect(result.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+    });
+
+    it('parses 15k and decimal thousands notation (2.5k)', () => {
+      const res1 = parseTaskInput('Gym membership 15k yearly');
+      expect(res1.amount).toBe(15000);
+      expect(res1.recurrence).toEqual({ type: 'yearly' });
+
+      const res2 = parseTaskInput('Electric bill 2.5k monthly');
+      expect(res2.amount).toBe(2500);
+    });
+
+    it('parses rs and inr suffixes', () => {
+      const result = parseTaskInput('Cook salary 5000 rs every month');
+      expect(result.amount).toBe(5000);
+      expect(result.title).toBe('Cook salary');
+    });
   });
 
-  it('parses English 24-hour time', () => {
-    const result = parseTaskInput('Check car engine every 15 days at 18:00');
-    expect(result.title).toBe('Check car engine');
-    expect(result.reminderTime).toBe('18:00');
-    expect(result.category).toBe('vehicle');
+  describe('Time recognition without "at"', () => {
+    it('parses 7am without requiring "at"', () => {
+      const result = parseTaskInput('Gym daily 7am');
+      expect(result.title).toBe('Gym');
+      expect(result.reminderTime).toBe('07:00');
+      expect(result.recurrence).toEqual({ type: 'daily' });
+    });
+
+    it('parses 9:30 pm without requiring "at"', () => {
+      const result = parseTaskInput('Water plants daily 9:30 pm');
+      expect(result.reminderTime).toBe('21:30');
+    });
   });
 
-  it('parses Hindi inputs with period (सुबह/शाम) and time', () => {
-    const result = parseTaskInput('दवा खाना हर दिन सुबह 8 बजे', 'hi');
-    expect(result.title).toBe('दवा खाना');
-    expect(result.reminderTime).toBe('08:00');
-    expect(result.category).toBe('health');
+  describe('Multi-dose parsing for medicines', () => {
+    it('parses "twice daily" and sets 2 doses with defaults', () => {
+      const result = parseTaskInput('Blood pressure medicine twice daily at 8am');
+      expect(result.title).toBe('Blood pressure medicine');
+      expect(result.isMultiTime).toBe(true);
+      expect(result.timesPerDay).toBe(2);
+      expect(result.category).toBe('health');
+      expect(result.icon).toBe('💊');
+      expect(result.reminderTimes?.length).toBe(2);
+    });
+
+    it('parses "3 times a day" and multiple times', () => {
+      const result = parseTaskInput('Antibiotic 3 times a day at 8am and 8pm');
+      expect(result.isMultiTime).toBe(true);
+      expect(result.timesPerDay).toBe(3);
+      expect(result.reminderTimes?.length).toBe(3);
+    });
+
+    it('parses Hindi "दिन में 2 बार"', () => {
+      const result = parseTaskInput('दवा खाना दिन में 2 बार सुबह 8 बजे', 'hi');
+      expect(result.title).toBe('दवा खाना');
+      expect(result.isMultiTime).toBe(true);
+      expect(result.timesPerDay).toBe(2);
+      expect(result.category).toBe('health');
+    });
   });
 
-  it('parses Hindi inputs with PM times and amounts', () => {
-    const result = parseTaskInput('दूध का बिल हर महीने ₹1,200 शाम 7:30 बजे', 'hi');
-    expect(result.title).toBe('दूध का बिल');
-    expect(result.amount).toBe(1200);
-    expect(result.reminderTime).toBe('19:30');
-    expect(result.category).toBe('bills');
+  describe('Recurrence & ordinal date parsing', () => {
+    it('parses "monthly on 5th" to monthDay 5', () => {
+      const result = parseTaskInput('House rent 15000 monthly on 5th');
+      expect(result.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+    });
+
+    it('parses "every 2 months" to interval months', () => {
+      const result = parseTaskInput('Water bill 500 every 2 months');
+      expect(result.amount).toBe(500);
+      expect(result.recurrence).toEqual({ type: 'interval', interval: 2, intervalUnit: 'months' });
+    });
+
+    it('parses "every sunday" to weekly on day 0', () => {
+      const result = parseTaskInput('Clean car every sunday at 10am');
+      expect(result.title).toBe('Clean car');
+      expect(result.recurrence).toEqual({ type: 'weekly', weekday: 0 });
+      expect(result.reminderTime).toBe('10:00');
+    });
+  });
+
+  describe('Hindi natural language parsing', () => {
+    it('parses Hindi inputs with period (सुबह/शाम) and time', () => {
+      const result = parseTaskInput('दवा खाना हर दिन सुबह 8 बजे', 'hi');
+      expect(result.title).toBe('दवा खाना');
+      expect(result.reminderTime).toBe('08:00');
+      expect(result.category).toBe('health');
+    });
+
+    it('parses Hindi inputs with PM times and amounts', () => {
+      const result = parseTaskInput('दूध का बिल हर महीने ₹1,200 शाम 7:30 बजे', 'hi');
+      expect(result.title).toBe('दूध का बिल');
+      expect(result.amount).toBe(1200);
+      expect(result.reminderTime).toBe('19:30');
+      expect(result.category).toBe('bills');
+    });
+
+    it('parses Hindi date and amount: "किराया 15000 हर महीने 5 तारीख"', () => {
+      const result = parseTaskInput('किराया 15000 हर महीने 5 तारीख', 'hi');
+      expect(result.amount).toBe(15000);
+      expect(result.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+      expect(result.category).toBe('bills');
+    });
+  });
+
+  describe('Detected tokens metadata', () => {
+    it('returns tokens for amount, time, recurrence, and category', () => {
+      const result = parseTaskInput('Rent 15000 monthly on 5th at 9am');
+      expect(result.detectedTokens).toBeDefined();
+      const ids = result.detectedTokens?.map((t) => t.id);
+      expect(ids).toContain('amount');
+      expect(ids).toContain('recurrence');
+      expect(ids).toContain('time');
+      expect(ids).toContain('category');
+    });
   });
 });

@@ -5,10 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Text, Card } from 'react-native-paper';
+import { AppIcon } from '@/components/AppIcon';
 import { TaskFormFields } from '@/components/TaskFormFields';
 import { TaskScopeSection } from '@/components/taskForm/TaskScopeSection';
 import { useTasks } from '@/providers/TaskProvider';
@@ -27,14 +29,21 @@ import {
 } from '@/domain/taskForm';
 import type { SharedMember } from '@/types';
 
+import { usePathname } from 'expo-router';
 import { Toast } from '@/components/Toast';
 
-interface AddTaskSheetProps {
+export interface AddTaskSheetProps {
   visible: boolean;
   onClose: () => void;
+  defaultToHousehold?: boolean;
 }
 
-export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
+export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSheetProps) {
+  const pathname = usePathname();
+  const shouldDefaultHousehold = defaultToHousehold !== undefined
+    ? defaultToHousehold
+    : !!(pathname && pathname.includes('household'));
+
   const { user, activeHousehold } = useAuth();
   const { addTask } = useTasks();
   const { showToast, message } = useToast();
@@ -47,8 +56,10 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
 
   useEffect(() => {
     if (visible) {
-      const initialHhId = activeHousehold?.id ?? null;
-      const initialShared = activeHousehold?.members ? activeHousehold.members.map(toSharedMember) : [];
+      const initialHhId = shouldDefaultHousehold ? (activeHousehold?.id ?? null) : null;
+      const initialShared = shouldDefaultHousehold && activeHousehold?.members
+        ? activeHousehold.members.map(toSharedMember)
+        : [];
       setFormState({
         ...defaultFormState('bills'),
         householdId: initialHhId,
@@ -56,7 +67,7 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
       setShared(initialShared);
       setErrors({});
     }
-  }, [visible, activeHousehold]);
+  }, [visible, activeHousehold, shouldDefaultHousehold]);
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
@@ -118,14 +129,33 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
         <Pressable style={styles.backdrop} onPress={onClose} />
         <Card style={styles.sheet} mode="elevated">
           <View style={styles.handle} />
+
+          {/* Dedicated Sheet Header with Close Button */}
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetHeaderLeft}>
+              <View style={styles.sheetHeaderBadge}>
+                <AppIcon name="sparkles" size={18} color={Colors.marigoldDeep} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heading}>
+                  {language === 'hi' ? 'नया कार्य जोड़ें' : 'Create New Task'}
+                </Text>
+                <Text style={styles.subHeading}>
+                  {language === 'hi' ? 'आवर्ती कार्य और अनुसूची सेट करें' : 'Schedule routine & repeating tasks'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn} testID="add-task-sheet-close">
+              <AppIcon name="close" size={18} color={Colors.inkSoft} />
+            </TouchableOpacity>
+          </View>
+
           <ScrollView
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.heading}>{language === 'hi' ? 'कार्य विवरण' : 'Task Details'}</Text>
-            <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
-
             <TaskFormFields
               language={language}
               translate={translate}
@@ -163,7 +193,7 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
                   ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
                   : (language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task')
               }
-              style={{ marginTop: 24, marginBottom: 10 }}
+              style={{ marginTop: 20, marginBottom: 8 }}
               loading={loading}
               disabled={loading}
               onPress={save}
@@ -190,19 +220,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(23,27,54,0.45)',
-  },
-  heading: {
-    fontFamily: 'Fraunces_700Bold',
-    fontSize: 20,
-    color: Colors.ink,
-    marginBottom: 4,
-  },
-  subHeading: {
-    fontFamily: 'Manrope_600SemiBold',
-    fontSize: 12.5,
-    color: Colors.inkSoft,
-    marginBottom: 14,
+    backgroundColor: 'rgba(23,27,54,0.48)',
   },
   modalContainer: {
     flex: 1,
@@ -214,20 +232,71 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.xl,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    maxHeight: '92%',
-    elevation: 8,
+    maxHeight: '94%',
+    elevation: 10,
     overflow: 'hidden',
   },
   handle: {
-    width: 36,
-    height: 4,
+    width: 40,
+    height: 4.5,
     backgroundColor: Colors.ivoryLine,
     borderRadius: 4,
     alignSelf: 'center',
     marginTop: 10,
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  body: { paddingHorizontal: 22, paddingBottom: 80 },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(228, 219, 199, 0.6)',
+  },
+  sheetHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  sheetHeaderBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(232, 163, 61, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  heading: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 19,
+    color: Colors.ink,
+    lineHeight: 23,
+  },
+  subHeading: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
+  body: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 90,
+  },
   stepIndicatorRow: {
     flexDirection: 'row',
     alignItems: 'center',

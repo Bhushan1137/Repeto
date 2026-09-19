@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import type { RepeatingTask } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { computeNextDueDate } from '@/domain/recurrence';
-import { hasCompletedToday } from '@/domain/task';
+import { hasCompletedToday, getTodayDoseProgress, normalizeReminderTimes } from '@/domain/task';
 
 try {
   Notifications.setNotificationHandler({
@@ -114,8 +114,9 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 
   try {
     const ids = [`task-${taskId}`];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       ids.push(`task-${taskId}-${i}`);
+      ids.push(`task-${taskId}-dose-${i}`);
     }
     await Promise.all(
       ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
@@ -143,6 +144,79 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
 
   // Always cancel previous scheduled reminders for this task first
   await cancelTaskReminder(task.id);
+
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+
+  if (isMulti) {
+    const progress = getTodayDoseProgress(task);
+    const times = normalizeReminderTimes(task.timesPerDay, task.reminderTimes);
+
+    for (let i = 0; i < times.length; i++) {
+      const [h, m] = times[i].split(':').map(Number);
+      const doseHour = Number.isNaN(h) ? 9 : h;
+      const doseMinute = Number.isNaN(m) ? 0 : m;
+
+      const doseContent: Notifications.NotificationContentInput = {
+        title: 'Repeto Reminder',
+        body: `Reminder: ${task.title} (${i + 1}/${times.length})`,
+        data: { taskId: task.id, doseIndex: i },
+        categoryIdentifier: 'task-actions',
+        sound: true,
+      };
+
+      const isDoseDoneToday = progress.completedIndices.includes(i);
+
+      if (isDoseDoneToday) {
+        // Schedule for tomorrow or future next due date
+        const nextDate = new Date(task.nextDueDate);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        if (nextDate.getTime() < tomorrow.getTime()) {
+          nextDate.setTime(tomorrow.getTime());
+        }
+        nextDate.setHours(doseHour, doseMinute, 0, 0);
+        if (nextDate.getTime() > Date.now()) {
+          await Notifications.scheduleNotificationAsync({
+            content: doseContent,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: nextDate,
+              channelId: 'default',
+            },
+            identifier: `task-${task.id}-dose-${i}`,
+          });
+        }
+      } else {
+        if (task.recurrence?.type === 'daily') {
+          await Notifications.scheduleNotificationAsync({
+            content: doseContent,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: doseHour,
+              minute: doseMinute,
+              channelId: 'default',
+            },
+            identifier: `task-${task.id}-dose-${i}`,
+          });
+        } else {
+          const triggerDate = new Date(task.nextDueDate);
+          triggerDate.setHours(doseHour, doseMinute, 0, 0);
+          if (triggerDate.getTime() > Date.now()) {
+            await Notifications.scheduleNotificationAsync({
+              content: doseContent,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+                channelId: 'default',
+              },
+              identifier: `task-${task.id}-dose-${i}`,
+            });
+          }
+        }
+      }
+    }
+    return;
+  }
 
   let hour = 9;
   let minute = 0;
@@ -439,3 +513,124 @@ export async function sendRemotePushNotification(
   }
 }
 
+
+// ─── Overdue Reminder Helpers ──────────────────────────────────────────────
+
+/**
+ * Cancel the 2-day follow-up overdue reminders for a specific task.
+ * Call this when the task is completed, snoozed, skipped, or updated.
+ */
+export async function cancelOverdueReminders(taskId: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Promise.all([
+      Notifications.cancelScheduledNotificationAsync(`overdue-${taskId}-d1`).catch(() => {}),
+      Notifications.cancelScheduledNotificationAsync(`overdue-${taskId}-d2`).catch(() => {}),
+    ]);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Schedule 2 one-shot push notifications for an overdue task — one per day
+ * for the next 2 calendar days — at the task's reminderTime (default 09:00).
+ *
+ * Only schedules if:
+ * - Platform is not web
+ * - Task is not archived
+ * - Task is not snoozed (snoozedUntil is set)
+ * - Notification permission is granted
+ */
+export async function scheduleOverdueReminders(task: RepeatingTask): Promise<void> {
+  if (Platform.OS === 'web') return;
+  if (task.archived) return;
+  if (task.snoozedUntil) return;
+
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') {
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+  }
+
+  // Cancel any previously scheduled overdue reminders first
+  await cancelOverdueReminders(task.id);
+
+  let hour = 9;
+  let minute = 0;
+  if (task.reminderTime) {
+    const [h, m] = task.reminderTime.split(':').map(Number);
+    hour = Number.isNaN(h) ? 9 : h;
+    minute = Number.isNaN(m) ? 0 : m;
+  }
+
+  const content: Notifications.NotificationContentInput = {
+    title: '⚠️ Overdue Reminder',
+    body: `"${task.title}" is still pending!`,
+    data: { taskId: task.id, type: 'overdue' },
+    categoryIdentifier: 'task-actions',
+    sound: true,
+  };
+
+  const now = new Date();
+
+  for (let dayOffset = 1; dayOffset <= 2; dayOffset++) {
+    const triggerDate = new Date(now);
+    triggerDate.setDate(triggerDate.getDate() + dayOffset);
+    triggerDate.setHours(hour, minute, 0, 0);
+
+    if (triggerDate.getTime() > Date.now()) {
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: triggerDate,
+            channelId: 'default',
+          },
+          identifier: `overdue-${task.id}-d${dayOffset}`,
+        });
+      } catch (err) {
+        console.warn(`[Repeato] Failed to schedule overdue reminder d${dayOffset} for ${task.id}:`, err);
+      }
+    }
+  }
+}
+
+/**
+ * Evaluate all tasks and ensure overdue reminders are in sync:
+ * - Tasks that are past their due date (daysUntilDue < 0), not archived, not snoozed,
+ *   and not yet completed → schedule overdue reminders (d1, d2).
+ * - All other tasks → cancel overdue reminders (in case they were previously set).
+ *
+ * Call this on app startup and after a batch refresh.
+ */
+export async function syncOverdueNotifications(tasks: RepeatingTask[]): Promise<void> {
+  if (Platform.OS === 'web') return;
+
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') return;
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  await Promise.all(
+    tasks.map(async (task) => {
+      const dueDate = new Date(task.nextDueDate);
+      const startOfDue = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+      const isActuallyOverdue = startOfDue.getTime() < startOfToday.getTime();
+
+      if (
+        isActuallyOverdue &&
+        !task.archived &&
+        !task.snoozedUntil
+      ) {
+        // Schedule overdue follow-up reminders
+        await scheduleOverdueReminders(task);
+      } else {
+        // Ensure no stale overdue reminders exist for this task
+        await cancelOverdueReminders(task.id);
+      }
+    })
+  );
+}

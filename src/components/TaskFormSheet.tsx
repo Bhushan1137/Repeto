@@ -41,6 +41,7 @@ interface TaskFormSheetProps {
   onSave: (values: TaskFormValues, shared?: SharedMember[]) => void | Promise<void | boolean>;
   initialShared?: SharedMember[];
   editingTaskId?: string;
+  defaultToHousehold?: boolean;
 }
 
 function TaskFormSheetComponent({
@@ -55,6 +56,7 @@ function TaskFormSheetComponent({
   onSave,
   initialShared,
   editingTaskId,
+  defaultToHousehold,
 }: TaskFormSheetProps) {
   const { user, activeHousehold } = useAuth();
   const { showToast, message } = useToast();
@@ -66,7 +68,7 @@ function TaskFormSheetComponent({
   useEffect(() => {
     if (!initial || !visible) return;
     const base = formStateFromValues(initial);
-    const defaultHhId = mode === 'create' && activeHousehold ? activeHousehold.id : base.householdId;
+    const defaultHhId = base.householdId ?? (mode === 'create' && defaultToHousehold && activeHousehold ? activeHousehold.id : null);
     setFormState({
       ...base,
       householdId: defaultHhId,
@@ -74,7 +76,7 @@ function TaskFormSheetComponent({
     setErrors({});
     setShared(initialShared ?? []);
     setSaving(false);
-  }, [initial, visible, initialShared, mode, activeHousehold]);
+  }, [initial, visible, initialShared, mode, activeHousehold, defaultToHousehold]);
 
   if (!visible || !formState) return null;
 

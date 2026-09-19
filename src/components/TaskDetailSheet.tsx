@@ -22,7 +22,7 @@ import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, daysPercent } from '@/domain/recurrence';
-import { canSnoozeTask } from '@/domain/task';
+import { canSnoozeTask, getTodayDoseProgress } from '@/domain/task';
 import { formatTime12 } from '@/utils/timeFormat';
 import { initials } from '@/domain/insights';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -146,6 +146,13 @@ function TaskDetailSheetComponent({
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
+  const isMultiDose = Boolean(task?.timesPerDay && task.timesPerDay > 1);
+
+  const doseProgress = useMemo(() => {
+    if (!task || !isMultiDose) return null;
+    return getTodayDoseProgress(task);
+  }, [task, isMultiDose]);
+
   const todayCompletion = useMemo(() => {
     if (!task?.history || task.history.length === 0) return null;
     const today = new Date();
@@ -162,7 +169,7 @@ function TaskDetailSheetComponent({
     return null;
   }, [task]);
 
-  const isCompletedToday = !!todayCompletion;
+  const isCompletedToday = isMultiDose ? Boolean(doseProgress?.isAllDone) : !!todayCompletion;
 
   const assigneeDisplayName = useMemo(() => {
     if (!task?.assignedTo) return language === 'hi' ? 'कोई नहीं (साझा)' : 'Unassigned (Open)';
@@ -194,6 +201,14 @@ function TaskDetailSheetComponent({
   const isFutureTask = days > 2;
   const isEarlyAllowed = days > 0 && days <= 2;
 
+  const markDoneButtonTitle = isMultiDose && doseProgress && !doseProgress.isAllDone
+    ? (language === 'hi'
+        ? `${doseProgress.nextDoseIndex + 1}/${doseProgress.totalDoses} पूरा करें (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`
+        : `Mark ${doseProgress.nextDoseIndex + 1} of ${doseProgress.totalDoses} Done (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`)
+    : isEarlyAllowed
+    ? (language === 'hi' ? `समय पूर्व पूरा करें (${days}d)` : `Mark Done Early (${days}d early)`)
+    : translate('markDone');
+
   const handleMarkDone = () => {
     if (!noteExpanded) {
       setNoteExpanded(true);
@@ -224,11 +239,23 @@ function TaskDetailSheetComponent({
 
         <LinearGradient colors={[...Gradients.hero]} style={styles.heroBand}>
           <ProgressRing
-            percent={isCompletedToday ? 100 : daysPercent(days)}
+            percent={
+              isCompletedToday
+                ? 100
+                : isMultiDose && doseProgress && days === 0
+                ? Math.round((doseProgress.completedCount / doseProgress.totalDoses) * 100)
+                : daysPercent(days)
+            }
             color={isCompletedToday ? '#059669' : (overdue ? AccentHex.clay : hex)}
             size={72}
             stroke={6}
-            label={isCompletedToday ? (language === 'hi' ? 'पूर्ण' : 'Done') : dayLabel(days, language)}
+            label={
+              isCompletedToday
+                ? (language === 'hi' ? 'पूर्ण' : 'Done')
+                : isMultiDose && doseProgress && days === 0
+                ? `${doseProgress.completedCount}/${doseProgress.totalDoses}`
+                : dayLabel(days, language)
+            }
             labelColor={Colors.onDark}
             trackColor="rgba(255, 255, 255, 0.16)"
           />
@@ -536,6 +563,61 @@ function TaskDetailSheetComponent({
             </Card>
           ) : (
             <>
+              {/* Multi-dose breakdown card */}
+              {isMultiDose && doseProgress && (
+                <Card style={styles.multiDoseCard} mode="elevated">
+                  <Card.Content style={styles.multiDoseCardContent}>
+                    <View style={styles.multiDoseCardHeader}>
+                      <Text style={styles.multiDoseCardTitle}>
+                        {language === 'hi' ? 'आज का समय-क्रम' : "Today's Schedule"}
+                      </Text>
+                      <View style={styles.multiDoseCardBadge}>
+                        <Text style={styles.multiDoseCardBadgeText}>
+                          {doseProgress.completedCount} / {doseProgress.totalDoses} {language === 'hi' ? 'पूर्ण' : 'Done'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.multiDoseRowsWrap}>
+                      {doseProgress.times.map((timeStr, idx) => {
+                        const isDone = doseProgress.completedIndices.includes(idx);
+                        const isNext = idx === doseProgress.nextDoseIndex && !doseProgress.isAllDone;
+                        return (
+                          <View key={idx} style={[styles.multiDoseItemRow, isNext && styles.multiDoseItemRowNext]}>
+                            <View style={[styles.multiDoseDotCircle, isDone && styles.multiDoseDotCircleDone, isNext && styles.multiDoseDotCircleNext]}>
+                              {isDone ? (
+                                <AppIcon name="checkmark" size={12} color={Colors.white} />
+                              ) : (
+                                <Text style={[styles.multiDoseDotNumber, isNext && { color: '#2563EB' }]}>{idx + 1}</Text>
+                              )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.multiDoseTimeLabel, isDone && styles.multiDoseTimeLabelDone]}>
+                                {formatTime12(timeStr)}
+                              </Text>
+                              <Text style={styles.multiDoseStatusLabel}>
+                                {isDone
+                                  ? (language === 'hi' ? 'पूर्ण हो गया ✓' : 'Completed ✓')
+                                  : isNext
+                                  ? (language === 'hi' ? 'अगला देय' : 'Due Next')
+                                  : (language === 'hi' ? 'आगामी' : 'Upcoming')}
+                              </Text>
+                            </View>
+                            {isNext && (
+                              <Button
+                                title={language === 'hi' ? 'पूर्ण करें' : 'Mark Done'}
+                                onPress={handleMarkDoneDirectly}
+                                style={styles.multiDoseQuickDoneBtn}
+                              />
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </Card.Content>
+                </Card>
+              )}
+
               {/* Action card */}
               <Card style={styles.actionCard} mode="elevated">
                 <Card.Content style={styles.actionContent}>
@@ -563,13 +645,7 @@ function TaskDetailSheetComponent({
                           style={styles.noteSkipBtn}
                         />
                         <Button
-                          title={
-                            isEarlyAllowed
-                              ? language === 'hi'
-                                ? `समय पूर्व पूरा करें (${days}d)`
-                                : `Mark Done Early (${days}d early)`
-                              : translate('markDone')
-                          }
+                          title={markDoneButtonTitle}
                           onPress={handleMarkDoneDirectly}
                           style={styles.noteConfirmBtn}
                         />
@@ -578,13 +654,7 @@ function TaskDetailSheetComponent({
                   ) : (
                     <View style={styles.doneButtonsRow}>
                       <Button
-                        title={
-                          isEarlyAllowed
-                            ? language === 'hi'
-                              ? `समय पूर्व पूरा करें (${days}d)`
-                              : `Mark Done Early (${days}d early)`
-                            : translate('markDone')
-                        }
+                        title={markDoneButtonTitle}
                         onPress={handleMarkDoneDirectly}
                         style={styles.donePrimaryBtn}
                       />
@@ -824,6 +894,7 @@ function TaskDetailSheetComponent({
                       {h.completedAt && (
                         <Text style={styles.historyTime}>
                           📅 {formatDateTime(h.completedAt, language)}
+                          {h.doseIndex !== undefined ? ` • ⏱ ${language === 'hi' ? `समय ${h.doseIndex + 1}` : `Time ${h.doseIndex + 1}`}${h.doseTime ? ` (${formatTime12(h.doseTime)})` : ''}` : ''}
                         </Text>
                       )}
                       {h.note ? (
@@ -1051,6 +1122,98 @@ const styles = StyleSheet.create({
     color: Colors.marigoldDeep,
     fontFamily: 'Manrope_700Bold',
     fontSize: 11,
+  },
+
+  multiDoseCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 12,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  multiDoseCardContent: {
+    padding: 14,
+    gap: 10,
+  },
+  multiDoseCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  multiDoseCardTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+  },
+  multiDoseCardBadge: {
+    backgroundColor: 'rgba(62, 124, 106, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  multiDoseCardBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
+    color: Colors.tealDeep,
+  },
+  multiDoseRowsWrap: {
+    gap: 8,
+  },
+  multiDoseItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceMuted,
+  },
+  multiDoseItemRowNext: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  multiDoseDotCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: Colors.inkFaint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  multiDoseDotCircleDone: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  multiDoseDotCircleNext: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  multiDoseDotNumber: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 10,
+    color: Colors.inkSoft,
+  },
+  multiDoseTimeLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+  },
+  multiDoseTimeLabelDone: {
+    color: Colors.inkSoft,
+    textDecorationLine: 'line-through',
+  },
+  multiDoseStatusLabel: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 10.5,
+    color: Colors.inkSoft,
+  },
+  multiDoseQuickDoneBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
   },
 
   sharedCard: {

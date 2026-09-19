@@ -5,6 +5,7 @@ import type { Language, RepeatingTask, CategoryKey, HouseholdMemberProfile } fro
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, daysPercent, shortDayLabel } from '@/domain/recurrence';
+import { getTodayDoseProgress } from '@/domain/task';
 import { ProgressRing } from '@/components/ProgressRing';
 import { AppIcon } from '@/components/AppIcon';
 import { formatTime12 } from '@/utils/timeFormat';
@@ -91,6 +92,31 @@ function TaskCardComponent({
       : `In ${days} days - ${weekday}, ${formattedDate}`;
   }, [days, task.nextDueDate, task.reminderTime, language]);
 
+  const isMultiDose = Boolean(task.timesPerDay && task.timesPerDay > 1);
+
+  const doseProgress = useMemo(() => {
+    if (!isMultiDose) return null;
+    return getTodayDoseProgress(task);
+  }, [isMultiDose, task]);
+
+  const ringPercent = useMemo(() => {
+    if (isMultiDose && doseProgress && days === 0) {
+      if (doseProgress.isAllDone) return 100;
+      return Math.round((doseProgress.completedCount / doseProgress.totalDoses) * 100);
+    }
+    return daysPercent(days);
+  }, [isMultiDose, doseProgress, days]);
+
+  const ringLabel = useMemo(() => {
+    if (isMultiDose && doseProgress && days === 0) {
+      if (doseProgress.isAllDone) {
+        return language === 'hi' ? 'पूर्ण' : 'Done';
+      }
+      return `${doseProgress.completedCount}/${doseProgress.totalDoses}`;
+    }
+    return shortDayLabel(days, language);
+  }, [isMultiDose, doseProgress, days, language]);
+
   const defaultId = testID ?? `task-card-${task.id}`;
   const showCheckbox = selectionMode || selected;
 
@@ -172,7 +198,7 @@ function TaskCardComponent({
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={onLongPress ? 220 : undefined}
+      delayLongPress={onLongPress ? 280 : undefined}
       android_ripple={{ color: 'rgba(0, 0, 0, 0.04)' }}
       testID={defaultId}
     >
@@ -222,12 +248,40 @@ function TaskCardComponent({
             ) : null}
           </View>
 
-          <View style={styles.reminderRow} testID={`${defaultId}-reminder-row`}>
-            <AppIcon name="notifications-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 4 }} />
-            <Text style={styles.reminderText} numberOfLines={1} testID={`${defaultId}-reminder`}>
-              {reminderText}
-            </Text>
-          </View>
+          {isMultiDose && doseProgress ? (
+            <View style={styles.doseIndicatorRow} testID={`${defaultId}-dose-indicator`}>
+              <View style={styles.doseDotsWrap}>
+                {Array.from({ length: doseProgress.totalDoses }, (_, idx) => {
+                  const isDone = doseProgress.completedIndices.includes(idx);
+                  const isNext = idx === doseProgress.nextDoseIndex && !doseProgress.isAllDone;
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.doseDot,
+                        isDone && styles.doseDotDone,
+                        isNext && [styles.doseDotNext, { borderColor: catColor }],
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+              <Text style={styles.doseIndicatorText} numberOfLines={1}>
+                {doseProgress.isAllDone
+                  ? (language === 'hi' ? 'आज के सभी पूर्ण ✓' : 'All done today ✓')
+                  : (language === 'hi'
+                      ? `अगली: ⏱ ${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])}`
+                      : `Upcoming: ⏱ ${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])}`)}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.reminderRow} testID={`${defaultId}-reminder-row`}>
+              <AppIcon name="notifications-outline" size={11} color={Colors.inkFaint} style={{ marginRight: 4 }} />
+              <Text style={styles.reminderText} numberOfLines={1} testID={`${defaultId}-reminder`}>
+                {reminderText}
+              </Text>
+            </View>
+          )}
 
           {/* Household Assignee Pill */}
           {task.householdId ? (
@@ -239,6 +293,10 @@ function TaskCardComponent({
                 !task.assignedTo && styles.assigneePillUnassigned,
               ]}
               onPress={(e) => {
+                if (selectionMode) {
+                  onPress();
+                  return;
+                }
                 e.stopPropagation();
                 handleLockedOrAssigneePress();
               }}
@@ -267,12 +325,12 @@ function TaskCardComponent({
 
         <View style={styles.rightCol} testID={`${defaultId}-right-col`}>
           <ProgressRing
-            percent={daysPercent(days)}
-            color={overdue ? Colors.clay : days === 0 ? '#2563EB' : '#16A34A'}
+            percent={ringPercent}
+            color={overdue ? Colors.clay : (isMultiDose && doseProgress?.isAllDone ? '#059669' : days === 0 ? '#2563EB' : '#16A34A')}
             size={52}
             stroke={4.5}
-            label={shortDayLabel(days, language)}
-            labelColor={overdue ? Colors.clayDeep : Colors.ink}
+            label={ringLabel}
+            labelColor={overdue ? Colors.clayDeep : (isMultiDose && doseProgress?.isAllDone ? '#059669' : Colors.ink)}
             testID={`${defaultId}-progress-ring`}
           />
           {!selected && !selectionMode && isAssignedToOther ? (
@@ -399,6 +457,42 @@ const styles = StyleSheet.create({
   amountText: { ...Typography.caption, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold', fontSize: 11 },
   reminderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
   reminderText: { ...Typography.caption, fontSize: 10.5, color: Colors.inkSoft, fontFamily: 'Manrope_600SemiBold' },
+  doseIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  doseDotsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  doseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    borderWidth: 1.2,
+    borderColor: Colors.inkFaint,
+    backgroundColor: 'transparent',
+  },
+  doseDotDone: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  doseDotNext: {
+    backgroundColor: 'rgba(37, 99, 235, 0.15)',
+    borderColor: '#2563EB',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  doseIndicatorText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+  },
   rightCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   quickCompleteBtn: {
     padding: 4,

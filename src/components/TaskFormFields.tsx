@@ -6,7 +6,7 @@ import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
 import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
 import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
 import { TimeField } from '@/components/TimeField';
-import { formatTime } from '@/components/timeFieldShared';
+import { formatTime12 } from '@/utils/timeFormat';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
@@ -15,15 +15,16 @@ import { parseTaskInput } from '@/domain/parser';
 import { computeInitialDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import {
   buildRecurrenceRule,
+  getDefaultDoseTimes,
   type TaskFormErrors,
   type TaskFormState,
 } from '@/domain/taskForm';
 import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
-import type { CategoryKey, Language, SharedMember } from '@/types';
+import type { CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Card, Text, TouchableRipple } from 'react-native-paper';
 
 interface TaskFormFieldsProps {
@@ -53,31 +54,91 @@ export function TaskFormFields({
 
   const [showRecurrenceModal, setShowRecurrenceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [smartInputText, setSmartInputText] = useState('');
+  const [detectedTokens, setDetectedTokens] = useState<DetectedToken[]>([]);
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
 
-  const applyParsedTask = (textToParse: string) => {
-    if (!textToParse.trim()) return;
-    const res = parseTaskInput(textToParse, language);
-    if (!res) return;
+  const cleanTitleCandidate = useMemo(() => {
+    if (!state.title || !state.title.trim()) return '';
+    const res = parseTaskInput(state.title, language);
+    return res.title;
+  }, [state.title, language]);
 
-    const patch: Partial<TaskFormState> = {};
-    if (res.title) patch.title = res.title;
+  const handleTitleChange = (rawText: string) => {
+    const text = rawText.slice(0, 80);
+    if (text.trim()) {
+      const res = parseTaskInput(text, language);
+      const patch: Partial<TaskFormState> = { title: text };
+
+      if (res.amount !== undefined) {
+        patch.amountText = String(res.amount);
+        patch.finance = true;
+      }
+      if (res.icon) patch.icon = res.icon;
+      if (res.reminderTime) patch.reminderTime = res.reminderTime;
+      if (res.isMultiTime && res.timesPerDay) {
+        patch.isMultiTime = true;
+        patch.timesPerDay = res.timesPerDay;
+        patch.reminderTimes = res.reminderTimes;
+      }
+      if (res.recurrence) {
+        patch.recurrenceType = res.recurrence.type;
+        if (res.recurrence.interval) patch.interval = res.recurrence.interval;
+        if (res.recurrence.intervalUnit) patch.intervalUnit = res.recurrence.intervalUnit;
+        if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
+        if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
+      }
+      if (res.category && res.category !== state.category) {
+        onCategoryChange(res.category);
+      }
+      onChange(patch);
+      setDetectedTokens(res.detectedTokens ?? []);
+    } else {
+      onChange({ title: text });
+      setDetectedTokens([]);
+    }
+  };
+
+  const applyInspirationPrompt = (fullPrompt: string) => {
+    const res = parseTaskInput(fullPrompt, language);
+    const patch: Partial<TaskFormState> = {
+      title: res.title,
+    };
     if (res.amount !== undefined) {
       patch.amountText = String(res.amount);
       patch.finance = true;
     }
     if (res.icon) patch.icon = res.icon;
     if (res.reminderTime) patch.reminderTime = res.reminderTime;
+    if (res.isMultiTime && res.timesPerDay) {
+      patch.isMultiTime = true;
+      patch.timesPerDay = res.timesPerDay;
+      patch.reminderTimes = res.reminderTimes;
+    }
     if (res.recurrence) {
       patch.recurrenceType = res.recurrence.type;
       if (res.recurrence.interval) patch.interval = res.recurrence.interval;
+      if (res.recurrence.intervalUnit) patch.intervalUnit = res.recurrence.intervalUnit;
       if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
-      if (res.recurrence.weekday) patch.weekday = res.recurrence.weekday;
+      if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
     }
-    if (res.category) {
+    if (res.category && res.category !== state.category) {
       onCategoryChange(res.category);
     }
     onChange(patch);
+    setDetectedTokens(res.detectedTokens ?? []);
+  };
+
+  const dismissToken = (tokenId: string) => {
+    setDetectedTokens((prev) => prev.filter((t) => t.id !== tokenId));
+    if (tokenId === 'amount') {
+      onChange({ amountText: '', finance: false });
+    } else if (tokenId === 'time') {
+      onChange({ reminderTime: null });
+    } else if (tokenId === 'doses') {
+      onChange({ isMultiTime: false, timesPerDay: 1 });
+    } else if (tokenId === 'recurrence') {
+      onChange({ recurrenceType: 'monthly', interval: 1, dayOfMonth: 1 });
+    }
   };
 
   useEffect(() => {
@@ -140,8 +201,14 @@ export function TaskFormFields({
   };
 
   const calculatedNextDue = useMemo(() => {
-    return computeInitialDueDate(previewRule, state.startDate, state.reminderTime);
-  }, [previewRule, state.startDate, state.reminderTime]);
+    return computeInitialDueDate(
+      previewRule,
+      state.startDate,
+      state.reminderTime,
+      new Date(),
+      state.isMultiTime ? state.reminderTimes : undefined
+    );
+  }, [previewRule, state.startDate, state.reminderTime, state.isMultiTime, state.reminderTimes]);
 
   const formattedNextDue = useMemo(() => {
     try {
@@ -163,109 +230,171 @@ export function TaskFormFields({
     }
   }, [calculatedNextDue, language]);
 
+  const summaryTimesStr = useMemo(() => {
+    if (state.isMultiTime && state.timesPerDay > 1 && state.reminderTimes && state.reminderTimes.length > 0) {
+      return state.reminderTimes
+        .slice(0, state.timesPerDay)
+        .map((t) => formatTime12(t))
+        .join(', ');
+    }
+    return formatTime12(state.reminderTime || '09:00');
+  }, [state.isMultiTime, state.timesPerDay, state.reminderTimes, state.reminderTime]);
+
   return (
     <View style={styles.formRoot}>
 
       {/* ── SECTION 1: TASK IDENTITY ── */}
       <View style={styles.sectionBlock}>
-        <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '1. कार्य विवरण' : '1. Task Details'}</Text>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeNum}>1</Text>
+          </View>
+          <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? 'कार्य विवरण' : 'Task Details'}</Text>
+        </View>
 
-        {/* Prominent Smart Natural Language Input Bar */}
-        <Card style={styles.smartCard} mode="elevated">
-          <Card.Content style={styles.smartCardContent}>
-            <View style={styles.smartHeaderRow}>
-              <Text style={styles.smartBadge}>⚡ {language === 'hi' ? 'स्मार्ट इनपुट' : 'Smart Input'}</Text>
-            </View>
-            <View style={styles.smartInputWrap}>
-              <AppIcon name="sparkles" size={18} color={Colors.marigoldDeep} />
-              <TextInput
-                style={styles.smartTextInput}
-                placeholder={
-                  language === 'hi'
-                    ? 'कार्य, समय और राशि भरने के लिए लिखें (उदा. "किराया ₹15000 हर महीने 5 तारीख को")'
-                    : 'Type to auto-fill title, repeat & amount (e.g. "Rent ₹15000 monthly on 5th")'
-                }
-                placeholderTextColor={Colors.inkFaint}
-                value={smartInputText}
-                onChangeText={(text) => {
-                  setSmartInputText(text);
-                  applyParsedTask(text);
-                }}
-              />
-              {smartInputText.length > 0 && (
-                <Pressable onPress={() => setSmartInputText('')}>
-                  <AppIcon name="close-circle" size={18} color={Colors.inkFaint} />
-                </Pressable>
+        {/* Unified Smart Title Input */}
+        <View style={styles.smartTitleHeader}>
+          <Text style={styles.fieldLabel}>{translate('presetTitle')}</Text>
+          <View style={styles.smartPillBadge}>
+            <AppIcon name="sparkles" size={11} color={Colors.marigoldDeep} />
+            <Text style={styles.smartPillText}>
+              {language === 'hi' ? 'स्मार्ट ऑटो-फिल' : 'Smart Auto-Fill'}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.titleInputContainer,
+            isTitleFocused && styles.titleInputFocused,
+            errors?.title && styles.titleInputError,
+          ]}
+        >
+          <AppIcon
+            name="create-outline"
+            size={18}
+            color={isTitleFocused ? Colors.marigoldDeep : Colors.inkSoft}
+            style={styles.titleInputIcon}
+          />
+          <TextInput
+            style={styles.titleTextInput}
+            value={state.title}
+            onChangeText={handleTitleChange}
+            onFocus={() => setIsTitleFocused(true)}
+            onBlur={() => setIsTitleFocused(false)}
+            placeholder={
+              language === 'hi'
+                ? 'उदा. "किराया ₹15000 हर महीने 5 तारीख"'
+                : 'e.g. "Rent ₹15,000 monthly on 5th at 9am"'
+            }
+            placeholderTextColor={Colors.inkFaint}
+            maxLength={80}
+            testID="task-title-input"
+          />
+          {state.title.length > 0 && (
+            <TouchableOpacity onPress={() => handleTitleChange('')} hitSlop={8}>
+              <AppIcon name="close-circle" size={18} color={Colors.inkFaint} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {errors?.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
+
+        {/* Live Detected Tokens Badges */}
+        {detectedTokens.length > 0 && (
+          <View style={styles.detectedContainer}>
+            <View style={styles.detectedHeader}>
+              <Text style={styles.detectedTitle}>
+                ⚡ {language === 'hi' ? 'ऑटो-पहचाने गए फ़ील्ड:' : 'Auto-detected:'}
+              </Text>
+              {cleanTitleCandidate && cleanTitleCandidate !== state.title && (
+                <TouchableOpacity
+                  style={styles.cleanTitleBtn}
+                  onPress={() => onChange({ title: cleanTitleCandidate })}
+                >
+                  <Text style={styles.cleanTitleBtnText}>
+                    ✂️ {language === 'hi' ? `नाम: "${cleanTitleCandidate}"` : `Keep clean: "${cleanTitleCandidate}"`}
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
-
-            {/* Smart Prompt Suggestions */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.smartPromptScroll}>
-              <Pressable
-                style={styles.smartPromptChip}
-                onPress={() => {
-                  const t = language === 'hi' ? 'किराया ₹15000 हर महीने 5 तारीख को' : 'House Rent ₹15000 monthly on 5th';
-                  setSmartInputText(t);
-                  applyParsedTask(t);
-                }}
-              >
-                <Text style={styles.smartPromptText}>🏠 {language === 'hi' ? 'किराया ₹15000' : 'Rent ₹15,000'}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.smartPromptChip}
-                onPress={() => {
-                  const t = language === 'hi' ? 'कामवाली वेतन ₹5000 हर महीने 1 तारीख को' : 'Maid salary ₹5000 monthly on 1st';
-                  setSmartInputText(t);
-                  applyParsedTask(t);
-                }}
-              >
-                <Text style={styles.smartPromptText}>🧹 {language === 'hi' ? 'कामवाली ₹5000' : 'Maid ₹5,000'}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.smartPromptChip}
-                onPress={() => {
-                  const t = language === 'hi' ? 'पानी का बिल ₹500 हर 2 महीने' : 'Water bill ₹500 every 2 months';
-                  setSmartInputText(t);
-                  applyParsedTask(t);
-                }}
-              >
-                <Text style={styles.smartPromptText}>💧 {language === 'hi' ? 'पानी बिल ₹500' : 'Water bill ₹500'}</Text>
-              </Pressable>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detectedTokensRow}>
+              {detectedTokens.map((token) => (
+                <View key={token.id} style={styles.tokenBadge}>
+                  <Text style={styles.tokenBadgeText}>
+                    {token.icon} {token.label}
+                  </Text>
+                  {token.id !== 'category' && (
+                    <TouchableOpacity onPress={() => dismissToken(token.id)} hitSlop={6} style={styles.tokenCloseBtn}>
+                      <Text style={styles.tokenCloseText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
             </ScrollView>
-          </Card.Content>
-        </Card>
+          </View>
+        )}
 
-        <FormField
-          label={translate('presetTitle')}
-          value={state.title}
-          onChangeText={(title) => onChange({ title: title.slice(0, 60) })}
-          placeholder={translate(config.titlePlaceholder)}
-          maxLength={60}
-          error={errors?.title}
-          testID="task-title-input"
-        />
+        {/* Quick Inspiration Pills */}
+        <View style={styles.inspirationContainer}>
+          <Text style={styles.inspirationLabel}>
+            💡 {language === 'hi' ? 'उदाहरण:' : 'Try:'}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.inspirationScroll}>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'किराया ₹15000 हर महीने 5 तारीख' : 'House Rent ₹15,000 monthly on 5th')}
+            >
+              <Text style={styles.inspirationChipText}>🏠 {language === 'hi' ? 'किराया ₹15,000 (5 तारीख)' : 'Rent ₹15,000 (5th)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'दवा दिन में 2 बार सुबह 8 बजे' : 'Medicine twice daily at 8am')}
+            >
+              <Text style={styles.inspirationChipText}>💊 {language === 'hi' ? 'दवा (2 बार रोज़)' : 'Medicine (2x daily)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹5000 हर महीने 1 तारीख' : 'Maid salary ₹5000 monthly on 1st')}
+            >
+              <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹5,000 (1 तारीख)' : 'Maid ₹5,000 (1st)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'पानी बिल ₹500 हर 2 महीने' : 'Water bill ₹500 every 2 months')}
+            >
+              <Text style={styles.inspirationChipText}>💧 {language === 'hi' ? 'पानी बिल ₹500 (हर 2 महीने)' : 'Water bill ₹500 (2 mos)'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
 
-        <Text style={styles.fieldLabel}>{translate('parseCategory')}</Text>
+        {/* Category Selector Card */}
+        <Text style={styles.fieldLabel}>{language === 'hi' ? 'श्रेणी' : 'Category'}</Text>
         <Card style={styles.dropdownCard} mode="elevated" testID="task-category-trigger">
           <TouchableRipple onPress={() => setShowCategoryModal(true)} style={styles.dropdownRipple} borderless>
             <View style={styles.dropdownRow}>
               <View style={styles.dropdownLeft}>
-                <Text style={styles.dropdownEmoji}>{CATEGORY_MAP[state.category].icon}</Text>
-                <Text style={styles.dropdownText}>
-                  {getCategoryLabel(state.category, language)}
-                </Text>
+                <View style={styles.categoryEmojiBadge}>
+                  <Text style={styles.dropdownEmoji}>{CATEGORY_MAP[state.category]?.icon || '📋'}</Text>
+                </View>
+                <View style={styles.categoryTextCol}>
+                  <Text style={styles.dropdownText}>{getCategoryLabel(state.category, language)}</Text>
+                  <Text style={styles.catHintInCard} numberOfLines={1}>
+                    {CATEGORY_MAP[state.category]?.[language === 'hi' ? 'hintHi' : 'hintEn']}
+                  </Text>
+                </View>
               </View>
-              <AppIcon name="chevron-down-outline" size={18} color={Colors.inkSoft} />
+              <View style={styles.chevronWrap}>
+                <AppIcon name="chevron-forward" size={16} color={Colors.inkSoft} />
+              </View>
             </View>
           </TouchableRipple>
         </Card>
 
-        {config.subtitle ? <Text style={styles.catHint}>{translate(config.subtitle)}</Text> : null}
-
-        <Text style={styles.fieldLabel}>{language === 'hi' ? 'इमोजी चुनें (वैकल्पिक)' : 'Choose Emoji (Optional)'}</Text>
+        {/* Icon Strip */}
+        <Text style={styles.fieldLabel}>{language === 'hi' ? 'आइकन चुनें' : 'Choose Icon'}</Text>
         <IconPickerStrip
+          selectedIcon={state.icon || defaultIcon}
           options={emojiOptions}
-          selectedIcon={state.icon}
           defaultIcon={defaultIcon}
           onSelectIcon={(icon) => onChange({ icon })}
         />
@@ -273,49 +402,46 @@ export function TaskFormFields({
 
       {/* ── SECTION 2: SCHEDULE & RECURRENCE ── */}
       <View style={styles.sectionBlock}>
-        <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '2. समय सारणी एवं पुनरावृत्ति' : '2. Schedule & Repeat'}</Text>
-
-        <View style={styles.dateTimeRow}>
-          <View style={styles.dateCol}>
-            <DateField
-              label={language === 'hi' ? 'तारीख' : 'Date'}
-              value={state.startDate || new Date().toISOString().slice(0, 10)}
-              onChange={(startDate) => {
-                const patch: Partial<TaskFormState> = { startDate };
-                try {
-                  const d = new Date(startDate);
-                  if (!isNaN(d.getTime())) {
-                    const dayOfMonth = d.getDate();
-                    const weekday = d.getDay();
-                    const nthWeekday = Math.ceil(dayOfMonth / 7);
-
-                    if (state.recurrenceType === 'monthDay') {
-                      patch.dayOfMonth = dayOfMonth;
-                    } else if (state.recurrenceType === 'weekly') {
-                      patch.weekday = weekday;
-                    } else if (state.recurrenceType === 'nthWeekday') {
-                      patch.nthWeekday = nthWeekday;
-                      patch.weekday = weekday;
-                    }
-                  }
-                } catch {
-                  // ignore date parsing error
-                }
-                onChange(patch);
-              }}
-              testID="task-date-picker"
-            />
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeNum}>2</Text>
           </View>
-          <View style={styles.timeCol}>
-            <TimeField
-              label={language === 'hi' ? 'समय' : 'Time'}
-              value={state.reminderTime || '09:00'}
-              onChange={(reminderTime) => onChange({ reminderTime })}
-              testID="task-time-picker"
-            />
-          </View>
+          <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? 'समय सारणी एवं पुनरावृत्ति' : 'Schedule & Repeat'}</Text>
         </View>
 
+        {/* 1. Date */}
+        <View style={{ marginBottom: 12 }}>
+          <DateField
+            label={language === 'hi' ? 'तारीख' : 'Date'}
+            value={state.startDate || new Date().toISOString().slice(0, 10)}
+            onChange={(startDate) => {
+              const patch: Partial<TaskFormState> = { startDate };
+              try {
+                const d = new Date(startDate);
+                if (!isNaN(d.getTime())) {
+                  const dayOfMonth = d.getDate();
+                  const weekday = d.getDay();
+                  const nthWeekday = Math.ceil(dayOfMonth / 7);
+
+                  if (state.recurrenceType === 'monthDay') {
+                    patch.dayOfMonth = dayOfMonth;
+                  } else if (state.recurrenceType === 'weekly') {
+                    patch.weekday = weekday;
+                  } else if (state.recurrenceType === 'nthWeekday') {
+                    patch.nthWeekday = nthWeekday;
+                    patch.weekday = weekday;
+                  }
+                }
+              } catch {
+                // ignore date parsing error
+              }
+              onChange(patch);
+            }}
+            testID="task-date-picker"
+          />
+        </View>
+
+        {/* 2. How often does it repeat */}
         <Text style={styles.fieldLabel}>{translate('howOften')}</Text>
         <Card style={styles.recurrenceCard} mode="elevated" testID="task-recurrence-trigger">
           <TouchableRipple onPress={() => setShowRecurrenceModal(true)} style={styles.recurrenceRipple} borderless>
@@ -338,7 +464,123 @@ export function TaskFormFields({
           </TouchableRipple>
         </Card>
 
-        {/* Schedule Summary Box */}
+        {/* 3. Time & Multi-Time Section */}
+        <View style={styles.timeBlock}>
+          <Text style={styles.fieldLabel}>{language === 'hi' ? 'समय' : 'Time'}</Text>
+
+          {/* Repeat multiple times a day toggle */}
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => {
+              const nextMulti = !state.isMultiTime;
+              const count = nextMulti ? Math.max(2, state.timesPerDay || 2) : 1;
+              const times = nextMulti
+                ? (state.reminderTimes.length >= count ? state.reminderTimes : getDefaultDoseTimes(count))
+                : [state.reminderTimes[0] || state.reminderTime || '09:00'];
+              onChange({
+                isMultiTime: nextMulti,
+                timesPerDay: count,
+                reminderTimes: times,
+                reminderTime: times[0],
+              });
+            }}
+            activeOpacity={0.8}
+            testID="task-multi-time-toggle"
+          >
+            <View style={styles.toggleTextCol}>
+              <Text style={styles.toggleTitle}>
+                {language === 'hi' ? 'दिन में कई बार दोहराएं' : 'Repeat multiple times a day'}
+              </Text>
+              <Text style={styles.toggleSub}>
+                {language === 'hi'
+                  ? 'दवाइयाँ, पानी, व्यायाम आदि (2 से 5 बार)'
+                  : 'Medicines, water, workouts, etc. (2 to 5 times)'}
+              </Text>
+            </View>
+            <View style={[styles.switchTrack, state.isMultiTime && styles.switchTrackActive]}>
+              <View style={[styles.switchThumb, state.isMultiTime && styles.switchThumbActive]} />
+            </View>
+          </TouchableOpacity>
+
+          {!state.isMultiTime ? (
+            <View style={{ marginTop: 10 }}>
+              <TimeField
+                label={language === 'hi' ? 'समय' : 'Time'}
+                value={state.reminderTime || '09:00'}
+                onChange={(reminderTime) =>
+                  onChange({ reminderTime, reminderTimes: [reminderTime] })
+                }
+                testID="task-time-picker"
+              />
+            </View>
+          ) : (
+            <View style={styles.multiTimeContainer}>
+              <Text style={styles.multiTimeCountLabel}>
+                {language === 'hi' ? 'दिन में कितनी बार?' : 'How many times per day?'}
+              </Text>
+              <View style={styles.doseCountSelectorRow}>
+                {[2, 3, 4, 5].map((cnt) => (
+                  <TouchableOpacity
+                    key={cnt}
+                    style={[
+                      styles.doseCountChip,
+                      state.timesPerDay === cnt && styles.doseCountChipActive,
+                    ]}
+                    onPress={() => {
+                      const newTimes = getDefaultDoseTimes(cnt);
+                      onChange({
+                        timesPerDay: cnt,
+                        reminderTimes: newTimes,
+                        reminderTime: newTimes[0],
+                      });
+                    }}
+                    testID={`dose-count-${cnt}`}
+                  >
+                    <Text
+                      style={[
+                        styles.doseCountChipText,
+                        state.timesPerDay === cnt && styles.doseCountChipTextActive,
+                      ]}
+                    >
+                      {cnt}x
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.doseTimesList}>
+                {state.reminderTimes.slice(0, state.timesPerDay).map((t, idx) => (
+                  <View key={idx} style={styles.doseTimeItem}>
+                    <View style={styles.doseBadgeCircle}>
+                      <Text style={styles.doseBadgeCircleText}>{idx + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TimeField
+                        label={
+                          language === 'hi'
+                            ? `समय ${idx + 1}`
+                            : `Time ${idx + 1}`
+                        }
+                        value={t}
+                        onChange={(newT) => {
+                          const updated = [...state.reminderTimes];
+                          updated[idx] = newT;
+                          onChange({
+                            reminderTimes: updated,
+                            reminderTime: idx === 0 ? newT : state.reminderTime,
+                          });
+                        }}
+                        testID={`task-time-picker-${idx}`}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* 4. Schedule Summary Box */}
         <View style={styles.summaryBox}>
           <View style={styles.summaryIconWrapper}>
             <AppIcon name="checkmark-done-outline" size={16} color={Colors.tealDeep} />
@@ -347,8 +589,8 @@ export function TaskFormFields({
             <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
             <Text style={styles.summarySub}>
               {language === 'hi'
-                ? `आपको ${previewLabel} पर ${formatTime(state.reminderTime || '09:00')} बजे याद दिलाया जाएगा।`
-                : `You'll be reminded ${previewLabel} at ${formatTime(state.reminderTime || '09:00')}.`}
+                ? `आपको ${previewLabel} पर ${summaryTimesStr} बजे याद दिलाया जाएगा${state.isMultiTime && state.timesPerDay > 1 ? ` (दिन में ${state.timesPerDay} बार)` : ''}।`
+                : `You'll be reminded ${previewLabel} at ${summaryTimesStr}${state.isMultiTime && state.timesPerDay > 1 ? ` (${state.timesPerDay} times a day)` : ''}.`}
               {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
             </Text>
           </View>
@@ -360,7 +602,12 @@ export function TaskFormFields({
 
       {/* ── SECTION 3: FINANCE & EXPENSES ── */}
       <View style={styles.sectionBlock}>
-        <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '3. वित्त एवं बजट' : '3. Finance & Expenses'}</Text>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeNum}>3</Text>
+          </View>
+          <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? 'वित्त एवं बजट' : 'Finance & Expenses'}</Text>
+        </View>
 
         {/* Finance Toggle Row */}
         <TouchableOpacity
@@ -405,7 +652,12 @@ export function TaskFormFields({
 
       {/* ── SECTION 4: NOTES (OPTIONAL) ── */}
       <View style={styles.sectionBlock}>
-        <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? '4. नोट (वैकल्पिक)' : '4. Notes (Optional)'}</Text>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeNum}>4</Text>
+          </View>
+          <Text style={styles.sectionHeaderTitle}>{language === 'hi' ? 'नोट (वैकल्पिक)' : 'Notes (Optional)'}</Text>
+        </View>
         <FormField
           label={language === 'hi' ? 'अतिरिक्त विवरण या निर्देश' : 'Additional Details or Instructions'}
           value={state.note}
@@ -454,18 +706,43 @@ const styles = StyleSheet.create({
   // Section Grouping Container
   sectionBlock: {
     backgroundColor: Colors.white,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(228, 219, 199, 0.7)',
+    shadowColor: '#171B36',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  sectionBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(245, 197, 110, 0.25)',
     borderWidth: 1,
-    borderColor: Colors.ivoryLine,
+    borderColor: Colors.marigoldDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionBadgeNum: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 11,
+    color: Colors.marigoldDeep,
   },
   sectionHeaderTitle: {
     fontFamily: 'Manrope_700Bold',
-    fontSize: 12,
-    color: Colors.inkFaint,
+    fontSize: 12.5,
+    color: Colors.ink,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 12,
   },
 
   fieldLabel: {
@@ -487,11 +764,11 @@ const styles = StyleSheet.create({
   // Category Dropdown
   dropdownCard: {
     backgroundColor: Colors.surfaceMuted,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
     borderColor: Colors.ivoryLine,
-    marginBottom: 8,
-    elevation: 0.5,
+    marginBottom: 10,
+    elevation: 0,
     overflow: 'hidden',
   },
   dropdownRipple: {
@@ -506,19 +783,40 @@ const styles = StyleSheet.create({
   dropdownLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    flex: 1,
+    paddingRight: 8,
   },
-  dropdownEmoji: { fontSize: 18 },
+  categoryEmojiBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(245, 197, 110, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryTextCol: {
+    flex: 1,
+    gap: 1,
+  },
+  dropdownEmoji: { fontSize: 20 },
   dropdownText: {
     fontSize: 14,
-    fontFamily: 'Manrope_600SemiBold',
+    fontFamily: 'Manrope_700Bold',
     color: Colors.ink,
   },
-  catHint: {
-    fontSize: 11.5,
+  catHintInCard: {
+    fontSize: 11,
     color: Colors.inkSoft,
     fontFamily: 'Manrope_500Medium',
-    marginBottom: 10,
+  },
+  chevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Emoji Scroll List
@@ -554,6 +852,73 @@ const styles = StyleSheet.create({
   },
   dateCol: { flex: 1 },
   timeCol: { flex: 1 },
+  timeBlock: {
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  multiTimeContainer: {
+    marginTop: 10,
+    backgroundColor: Colors.surfaceMuted,
+    borderRadius: Radius.sm,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  multiTimeCountLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.ink,
+    marginBottom: 8,
+  },
+  doseCountSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  doseCountChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: Radius.xs,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doseCountChipActive: {
+    backgroundColor: Colors.marigold,
+    borderColor: Colors.marigoldDeep,
+  },
+  doseCountChipText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+  },
+  doseCountChipTextActive: {
+    color: Colors.ink,
+  },
+  doseTimesList: {
+    gap: 8,
+  },
+  doseTimeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  doseBadgeCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.marigold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  doseBadgeCircleText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 11,
+    color: Colors.ink,
+  },
 
   // Recurrence Trigger Card
   recurrenceCard: {
@@ -837,68 +1202,160 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
 
-  // Smart Input Styles
-  smartCard: {
-    backgroundColor: '#FFFBF0',
-    borderColor: '#F5C56E',
-    borderWidth: 1.5,
-    borderRadius: Radius.md,
-    marginBottom: 14,
-    elevation: 2,
-  },
-  smartCardContent: {
-    padding: 12,
-  },
-  smartHeaderRow: {
+  // Smart Title & Auto-Detection Styles
+  smartTitleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  smartBadge: {
+  smartPillBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF4DE',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#F5C56E',
+  },
+  smartPillText: {
     fontFamily: 'Manrope_800ExtraBold',
-    fontSize: 12,
+    fontSize: 10,
+    color: Colors.marigoldDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  titleInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.ivoryLine,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    marginBottom: 4,
+  },
+  titleInputFocused: {
+    borderColor: Colors.marigoldDeep,
+    backgroundColor: '#FFFDF8',
+  },
+  titleInputError: {
+    borderColor: Colors.clay,
+  },
+  titleInputIcon: {
+    marginRight: 8,
+  },
+  titleTextInput: {
+    flex: 1,
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 14,
+    color: Colors.ink,
+    padding: 0,
+  },
+  errorText: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.clay,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+
+  // Live Detected Tokens Badges
+  detectedContainer: {
+    marginTop: 8,
+    marginBottom: 6,
+    backgroundColor: '#FFFBF3',
+    borderRadius: Radius.sm,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F5C56E60',
+  },
+  detectedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  detectedTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
     color: Colors.marigoldDeep,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  smartHint: {
-    fontFamily: 'Manrope_600SemiBold',
+  cleanTitleBtn: {
+    backgroundColor: Colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  cleanTitleBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10.5,
+    color: Colors.tealDeep,
+  },
+  detectedTokensRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  tokenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    elevation: 0.5,
+  },
+  tokenBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11.5,
+    color: Colors.ink,
+  },
+  tokenCloseBtn: {
+    padding: 2,
+  },
+  tokenCloseText: {
+    fontSize: 11,
+    color: Colors.inkSoft,
+    fontWeight: 'bold',
+  },
+
+  // Inspiration Pills
+  inspirationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  inspirationLabel: {
+    fontFamily: 'Manrope_700Bold',
     fontSize: 11,
     color: Colors.inkSoft,
   },
-  smartInputWrap: {
+  inspirationScroll: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: Radius.sm,
+    gap: 6,
+  },
+  inspirationChip: {
+    backgroundColor: Colors.surfaceMuted,
+    borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: Colors.ivoryLine,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 8,
-    marginBottom: 8,
+    paddingVertical: 5,
   },
-  smartTextInput: {
-    flex: 1,
-    fontFamily: 'Manrope_600SemiBold',
-    fontSize: 13.5,
-    color: Colors.ink,
-    paddingVertical: 4,
-  },
-  smartPromptScroll: {
-    flexDirection: 'row',
-  },
-  smartPromptChip: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: '#E8A33D40',
-    borderRadius: Radius.xs,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 6,
-  },
-  smartPromptText: {
+  inspirationChipText: {
     fontFamily: 'Manrope_600SemiBold',
     fontSize: 11,
     color: Colors.ink,

@@ -43,15 +43,22 @@ export function BulkActionBar({
   const isDoneDisabled =
     completableCount === undefined ||
     selectedCount === 0 ||
-    completableCount < selectedCount;
+    completableCount === 0;
 
   const isSnoozeDisabled =
     snoozableCount === undefined ||
     selectedCount === 0 ||
-    snoozableCount < selectedCount;
+    snoozableCount === 0;
 
-  const doneLabel = language === 'hi' ? 'पूरा करें' : 'Done';
-  const snoozeLabel = language === 'hi' ? 'सणूज़' : 'Snooze';
+  const doneLabel =
+    completableCount !== undefined && completableCount > 0 && completableCount < selectedCount
+      ? (language === 'hi' ? `पूरा करें (${completableCount})` : `Done (${completableCount})`)
+      : (language === 'hi' ? 'पूरा करें' : 'Done');
+
+  const snoozeLabel =
+    snoozableCount !== undefined && snoozableCount > 0 && snoozableCount < selectedCount
+      ? (language === 'hi' ? `सणूज़ (${snoozableCount})` : `Snooze (${snoozableCount})`)
+      : (language === 'hi' ? 'सणूज़' : 'Snooze');
 
   const bottomOffset = Math.max(insets.bottom, 12) + (Platform.OS === 'ios' ? 96 : 90);
 
