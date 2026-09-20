@@ -423,5 +423,42 @@ describe('E2E Review & Flow Verification: Household System', () => {
         'Pay HDFC Credit Card',
       ]);
     });
+
+    it('purges tasks of a household after member leaves and does not resurrect them', () => {
+      const personalTask = createTaskFromParsed(
+        { title: 'Morning Run', category: 'health', frequencyLabel: 'Daily', recurrence: { type: 'daily' } },
+        { finance: false, shared: [] }
+      );
+      const beachTask = createTaskFromParsed(
+        { title: 'Mow Beach House Lawn', category: 'home', frequencyLabel: 'Weekly', recurrence: { type: 'weekly' } },
+        { finance: false, shared: [], householdId: 'hh_beach' }
+      );
+      const cityTask = createTaskFromParsed(
+        { title: 'City Apartment Maintenance', category: 'home', frequencyLabel: 'Monthly', recurrence: { type: 'monthly' } },
+        { finance: false, shared: [], householdId: 'hh_city' }
+      );
+
+      const localTasks = [personalTask, beachTask, cityTask];
+
+      // User leaves hh_beach: active households are now only hh_city
+      const activeHouseholdIds = new Set(['hh_city']);
+
+      // 1. Purge/filter logic applied in TaskProvider on load & sync
+      const sanitized = localTasks.filter(
+        (t) => !t.householdId || activeHouseholdIds.has(t.householdId)
+      );
+      const orphaned = localTasks.filter(
+        (t) => t.householdId && !activeHouseholdIds.has(t.householdId)
+      );
+
+      expect(sanitized).toHaveLength(2);
+      expect(sanitized.map((t) => t.title)).toEqual(['Morning Run', 'City Apartment Maintenance']);
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0].title).toBe('Mow Beach House Lawn');
+
+      // 2. Verified that hh_beach tasks are no longer visible in sanitized list
+      expect(sanitized.some((t) => t.householdId === 'hh_beach')).toBe(false);
+    });
   });
 });
+

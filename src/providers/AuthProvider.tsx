@@ -12,6 +12,7 @@ import { restoreUserRemote, purgeUserDataRemote } from '@/services/firebase/fire
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
 import { cancelAllNotifications, registerForPushNotificationsAsync } from '@/services/notifications';
+import { notifyOwnerMemberLeftHousehold } from '@/services/householdBroadcastService';
 
 interface AuthContextValue {
   ready: boolean;
@@ -553,20 +554,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('[Repeato] Failed to update household on leave:', err);
     }
 
-    // 2. Notify owner
+    // 2. Notify owner with in-app notification + remote push notification
     if (hh.ownerUid && hh.ownerUid !== user.id) {
-      try {
-        await userRepository.saveNotification(hh.ownerUid, {
-          id: `${Date.now()}-leave`,
-          type: 'household',
-          title: 'Member Left Household',
-          body: `${user.name || 'A member'} left "${hh.name}".`,
-          timestamp: new Date().toISOString(),
-          read: false,
-        });
-      } catch (err) {
+      notifyOwnerMemberLeftHousehold({
+        householdId: hh.id,
+        householdName: hh.name || 'Home',
+        leavingUser: user,
+        ownerUid: hh.ownerUid,
+      }).catch((err) => {
         console.warn('[Repeato] Failed to notify owner on leave:', err);
-      }
+      });
     }
 
     // 3. Remove household from own profile

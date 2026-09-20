@@ -146,4 +146,146 @@ describe('services/householdBroadcastService', () => {
       expect.objectContaining({ taskId: task.id, type: 'household' })
     );
   });
+
+  describe('broadcastMemberJoinedHousehold', () => {
+    it('sends push to the new member and to existing household members', async () => {
+      const newMember = {
+        id: 'user-alice',
+        name: 'Alice',
+        code: 'RPT-ALICE',
+      };
+
+      const existingMemberCharlie: HouseholdMemberProfile = {
+        code: 'CHARLIE1',
+        userId: 'user-charlie',
+        name: 'Charlie',
+        color: '#10B981',
+        addedAt: '2026-09-01T00:00:00.000Z',
+        status: 'active',
+      };
+
+      vi.mocked(userRepository.loadRemote).mockImplementation(async (uid: string) => {
+        if (uid === 'user-alice') {
+          return {
+            id: 'user-alice',
+            name: 'Alice',
+            expoPushToken: 'ExponentPushToken[alice-phone]',
+            pushOptIn: true,
+          } as any;
+        }
+        if (uid === 'user-charlie') {
+          return {
+            id: 'user-charlie',
+            name: 'Charlie',
+            expoPushToken: 'ExponentPushToken[charlie-phone]',
+            pushOptIn: true,
+          } as any;
+        }
+        return null;
+      });
+
+      const { broadcastMemberJoinedHousehold } = await import('../householdBroadcastService');
+
+      await broadcastMemberJoinedHousehold({
+        householdId: 'hh-home',
+        householdName: 'Sweet Home',
+        newMember,
+        actorUser,
+        allMembers: [
+          { code: actorUser.userCode || 'RPT-MALAY', userId: actorUser.id, name: actorUser.name, color: '#3B82F6', addedAt: '', status: 'active' },
+          existingMemberCharlie,
+          { code: newMember.code, userId: newMember.id, name: newMember.name, color: '#EC4899', addedAt: '', status: 'active' },
+        ],
+      });
+
+      // 1. New member Alice receives welcome notification
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-alice',
+        expect.objectContaining({
+          type: 'household',
+          title: '🏠 Added to Household',
+          body: expect.stringContaining('Malay added you to "Sweet Home"'),
+        })
+      );
+      expect(notificationServices.sendRemotePushNotification).toHaveBeenCalledWith(
+        'ExponentPushToken[alice-phone]',
+        '🏠 Added to Household',
+        expect.stringContaining('Malay added you to "Sweet Home"'),
+        expect.objectContaining({ householdId: 'hh-home', type: 'household' })
+      );
+
+      // 2. Existing member Charlie receives join notification
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-charlie',
+        expect.objectContaining({
+          type: 'household',
+          title: '🏠 New Member Joined',
+          body: expect.stringContaining('Alice has joined "Sweet Home"'),
+        })
+      );
+      expect(notificationServices.sendRemotePushNotification).toHaveBeenCalledWith(
+        'ExponentPushToken[charlie-phone]',
+        '🏠 New Member Joined',
+        expect.stringContaining('Alice has joined "Sweet Home"'),
+        expect.objectContaining({ householdId: 'hh-home', type: 'household' })
+      );
+
+      // 3. Actor Malay should NOT receive notification
+      expect(userRepository.saveNotification).not.toHaveBeenCalledWith(
+        actorUser.id,
+        expect.anything()
+      );
+    });
+  });
+
+  describe('notifyOwnerMemberLeftHousehold', () => {
+    it('sends push notification strictly to the owner when member leaves', async () => {
+      vi.mocked(userRepository.loadRemote).mockResolvedValueOnce({
+        id: 'user-owner',
+        name: 'Owner Bob',
+        expoPushToken: 'ExponentPushToken[owner-phone]',
+        pushOptIn: true,
+      } as any);
+
+      const { notifyOwnerMemberLeftHousehold } = await import('../householdBroadcastService');
+
+      await notifyOwnerMemberLeftHousehold({
+        householdId: 'hh-home',
+        householdName: 'Sweet Home',
+        leavingUser: { id: 'user-alice', name: 'Alice', userCode: 'RPT-ALICE' },
+        ownerUid: 'user-owner',
+      });
+
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-owner',
+        expect.objectContaining({
+          type: 'household',
+          title: '🚪 Member Left Household',
+          body: 'Alice left "Sweet Home".',
+        })
+      );
+
+      expect(notificationServices.sendRemotePushNotification).toHaveBeenCalledWith(
+        'ExponentPushToken[owner-phone]',
+        '🚪 Member Left Household',
+        'Alice left "Sweet Home".',
+        expect.objectContaining({ householdId: 'hh-home', type: 'household' })
+      );
+    });
+
+    it('does not send notification if the leaving user is the owner themselves', async () => {
+      const { notifyOwnerMemberLeftHousehold } = await import('../householdBroadcastService');
+
+      await notifyOwnerMemberLeftHousehold({
+        householdId: 'hh-home',
+        householdName: 'Sweet Home',
+        leavingUser: { id: 'user-owner', name: 'Owner Bob', userCode: 'RPT-BOB' },
+        ownerUid: 'user-owner',
+      });
+
+      expect(userRepository.saveNotification).not.toHaveBeenCalled();
+      expect(notificationServices.sendRemotePushNotification).not.toHaveBeenCalled();
+    });
+  });
 });
+

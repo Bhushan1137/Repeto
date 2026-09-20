@@ -89,6 +89,7 @@ interface TaskContextValue {
   mergeHouseholds: (sourceHhId: string, targetHhId: string) => Promise<void>;
   claimTask: (taskId: string) => Promise<void>;
   takeOverTask: (taskId: string) => Promise<void>;
+  purgeHouseholdTasks: (householdId: string) => Promise<void>;
   refreshTasks: () => Promise<void>;
   focusTaskId: string | null;
   setFocusTaskId: (id: string | null) => void;
@@ -159,10 +160,26 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       try {
         const localTasks = await taskRepository.load(user.id, isOnline);
         if (!cancelled && userIdRef.current === user.id) {
-          setTasks(localTasks);
+          const userHhIds = new Set((user.households ?? []).map((h) => h.id));
+          const validLocalTasks = localTasks.filter(
+            (t) => !t.householdId || userHhIds.has(t.householdId)
+          );
+          const orphanedTasks = localTasks.filter(
+            (t) => t.householdId && !userHhIds.has(t.householdId)
+          );
+          if (orphanedTasks.length > 0) {
+            orphanedTasks.forEach((t) => {
+              cancelTaskReminder(t.id).catch(() => {});
+              cancelOverdueReminders(t.id).catch(() => {});
+            });
+            taskRepository.saveAll(validLocalTasks, user.id).catch(() => {});
+          }
+
+          setTasks(validLocalTasks);
+          tasksRef.current = validLocalTasks;
           setHydrated(true);
           // Sync overdue push notifications from local data (covers offline start)
-          syncOverdueNotifications(localTasks).catch(() => {});
+          syncOverdueNotifications(validLocalTasks).catch(() => {});
         }
       } catch (err) {
         console.warn('[Repeato] Failed to load local tasks:', err);
@@ -175,25 +192,35 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     if (firebaseReady && isOnline) {
       setLoading(true);
       const householdIds = (user.households ?? []).map((h) => h.id);
+      const userHhIds = new Set(householdIds);
       unsubscribeRemote = subscribeToUserTasksAndHouseholds(
         user.id,
         householdIds,
         async (remoteTasks) => {
           if (!cancelled && userIdRef.current === user.id) {
-            const currentLocal = tasksRef.current;
+            // Strip out any stale household tasks from local state before merging
+            const currentLocal = tasksRef.current.filter(
+              (t) => !t.householdId || userHhIds.has(t.householdId)
+            );
             const { merged, newerLocalTasks } = mergeTasksLocalAndRemote(currentLocal, remoteTasks);
-            await taskRepository.saveAll(merged, user.id);
-            setTasks(merged);
-            tasksRef.current = merged;
+            const validMerged = merged.filter(
+              (t) => !t.householdId || userHhIds.has(t.householdId)
+            );
+            await taskRepository.saveAll(validMerged, user.id);
+            setTasks(validMerged);
+            tasksRef.current = validMerged;
             setHydrated(true);
             setLoading(false);
 
-            if (newerLocalTasks.length > 0) {
-              Promise.all(newerLocalTasks.map((t) => taskRepository.saveOne(t, user.id, 'update'))).catch(() => {});
+            const validNewerLocal = newerLocalTasks.filter(
+              (t) => !t.householdId || userHhIds.has(t.householdId)
+            );
+            if (validNewerLocal.length > 0) {
+              Promise.all(validNewerLocal.map((t) => taskRepository.saveOne(t, user.id, 'update'))).catch(() => {});
             }
 
             // Sync overdue push notifications after tasks are merged and up-to-date
-            syncOverdueNotifications(merged).catch(() => {});
+            syncOverdueNotifications(validMerged).catch(() => {});
           }
         },
         async (error) => {
@@ -201,7 +228,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           if (!cancelled && userIdRef.current === user.id) {
             try {
               const loaded = await taskRepository.load(user.id);
-              setTasks(loaded);
+              const validLoaded = loaded.filter(
+                (t) => !t.householdId || userHhIds.has(t.householdId)
+              );
+              setTasks(validLoaded);
+              tasksRef.current = validLoaded;
             } catch {
               // Ignore fallback error
             } finally {
@@ -1067,6 +1098,25 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     [user, persistAll, syncTask, showToast, activeHousehold?.members]
   );
 
+  const purgeHouseholdTasks = useCallback(
+    async (householdId: string) => {
+      if (!user?.id) return;
+      const targetTasks = tasksRef.current.filter((t) => t.householdId === householdId);
+      const remaining = tasksRef.current.filter((t) => t.householdId !== householdId);
+
+      targetTasks.forEach((t) => {
+        cancelTaskReminder(t.id).catch(() => {});
+        cancelOverdueReminders(t.id).catch(() => {});
+      });
+
+      setTasks(remaining);
+      tasksRef.current = remaining;
+      await taskRepository.saveAll(remaining, user.id);
+      syncOverdueNotifications(remaining).catch(() => {});
+    },
+    [user?.id]
+  );
+
   // Setup notification categories (with localized button titles)
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -1216,6 +1266,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       mergeHouseholds: mergeHouseholdsCb,
       claimTask: claimTaskCb,
       takeOverTask: claimTaskCb,
+      purgeHouseholdTasks,
       refreshTasks,
       focusTaskId,
       setFocusTaskId,
@@ -1251,6 +1302,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       unshareAllLocalTasks,
       mergeHouseholdsCb,
       claimTaskCb,
+      purgeHouseholdTasks,
       refreshTasks,
       focusTaskId,
     ]

@@ -36,6 +36,7 @@ import { useNudge } from '@/hooks/useNudge';
 import { useNotifications } from '@/providers/NotificationProvider';
 import type { CategoryKey, HouseholdContext, HouseholdMemberProfile, RepeatingTask } from '@/types';
 import type { AppNotification } from '@/types/notification';
+import { broadcastMemberJoinedHousehold } from '@/services/householdBroadcastService';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -443,6 +444,15 @@ function HouseholdView({
       language === 'hi' ? 'परिवार का सदस्य जुड़ गया' : 'Household Member Linked',
       language === 'hi' ? `${member.name || code} को परिवार में जोड़ा गया।` : `Linked ${member.name || code} to your household.`
     );
+
+    // Broadcast push notification to all members of the household
+    broadcastMemberJoinedHousehold({
+      householdId: activeHousehold.id,
+      householdName: activeHousehold.name || 'Home',
+      newMember: { id: member.userId, name: member.name, code: member.code },
+      actorUser: user,
+      allMembers: updatedHh?.members ?? activeMembers,
+    }).catch((err) => console.warn('[Repeato] Member join broadcast failed:', err));
 
     if (member.userId) {
       try {
@@ -1117,7 +1127,7 @@ function HouseholdView({
 // ────────────────────────────────────────────────────────────────────────────
 export default function HouseholdScreen() {
   const { user, updateUser, activeHousehold, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold } = useAuth();
-  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, claimTask, refreshTasks } = useTasks();
+  const { tasks, completeTask, snoozeTask, skipTask, deleteTask, archiveTask, pinTask, duplicateTask, setTaskDueDate, updateTask, deleteHistoryEntry, removeHouseholdMemberAndCleanup, unshareAllLocalTasks, claimTask, refreshTasks, purgeHouseholdTasks } = useTasks();
   const { handleNudge } = useNudge();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
@@ -1257,8 +1267,14 @@ export default function HouseholdScreen() {
           currentUserId={user?.id ?? ''}
           currentUserName={user?.name ?? ''}
           language={language}
-          onDeleteHousehold={deleteHousehold}
-          onLeaveHousehold={leaveHousehold}
+          onDeleteHousehold={async (hhId) => {
+            await purgeHouseholdTasks(hhId);
+            return await deleteHousehold(hhId);
+          }}
+          onLeaveHousehold={async (hhId) => {
+            await purgeHouseholdTasks(hhId);
+            return await leaveHousehold(hhId);
+          }}
           onRemoveMember={removeMemberFromHousehold}
           showToast={showToast}
         />
@@ -1454,6 +1470,15 @@ function ZeroHouseholdCard({
         }
 
         targetHhId = hhForMe.id;
+
+        // Broadcast to existing household members that user has joined
+        broadcastMemberJoinedHousehold({
+          householdId: hhForMe.id,
+          householdName: hhForMe.name || 'Home',
+          newMember: { id: user.id, name: user.name, code: user.userCode || '' },
+          actorUser: user,
+          allMembers: updatedTargetHh.members,
+        }).catch((err) => console.warn('[Repeato] Member join broadcast failed:', err));
       }
     }
 
