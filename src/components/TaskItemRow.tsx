@@ -20,6 +20,7 @@ export interface TaskItemRowProps {
   householdMembers?: HouseholdMemberProfile[];
   onTakeOver?: (taskId: string) => void;
   onNudge?: (taskId: string) => void;
+  isOverdue?: boolean;
 }
 
 function TaskItemRowComponent({
@@ -39,6 +40,7 @@ function TaskItemRowComponent({
   householdMembers,
   onTakeOver,
   onNudge,
+  isOverdue = false,
 }: TaskItemRowProps) {
   const taskId = task.id;
 
@@ -98,6 +100,7 @@ function TaskItemRowComponent({
         householdMembers={householdMembers}
         onTakeOver={onTakeOver ? handleTakeOver : undefined}
         onNudge={onNudge ? handleNudge : undefined}
+        isOverdue={isOverdue}
       />
     </SwipeableTaskItem>
   );

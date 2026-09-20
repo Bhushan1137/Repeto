@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
-import { Text, TouchableRipple } from 'react-native-paper';
-import type { Language, RepeatingTask, CategoryKey, HouseholdMemberProfile } from '@/types';
+import { AppIcon } from '@/components/AppIcon';
+import { TaskItemRow } from '@/components/TaskItemRow';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { daysUntilDue } from '@/domain/recurrence';
-import { hasCompletedToday, canCompleteTask, canSnoozeTask, isOverdueToday } from '@/domain/task';
-import { TaskItemRow } from '@/components/TaskItemRow';
-import { AppIcon } from '@/components/AppIcon';
+import { canCompleteTask, canSnoozeTask, hasCompletedToday, isOverdueToday } from '@/domain/task';
+import type { CategoryKey, HouseholdMemberProfile, Language, RepeatingTask } from '@/types';
 import { formatTime12 } from '@/utils/timeFormat';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text, TouchableRipple } from 'react-native-paper';
 
 interface TodayFocusSectionProps {
   tasks: RepeatingTask[];
@@ -114,8 +114,8 @@ function TodayFocusSectionComponent({
   const completedCount = completedTodayEntries.length;
   const totalTodayCount = pendingCount + completedCount;
 
-  const completionPercent = totalTodayCount > 0 
-    ? Math.round((completedCount / totalTodayCount) * 100) 
+  const completionPercent = totalTodayCount > 0
+    ? Math.round((completedCount / totalTodayCount) * 100)
     : 0;
 
   // Items to display based on selected tab
@@ -274,17 +274,8 @@ function TodayFocusSectionComponent({
                   onSnooze={onSnoozeTask}
                   onTakeOver={onTakeOver}
                   onNudge={onNudge}
+                  isOverdue={isOverdueNow}
                 />
-                {isOverdueNow && (
-                  <View style={styles.overdueBadgeRow}>
-                    <View style={styles.overdueBadge}>
-                      <AppIcon name="alert-circle-outline" size={11} color="#B45309" />
-                      <Text style={styles.overdueBadgeText}>
-                        {language === 'hi' ? 'विलंबित' : 'Overdue'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
               </View>
             );
           }
@@ -577,23 +568,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Overdue badge (shown inside Today's Focus when reminder time has passed)
-  overdueBadgeRow: {
-    paddingHorizontal: 12,
-    paddingBottom: 6,
-    alignItems: 'flex-start',
-  },
-  overdueBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(180, 83, 9, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(180, 83, 9, 0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.xs,
-  },
+  // Overdue badge styles (now rendered inside TaskCard via isOverdue prop)
   overdueBadgeText: {
     fontFamily: 'Manrope_700Bold',
     fontSize: 10.5,
