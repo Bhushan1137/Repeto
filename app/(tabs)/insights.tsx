@@ -773,18 +773,16 @@ export default function InsightsScreen() {
                               <Text style={styles.avatarText}>{m.short}</Text>
                             </View>
                             <View style={styles.leaderboardInfo}>
-                              <View style={styles.leaderboardTopLine}>
-                                <Text style={styles.leaderboardName}>
-                                  {m.name} {m.isYou ? (isHi ? '(आप)' : '(You)') : ''}
-                                </Text>
-                                <Text style={styles.leaderboardStatText}>
-                                  {m.onTimePercent}% {isHi ? 'समय पर' : 'on-time'} ·{' '}
-                                  {m.completedCount ?? 0} {isHi ? 'पूर्ण' : 'done'}
-                                  {m.taskCount > 0
-                                    ? ` (${m.taskCount} ${isHi ? 'कार्य' : 'assigned'})`
-                                    : ''}
-                                </Text>
-                              </View>
+                              <Text style={styles.leaderboardName} numberOfLines={1}>
+                                {m.name}{m.isYou ? (isHi ? ' (आप)' : ' (You)') : ''}
+                              </Text>
+                              <Text style={styles.leaderboardStatText}>
+                                {m.onTimePercent}% {isHi ? 'समय पर' : 'on-time'} ·{' '}
+                                {m.completedCount ?? 0} {isHi ? 'पूर्ण' : 'done'}
+                                {m.taskCount > 0
+                                  ? ` (${m.taskCount} ${isHi ? 'कार्य' : 'assigned'})`
+                                  : ''}
+                              </Text>
                               <View style={styles.leaderboardBarTrack}>
                                 <View
                                   style={[
@@ -1467,12 +1465,7 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontFamily: 'Manrope_800ExtraBold',
   },
-  leaderboardInfo: { flex: 1, gap: 4 },
-  leaderboardTopLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  leaderboardInfo: { flex: 1, gap: 3 },
   leaderboardName: {
     fontFamily: 'Manrope_700Bold',
     fontSize: 13,

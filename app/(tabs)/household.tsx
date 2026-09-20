@@ -4,8 +4,8 @@ import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Card, TextInput as PaperInput, Text } from 'react-native-paper';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Card, Text } from 'react-native-paper';
 
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { AppIcon } from '@/components/AppIcon';
@@ -473,6 +473,7 @@ function HouseholdView({
     setScannerVisible(false);
     if (data) {
       setCodeInput(data);
+      Keyboard.dismiss();
       await addByCode(data);
     }
   };
@@ -860,121 +861,135 @@ function HouseholdView({
         animationType="slide"
         onRequestClose={() => setInviteModalVisible(false)}
       >
-        <Pressable style={styles.activityBackdrop} onPress={() => setInviteModalVisible(false)} />
-        <View style={styles.sheetModalContainer}>
-          <View style={styles.sheetHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <AppIcon name="people-outline" size={20} color={Colors.marigoldDeep} />
-              <Text style={styles.sheetTitle}>
-                {language === 'hi' ? 'परिवार में जोड़ें' : 'Add Roommate or Family'}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setInviteModalVisible(false)} hitSlop={10} style={styles.sheetCloseBtn}>
-              <AppIcon name="close" size={20} color={Colors.ink} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-            {user?.userCode && (
-              <View style={styles.inviteShareCard}>
-                <Text style={styles.inviteShareLabel}>
-                  {language === 'hi' ? 'आपका यूज़र कोड (दोस्तों के साथ साझा करें):' : 'Your Invite Code (Share with Roommates):'}
-                </Text>
-                <View style={styles.inviteShareCodeRow}>
-                  <Text style={styles.inviteShareCodeText}>{user.userCode}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity
-                      onPress={handleCopyCode}
-                      style={styles.inviteCopyBtn}
-                      activeOpacity={0.7}
-                    >
-                      <AppIcon name="copy-outline" size={13} color={Colors.tealDeep} />
-                      <Text style={styles.inviteCopyBtnText}>
-                        {copiedCode ? (language === 'hi' ? 'कॉपी!' : 'Copied!') : (language === 'hi' ? 'कॉपी' : 'Copy')}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setShowQrCode(!showQrCode)}
-                      style={styles.inviteQrBtn}
-                      activeOpacity={0.7}
-                    >
-                      <AppIcon name="qr-code-outline" size={13} color={Colors.marigoldDeep} />
-                      <Text style={styles.inviteQrBtnText}>
-                        {showQrCode ? (language === 'hi' ? 'छिपाएं' : 'Hide QR') : 'QR'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+        {/* Full-screen wrapper so KeyboardAvoidingView can push the sheet up */}
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setInviteModalVisible(false)}
+          />
+          <KeyboardAvoidingView
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+          >
+            <View style={styles.inviteSheetContainer}>
+              <View style={styles.sheetHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <AppIcon name="people-outline" size={20} color={Colors.marigoldDeep} />
+                  <Text style={styles.sheetTitle}>
+                    {language === 'hi' ? 'परिवार में जोड़ें' : 'Add Roommate or Family'}
+                  </Text>
                 </View>
+                <TouchableOpacity onPress={() => setInviteModalVisible(false)} hitSlop={10} style={styles.sheetCloseBtn}>
+                  <AppIcon name="close" size={20} color={Colors.ink} />
+                </TouchableOpacity>
+              </View>
 
-                {showQrCode && (
-                  <View style={styles.qrCodeWrapper}>
-                    <QRCode value={user.userCode} size={140} />
-                    <Text style={styles.qrCodeInstruction}>
-                      {language === 'hi' ? 'रूममेट इस कोड को अपने फोन से स्कैन कर सकते हैं' : 'Roommate can scan this with Repeto scanner'}
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+                {user?.userCode && (
+                  <View style={styles.inviteShareCard}>
+                    <Text style={styles.inviteShareLabel}>
+                      {language === 'hi' ? 'आपका यूज़र कोड (दोस्तों के साथ साझा करें):' : 'Your Invite Code (Share with Roommates):'}
                     </Text>
+                    <View style={styles.inviteShareCodeRow}>
+                      <Text style={styles.inviteShareCodeText}>{user.userCode}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={handleCopyCode}
+                          style={styles.inviteCopyBtn}
+                          activeOpacity={0.7}
+                        >
+                          <AppIcon name="copy-outline" size={13} color={Colors.tealDeep} />
+                          <Text style={styles.inviteCopyBtnText}>
+                            {copiedCode ? (language === 'hi' ? 'कॉपी!' : 'Copied!') : (language === 'hi' ? 'कॉपी' : 'Copy')}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setShowQrCode(!showQrCode)}
+                          style={styles.inviteQrBtn}
+                          activeOpacity={0.7}
+                        >
+                          <AppIcon name="qr-code-outline" size={13} color={Colors.marigoldDeep} />
+                          <Text style={styles.inviteQrBtnText}>
+                            {showQrCode ? (language === 'hi' ? 'छिपाएं' : 'Hide QR') : 'QR'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {showQrCode && (
+                      <View style={styles.qrCodeWrapper}>
+                        <QRCode value={user.userCode} size={140} />
+                        <Text style={styles.qrCodeInstruction}>
+                          {language === 'hi' ? 'रूममेट इस कोड को अपने फोन से स्कैन कर सकते हैं' : 'Roommate can scan this with Repeto scanner'}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
-              </View>
-            )}
 
-            <View style={styles.inviteDividerRow}>
-              <View style={styles.inviteDividerLine} />
-              <Text style={styles.inviteDividerText}>
-                {language === 'hi' ? 'या रूममेट का कोड दर्ज करें' : "OR ENTER ROOMMATE'S CODE"}
-              </Text>
-              <View style={styles.inviteDividerLine} />
-            </View>
+                <View style={styles.inviteDividerRow}>
+                  <View style={styles.inviteDividerLine} />
+                  <Text style={styles.inviteDividerText}>
+                    {language === 'hi' ? 'या रूममेट का कोड दर्ज करें' : "OR ENTER ROOMMATE'S CODE"}
+                  </Text>
+                  <View style={styles.inviteDividerLine} />
+                </View>
 
-            <View style={styles.manualJoinRow} testID="household-manual-join-row">
-              <PaperInput
-                mode="outlined"
-                value={codeInput}
-                onChangeText={setCodeInput}
-                autoCapitalize="characters"
-                placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
-                outlineColor={Colors.ivoryLine}
-                activeOutlineColor={Colors.marigoldDeep}
-                style={styles.manualJoinInput}
-                textColor={Colors.ink}
-                testID="household-join-code-input"
-                right={
-                  <PaperInput.Icon
-                    icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
-                    onPress={async () => {
-                      if (!permission || !permission.granted) {
-                        const res = await requestPermission();
-                        if (!res.granted) {
-                          showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
-                          return;
+                <View style={styles.manualJoinRow} testID="household-manual-join-row">
+                  <View style={styles.codeInputBox}>
+                    <TextInput
+                      value={codeInput}
+                      onChangeText={setCodeInput}
+                      autoCapitalize="characters"
+                      placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
+                      placeholderTextColor={Colors.inkFaint}
+                      style={styles.codeInputField}
+                      testID="household-join-code-input"
+                      returnKeyType="done"
+                      onSubmitEditing={async () => { await addByCode(); if (codeInput.trim()) setInviteModalVisible(false); }}
+                    />
+                    <TouchableOpacity
+                      onPress={async () => {
+                        if (!permission || !permission.granted) {
+                          const res = await requestPermission();
+                          if (!res.granted) {
+                            showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
+                            return;
+                          }
                         }
+                        Keyboard.dismiss();
+                        setScannerVisible(true);
+                      }}
+                      style={styles.codeInputCameraBtn}
+                      testID="household-scanner-btn"
+                      hitSlop={8}
+                    >
+                      <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />
+                    </TouchableOpacity>
+                  </View>
+                  <Button
+                    title={language === 'hi' ? 'जोड़ें' : 'Add'}
+                    loading={addingCode}
+                    onPress={async () => {
+                      await addByCode();
+                      if (codeInput.trim()) {
+                        setInviteModalVisible(false);
                       }
-                      setScannerVisible(true);
                     }}
-                    testID="household-scanner-btn"
+                    style={styles.manualJoinBtn}
+                    testID="household-join-btn"
                   />
-                }
-                theme={{ colors: { background: Colors.white } }}
-              />
-              <Button
-                title={language === 'hi' ? 'जोड़ें' : 'Add'}
-                loading={addingCode}
-                onPress={async () => {
-                  await addByCode();
-                  if (codeInput.trim()) {
-                    setInviteModalVisible(false);
-                  }
-                }}
-                style={styles.manualJoinBtn}
-                testID="household-join-btn"
-              />
-            </View>
+                </View>
 
-            <Text style={styles.inviteFooterNote}>
-              {language === 'hi'
-                ? 'जुड़ने के बाद, सभी सदस्य एक साथ कार्य साझा कर सकते हैं और रोटेशन सेट कर सकते हैं।'
-                : 'Linked members can immediately share chores, claim duties, and set turn rotations.'}
-            </Text>
-          </ScrollView>
+                <Text style={styles.inviteFooterNote}>
+                  {language === 'hi'
+                    ? 'जुड़ने के बाद, सभी सदस्य एक साथ कार्य साझा कर सकते हैं और रोटेशन सेट कर सकते हैं।'
+                    : 'Linked members can immediately share chores, claim duties, and set turn rotations.'}
+                </Text>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1462,6 +1477,7 @@ function ZeroHouseholdCard({
     setScannerVisible(false);
     if (data) {
       setCodeInput(data);
+      Keyboard.dismiss();
       await addByCode(data);
     }
   };
@@ -1495,35 +1511,37 @@ function ZeroHouseholdCard({
           </View>
 
           <View style={styles.manualJoinRow} testID="household-manual-join-row">
-            <PaperInput
-              mode="outlined"
-              value={codeInput}
-              onChangeText={setCodeInput}
-              autoCapitalize="characters"
-              placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
-              outlineColor={Colors.ivoryLine}
-              activeOutlineColor={Colors.marigoldDeep}
-              style={styles.manualJoinInput}
-              textColor={Colors.ink}
-              testID="household-join-code-input"
-              right={
-                <PaperInput.Icon
-                  icon={() => <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />}
-                  onPress={async () => {
-                    if (!permission || !permission.granted) {
-                      const res = await requestPermission();
-                      if (!res.granted) {
-                        showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
-                        return;
-                      }
+            <View style={styles.codeInputBox}>
+              <TextInput
+                value={codeInput}
+                onChangeText={setCodeInput}
+                autoCapitalize="characters"
+                placeholder={language === 'hi' ? 'यूज़र कोड (जैसे: RPT-XXXXXX)' : 'User Code (e.g. RPT-XXXXXX)'}
+                placeholderTextColor={Colors.inkFaint}
+                style={styles.codeInputField}
+                testID="household-join-code-input"
+                returnKeyType="done"
+                onSubmitEditing={() => addByCode()}
+              />
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!permission || !permission.granted) {
+                    const res = await requestPermission();
+                    if (!res.granted) {
+                      showToast(language === 'hi' ? 'कैमरा अनुमति आवश्यक है' : 'Camera permission is required');
+                      return;
                     }
-                    setScannerVisible(true);
-                  }}
-                  testID="household-scanner-btn"
-                />
-              }
-              theme={{ colors: { background: Colors.white } }}
-            />
+                  }
+                  Keyboard.dismiss();
+                  setScannerVisible(true);
+                }}
+                style={styles.codeInputCameraBtn}
+                testID="household-scanner-btn"
+                hitSlop={8}
+              >
+                <AppIcon name="camera-outline" size={18} color={Colors.indigo950} />
+              </TouchableOpacity>
+            </View>
             <Button
               title={language === 'hi' ? 'जोड़ें' : 'Join'}
               loading={addingCode}
@@ -1762,7 +1780,6 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontFamily: 'Manrope_600SemiBold',
     color: Colors.inkSoft,
-    maxWidth: 65,
   },
   pulseMemberNameActive: {
     color: Colors.tealDeep,
@@ -2057,6 +2074,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     padding: 20,
   },
+  // Same as sheetModalContainer but without position:absolute — used in modals
+  // where KeyboardAvoidingView needs the sheet in the normal flex flow
+  inviteSheetContainer: {
+    maxHeight: '85%',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+    padding: 20,
+  },
   sheetHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2201,19 +2228,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.ivoryLine,
     paddingTop: 12,
+  },
+  codeInputBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.white,
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  codeInputField: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Manrope_600SemiBold',
+    color: Colors.ink,
+    height: 48,
+  },
+  codeInputCameraBtn: {
+    padding: 4,
   },
   manualJoinInput: {
     flex: 1,
     fontSize: 13,
-    height: 38,
     backgroundColor: Colors.white,
   },
   manualJoinBtn: {
     minWidth: 70,
-    height: 38,
+    alignSelf: 'center',
     marginVertical: 0,
     borderRadius: Radius.xs,
   },

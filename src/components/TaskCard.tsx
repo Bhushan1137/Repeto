@@ -25,6 +25,7 @@ interface TaskCardProps {
   householdMembers?: HouseholdMemberProfile[];
   onTakeOver?: () => void;
   onNudge?: () => void;
+  isOverdue?: boolean;
 }
 
 function TaskCardComponent({
@@ -42,6 +43,7 @@ function TaskCardComponent({
   householdMembers,
   onTakeOver,
   onNudge,
+  isOverdue = false,
 }: TaskCardProps) {
   const cat = CATEGORY_MAP[task.category as CategoryKey] || CATEGORY_MAP['home'] || { icon: '📋', accent: 'marigold' };
   const days = daysUntilDue(task.nextDueDate);
@@ -323,45 +325,56 @@ function TaskCardComponent({
           ) : null}
         </View>
 
-        <View style={styles.rightCol} testID={`${defaultId}-right-col`}>
-          <ProgressRing
-            percent={ringPercent}
-            color={overdue ? Colors.clay : (isMultiDose && doseProgress?.isAllDone ? '#059669' : days === 0 ? '#2563EB' : '#16A34A')}
-            size={52}
-            stroke={4.5}
-            label={ringLabel}
-            labelColor={overdue ? Colors.clayDeep : (isMultiDose && doseProgress?.isAllDone ? '#059669' : Colors.ink)}
-            testID={`${defaultId}-progress-ring`}
-          />
-          {!selected && !selectionMode && isAssignedToOther ? (
-            <Pressable
-              style={styles.lockedBtn}
-              testID={`${defaultId}-locked-complete-btn`}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleLockedOrAssigneePress();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.08)', borderless: true, radius: 20 }}
-            >
-              <AppIcon name="lock-closed-outline" size={18} color={Colors.inkFaint} />
-            </Pressable>
-          ) : !selected && !selectionMode && onCompletePress ? (
-            <Pressable
-              style={styles.quickCompleteBtn}
-              testID={`${defaultId}-quick-complete-btn`}
-              onPress={(e) => {
-                e.stopPropagation();
-                onCompletePress();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              android_ripple={{ color: 'rgba(0, 0, 0, 0.08)', borderless: true, radius: 20 }}
-            >
-              <AppIcon name="checkmark-circle-outline" size={26} color={overdue ? Colors.clay : Colors.inkFaint} />
-            </Pressable>
-          ) : !selectionMode ? (
-            <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
-          ) : null}
+        <View style={styles.rightColWrapper} testID={`${defaultId}-right-col`}>
+          {/* Overdue pill — shown above the Today circle when the reminder time has passed */}
+          {isOverdue && (
+            <View style={styles.overduePill}>
+              <AppIcon name="alert-circle-outline" size={10} color="#B45309" />
+              <Text style={styles.overduePillText}>
+                {language === 'hi' ? 'विलंबित' : 'Overdue'}
+              </Text>
+            </View>
+          )}
+          <View style={styles.rightCol}>
+            <ProgressRing
+              percent={ringPercent}
+              color={overdue ? Colors.clay : (isMultiDose && doseProgress?.isAllDone ? '#059669' : days === 0 ? '#2563EB' : '#16A34A')}
+              size={52}
+              stroke={4.5}
+              label={ringLabel}
+              labelColor={overdue ? Colors.clayDeep : (isMultiDose && doseProgress?.isAllDone ? '#059669' : Colors.ink)}
+              testID={`${defaultId}-progress-ring`}
+            />
+            {!selected && !selectionMode && isAssignedToOther ? (
+              <Pressable
+                style={styles.lockedBtn}
+                testID={`${defaultId}-locked-complete-btn`}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleLockedOrAssigneePress();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.08)', borderless: true, radius: 20 }}
+              >
+                <AppIcon name="lock-closed-outline" size={18} color={Colors.inkFaint} />
+              </Pressable>
+            ) : !selected && !selectionMode && onCompletePress ? (
+              <Pressable
+                style={styles.quickCompleteBtn}
+                testID={`${defaultId}-quick-complete-btn`}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onCompletePress();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.08)', borderless: true, radius: 20 }}
+              >
+                <AppIcon name="checkmark-circle-outline" size={26} color={overdue ? Colors.clay : Colors.inkFaint} />
+              </Pressable>
+            ) : !selectionMode ? (
+              <AppIcon name="chevron-forward" size={16} color={Colors.inkFaint} />
+            ) : null}
+          </View>
         </View>
       </View>
     </Pressable>
@@ -493,7 +506,27 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: Colors.inkSoft,
   },
+  rightColWrapper: {
+    alignItems: 'center',
+    gap: 4,
+  },
   rightCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  overduePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(180, 83, 9, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.30)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  overduePillText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 9.5,
+    color: '#B45309',
+  },
   quickCompleteBtn: {
     padding: 4,
     borderRadius: 16,
