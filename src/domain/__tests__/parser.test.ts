@@ -147,4 +147,45 @@ describe('parseTaskInput natural language engine', () => {
       expect(ids).toContain('category');
     });
   });
+
+  describe('Intelligent habit defaults & Hinglish conversational parsing', () => {
+    it('intelligently defaults "Water plants" to home category, 🪴 icon, and daily recurrence', () => {
+      const result = parseTaskInput('Water plants');
+      expect(result.title).toBe('Water plants');
+      expect(result.category).toBe('home');
+      expect(result.icon).toBe('🪴');
+      expect(result.recurrence).toEqual({ type: 'daily' });
+    });
+
+    it('intelligently defaults "Gym workout" to health category, 💪 icon, and daily recurrence', () => {
+      const result = parseTaskInput('Gym workout 7am');
+      expect(result.title).toBe('Gym workout');
+      expect(result.category).toBe('health');
+      expect(result.icon).toBe('💪');
+      expect(result.recurrence).toEqual({ type: 'daily' });
+      expect(result.reminderTime).toBe('07:00');
+    });
+
+    it('parses Hinglish "subah shaam" as twice daily', () => {
+      const result = parseTaskInput('BP medicine subah shaam');
+      expect(result.title).toBe('BP medicine');
+      expect(result.isMultiTime).toBe(true);
+      expect(result.timesPerDay).toBe(2);
+      expect(result.category).toBe('health');
+    });
+
+    it('parses Hinglish "har mahine 5 ko" with amount and clean title', () => {
+      const result = parseTaskInput('Har mahine 5 ko rent 15000');
+      expect(result.title).toBe('Rent');
+      expect(result.amount).toBe(15000);
+      expect(result.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+    });
+
+    it('parses Hinglish "15 din me" interval', () => {
+      const result = parseTaskInput('Car wash 15 din me');
+      expect(result.title).toBe('Car wash');
+      expect(result.category).toBe('vehicle');
+      expect(result.recurrence).toEqual({ type: 'interval', interval: 15, intervalUnit: 'days' });
+    });
+  });
 });

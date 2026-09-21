@@ -295,15 +295,22 @@ export function removeMemberFromHousehold(
   const households = (user.households ?? []).map(h => {
     if (h.id !== householdId) return h;
     const removedMember = h.members.find(m => normalizeInviteCode(m.code) === target);
+    const targetUid = removedMember?.userId;
     return {
       ...h,
-      members: h.members.filter(m => normalizeInviteCode(m.code) !== target),
-      memberUids: removedMember?.userId
-        ? h.memberUids.filter(uid => uid !== removedMember.userId)
+      members: h.members.filter(m =>
+        normalizeInviteCode(m.code) !== target && (!targetUid || m.userId !== targetUid)
+      ),
+      memberUids: targetUid
+        ? h.memberUids.filter(uid => uid !== targetUid)
         : h.memberUids,
     };
   });
-  return { households };
+  // Also prune from legacy user.householdMembers
+  const householdMembers = (user.householdMembers ?? []).filter(
+    m => normalizeInviteCode(m.code) !== target
+  );
+  return { households, householdMembers };
 }
 
 export interface CollisionResult {

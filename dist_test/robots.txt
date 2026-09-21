@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /privacy.html
+Allow: /terms.html
+Allow: /account-deletion.html
+Allow: /.well-known/assetlinks.json
+
+Sitemap: https://repeto.online/sitemap.xml

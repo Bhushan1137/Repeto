@@ -112,7 +112,21 @@ describe('insights domain module', () => {
     expect(forecast.yearlyEstimate).toBe(180000);
     expect(forecast.currency).toBe('₹');
     expect(forecast.spentSoFarThisMonth).toBe(15000); // completed history in current month
-    expect(forecast.upcomingThisMonth).toBe(0);
+  });
+
+  it('correctly calculates upcomingThisMonth for bills due later this month', () => {
+    const today = new Date();
+    const currentMonthIso = today.toISOString().slice(0, 7);
+    const pendingTask: RepeatingTask = {
+      ...mockTask,
+      id: 'task-pending',
+      amount: 4500,
+      nextDueDate: `${currentMonthIso}-28T10:00:00.000Z`,
+      history: [],
+    };
+    const forecast = computeSpendForecast([pendingTask], 'en');
+    expect(forecast.upcomingThisMonth).toBe(4500);
+    expect(forecast.spentSoFarThisMonth).toBe(0);
   });
 
   it('calculates true daily streak across multiple days', () => {

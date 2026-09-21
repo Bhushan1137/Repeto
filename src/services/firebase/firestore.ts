@@ -108,7 +108,11 @@ export async function saveHouseholdRemote(household: import('@/types').Household
   if (!uid) return;
 
   const ownerUid = household.ownerUid || uid;
-  const memberUids = Array.from(new Set([uid, ownerUid, ...(household.memberUids ?? [])]));
+  // If household.memberUids is explicitly provided, respect it (ensuring ownerUid is present).
+  // Do NOT force current user `uid` into memberUids if the user is leaving or being removed!
+  const memberUids = household.memberUids !== undefined
+    ? Array.from(new Set([ownerUid, ...household.memberUids]))
+    : Array.from(new Set([uid, ownerUid]));
   const payload = forFirestore({
     ...household,
     ownerUid,

@@ -121,4 +121,30 @@ describe('household domain module', () => {
     );
     expect(removePatch.households?.[0].members).toHaveLength(1);
   });
+
+  it('removes member case-insensitively, updates memberUids, and prunes legacy householdMembers', () => {
+    const hhContext = createHouseholdContext('Home', '🏠', '#3E7C6A', mockUser);
+    const member = householdMemberFromInvite({
+      code: 'RPT-ABC123',
+      userId: 'usr-target',
+      name: 'Alice',
+      color: '#FF0000',
+    });
+    const hhWithMember = {
+      ...hhContext,
+      members: [...hhContext.members, member],
+      memberUids: [...hhContext.memberUids, 'usr-target'],
+    };
+    const userState: UserProfile = {
+      ...mockUser,
+      households: [hhWithMember],
+      householdMembers: [member],
+    };
+
+    // Remove using unnormalized lowercase string without hyphen
+    const patch = removeMemberFromHousehold(userState, hhContext.id, 'rptabc123');
+    expect(patch.households?.[0].members.find(m => m.code === 'RPT-ABC123')).toBeUndefined();
+    expect(patch.households?.[0].memberUids).not.toContain('usr-target');
+    expect(patch.householdMembers?.find(m => m.code === 'RPT-ABC123')).toBeUndefined();
+  });
 });

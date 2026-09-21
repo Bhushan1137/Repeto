@@ -630,7 +630,7 @@ export function computeSpendForecast(
     // Calculate upcoming bills in the current month
     const days = daysUntilDue(t.nextDueDate);
     const dueMonth = t.nextDueDate.slice(0, 7);
-    if (dueMonth === currentMonth && days >= 0) {
+    if (isCurrentMonth(dueMonth) && days >= 0) {
       upcomingThisMonth += amount;
     }
   });

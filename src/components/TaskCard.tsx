@@ -391,6 +391,8 @@ export const TaskCard = React.memo(TaskCardComponent, (prev, next) => {
     prev.task.escalationCount === next.task.escalationCount &&
     prev.task.assignedTo === next.task.assignedTo &&
     prev.task.householdId === next.task.householdId &&
+    prev.isOverdue === next.isOverdue &&
+    (prev.task.history?.length ?? 0) === (next.task.history?.length ?? 0) &&
     prev.selected === next.selected &&
     prev.selectionMode === next.selectionMode &&
     prev.language === next.language &&

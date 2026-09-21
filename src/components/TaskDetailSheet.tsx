@@ -12,6 +12,7 @@ import {
   Image,
   Linking,
   KeyboardAvoidingView,
+  TouchableOpacity,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -169,8 +170,6 @@ function TaskDetailSheetComponent({
     return null;
   }, [task]);
 
-  const isCompletedToday = isMultiDose ? Boolean(doseProgress?.isAllDone) : !!todayCompletion;
-
   const assigneeDisplayName = useMemo(() => {
     if (!task?.assignedTo) return language === 'hi' ? 'कोई नहीं (साझा)' : 'Unassigned (Open)';
     if (task.assignedTo === user?.id || task.assignedTo === user?.userCode) {
@@ -187,6 +186,8 @@ function TaskDetailSheetComponent({
   const hex = AccentHex[cat.accent];
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;
+  const isDueTodayOrOverdue = days <= 0;
+  const isCompletedToday = isDueTodayOrOverdue && (isMultiDose ? Boolean(doseProgress?.isAllDone) : !!todayCompletion);
 
   const statusText: Record<CompletionStatus, string> = {
     on_time: translate('completedOnTime'),
@@ -428,7 +429,34 @@ function TaskDetailSheetComponent({
             </Card>
           )}
 
-          {/* If occurrence is marked done today, show completed status & undo option only */}
+          {/* Earlier today completion alert banner when viewing an upcoming occurrence */}
+          {todayCompletion && days > 0 && (
+            <View style={styles.earlierDoneBanner}>
+              <View style={styles.earlierDoneLeft}>
+                <AppIcon name="checkmark-circle" size={16} color="#059669" />
+                <Text style={styles.earlierDoneText}>
+                  {language === 'hi'
+                    ? `आज का कार्य संपन्न (${formatTime12(todayCompletion.completedAt ?? '')}) • अगली देय: ${dayLabel(days, language)}`
+                    : `Completed earlier today at ${formatTime12(todayCompletion.completedAt ?? '')} • Next due: ${dayLabel(days, language)}`}
+                </Text>
+              </View>
+              {onUndoComplete && (
+                <TouchableOpacity
+                  onPress={() => {
+                    onClose();
+                    onUndoComplete(task.id);
+                  }}
+                  hitSlop={8}
+                >
+                  <Text style={styles.earlierDoneUndoText}>
+                    {language === 'hi' ? 'पूर्ववत करें' : 'Undo'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* If occurrence is marked done today, show completed status & undo option */}
           {isCompletedToday ? (
             <Card style={styles.completedOccurrenceCard} mode="elevated">
               <Card.Content style={styles.completedOccurrenceContent}>
@@ -473,6 +501,25 @@ function TaskDetailSheetComponent({
                     </View>
                   </TouchableRipple>
                 )}
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <ActionChip
+                    icon="create-outline"
+                    label={language === 'hi' ? 'संपादित करें' : 'Edit Task'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      onEdit?.(task.id);
+                    }}
+                  />
+                  <ActionChip
+                    icon="calendar-outline"
+                    label={language === 'hi' ? 'तारीख बदलें' : 'Reschedule'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      setShowDatePicker(true);
+                    }}
+                  />
+                </View>
               </Card.Content>
             </Card>
           ) : isFutureTask ? (
@@ -1691,6 +1738,37 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_700Bold',
     fontSize: 13,
     color: '#92400E',
+  },
+  earlierDoneBanner: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  earlierDoneLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  earlierDoneText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: '#065F46',
+    flex: 1,
+  },
+  earlierDoneUndoText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: '#B45309',
+    textDecorationLine: 'underline',
   },
 });
 

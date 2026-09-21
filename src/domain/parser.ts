@@ -6,12 +6,13 @@ import { frequencyLabelFromRule } from '@/domain/recurrence';
 
 export function guessCategory(text: string): CategoryKey {
   const lower = text.toLowerCase();
-  if (/rent|bill|card|emi|किराया|बिल|बिजली|water|electricity|recharge|maintenance|phone|wifi|broadband|dth/i.test(lower)) return 'bills';
+  if (/plant|पौधे|गमले|garden|gardening|flower/i.test(lower)) return 'home';
+  if (/rent|bill|card|emi|किराया|बिल|बिजली|water\s*bill|पानी\s*का\s*बिल|electricity|recharge|maintenance|phone|wifi|broadband|dth/i.test(lower)) return 'bills';
   if (/sip|itr|tax|fd|invest|mutual|share|stock|टैक्स|निवेश|loan|interest/i.test(lower)) return 'finance';
   if (/bike|car|puc|insurance|petrol|diesel|fuel|service|बाइक|वाहन|गाड़ी|स्कूटर/i.test(lower)) return 'vehicle';
-  if (/gas|cylinder|filter|ro|clean|home|house|गैस|घर|plumber|ac service/i.test(lower)) return 'home';
+  if (/gas|cylinder|filter|ro|clean|home|house|गैस|घर|plumber|ac service|grocery|ration|राशन|सब्जी|milk|दूध/i.test(lower)) return 'home';
   if (/maid|cook|driver|salary|help|नौकरानी|वेतन|कामवाली|धोबी|sweeper|gardener/i.test(lower)) return 'help';
-  if (/medicine|vitamin|doctor|gym|health|tablet|syrup|bp|sugar|thyroid|दवा|स्वास्थ्य|कसरत/i.test(lower)) return 'health';
+  if (/medicine|vitamin|doctor|gym|workout|walk|yoga|health|tablet|syrup|bp|sugar|thyroid|दवा|स्वास्थ्य|कसरत|टहल/i.test(lower)) return 'health';
   if (/ott|netflix|prime|hotstar|spotify|youtube|subscription|membership|सब्सक्रिप्शन/i.test(lower)) return 'subs';
   if (/school|tuition|fee|exam|college|course|class|बुक|किताब|स्कूल|ट्यूशन|फीस/i.test(lower)) return 'education';
   if (/salon|haircut|parlour|spa|groom|grooming|सैलून|हेयरकट|पार्लर/i.test(lower)) return 'personal';
@@ -23,18 +24,24 @@ export function guessCategory(text: string): CategoryKey {
 
 export function guessIcon(text: string): string | undefined {
   const lower = text.toLowerCase();
+  if (/plant|पौधे|गमले|garden/i.test(lower)) return '🪴';
   if (/rent|किराया/i.test(lower)) return '🏠';
   if (/credit|card|कार्ड|emi/i.test(lower)) return '💳';
   if (/insurance|बीमा/i.test(lower)) return '🏍️';
   if (/puc|certificate|प्रमाणपत्र/i.test(lower)) return '📄';
   if (/gas|सिलिंडर|सिलेंडर/i.test(lower)) return '🔥';
-  if (/ro|filter|फ़िल्टर|पानी|water/i.test(lower)) return '💧';
+  if (/ro|filter|फ़िल्टर|पानी/i.test(lower)) return '💧';
   if (/maid|कामवाली|झाडू|sweeper/i.test(lower)) return '🧹';
   if (/cook|खाना|रसोइये/i.test(lower)) return '🍳';
   if (/medicine|bp|दवा|tablet|sugar/i.test(lower)) return '💊';
   if (/vitamin|d3|धूप/i.test(lower)) return '☀️';
+  if (/gym|workout|कसरत/i.test(lower)) return '💪';
+  if (/walk|टहल/i.test(lower)) return '🚶';
+  if (/yoga|योग/i.test(lower)) return '🧘';
+  if (/milk|दूध/i.test(lower)) return '🥛';
+  if (/grocery|ration|राशन|सब्जी/i.test(lower)) return '🛒';
+  if (/wifi|broadband|recharge/i.test(lower)) return '📶';
   if (/ott|netflix|prime|hotstar|टीवी|सब्सक्रिप्शन/i.test(lower)) return '📺';
-  if (/gym|member|जिम|कसरत/i.test(lower)) return '💪';
   if (/sweets|diwali|मिठाई/i.test(lower)) return '🍬';
   if (/rakhi|राखी/i.test(lower)) return '🎁';
   if (/school\s*fee|स्कूल\s*फीस/i.test(lower)) return '🏫';
@@ -117,6 +124,18 @@ export function parseMultiDoseToken(text: string): ParsedMultiDoseResult {
   if (twiceMatch) {
     const count = twiceMatch[1] === 'thrice' ? 3 : 2;
     return { isMultiTime: true, timesPerDay: count, rawMatch: twiceMatch[0] };
+  }
+
+  // Hinglish: "subah shaam", "subah aur shaam", "subah sham" -> 2x daily
+  const subahShaamMatch = lower.match(/\b(subah\s*(?:aur\s*)?sha?am(?:\s*ko)?)\b/i);
+  if (subahShaamMatch) {
+    return { isMultiTime: true, timesPerDay: 2, rawMatch: subahShaamMatch[0] };
+  }
+
+  // Hinglish: "din me 2 baar", "din mein 3 bar", "2 baar roz"
+  const hinglishBarMatch = lower.match(/(?:din\s*me(?:in)?\s*)?([2-5])\s*ba+r(?:\s*(?:roz|roj|daily))?/i);
+  if (hinglishBarMatch) {
+    return { isMultiTime: true, timesPerDay: parseInt(hinglishBarMatch[1], 10), rawMatch: hinglishBarMatch[0] };
   }
 
   // Hindi: "दिन में 2 बार", "दो बार रोज़", "3 बार"
@@ -223,9 +242,10 @@ interface ParsedRecurrenceResult {
 export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): ParsedRecurrenceResult {
   const lower = text.toLowerCase();
 
-  // 1. Monthly on specific day (e.g. "every month on 5th", "monthly on 5th", "monthly 5th", "हर महीने 5 तारीख")
-  const monthDayMatch = lower.match(/(?:every\s+month|monthly)\s+(?:on\s+(?:the\s+)?)?(\d{1,2})(?:st|nd|rd|th)?/i)
-    || lower.match(/(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(?:the\s+)?month/i)
+  // 1. Monthly on specific day (e.g. "every month on 5th", "monthly on 5th", "monthly 5th", "हर महीने 5 तारीख", "har mahine 5 ko")
+  const monthDayMatch = lower.match(/(?:every\s+month|monthly|har\s+mahine)\s+(?:on\s+(?:the\s+)?|ki\s+)?(\d{1,2})(?:\s*(?:st|nd|rd|th|ko|tareekh|tarikh))?/i)
+    || lower.match(/(\d{1,2})(?:\s*(?:st|nd|rd|th))?\s+of\s+(?:the\s+)?month/i)
+    || lower.match(/\b(\d{1,2})\s*(?:ko|tareekh|tarikh)\b/i)
     || lower.match(/हर\s+महीने\s+(\d{1,2})\s*तारीख/);
 
   if (monthDayMatch) {
@@ -240,8 +260,8 @@ export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): Pa
     }
   }
 
-  // 2. Interval months (e.g. "every 2 months", "हर 3 महीने")
-  const intervalMonthsMatch = lower.match(/every\s+(\d+)\s+months?/i)
+  // 2. Interval months (e.g. "every 2 months", "हर 3 महीने", "har 2 mahine")
+  const intervalMonthsMatch = lower.match(/(?:every|har)\s+(\d+)\s+(?:months?|mahine?)/i)
     || lower.match(/हर\s+(\d+)\s+महीने?/);
   if (intervalMonthsMatch) {
     const interval = parseInt(intervalMonthsMatch[1], 10);
@@ -255,8 +275,9 @@ export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): Pa
     };
   }
 
-  // 3. Interval days (e.g. "every 15 days", "हर 10 दिन")
-  const intervalDaysMatch = lower.match(/every\s+(\d+)\s+days?/i)
+  // 3. Interval days (e.g. "every 15 days", "हर 10 दिन", "15 din me", "har 15 din")
+  const intervalDaysMatch = lower.match(/(?:every|har)\s+(\d+)\s+(?:days?|din)/i)
+    || lower.match(/(\d+)\s*din\s*me(?:in)?/i)
     || lower.match(/हर\s+(\d+)\s+दिन/);
   if (intervalDaysMatch) {
     const interval = parseInt(intervalDaysMatch[1], 10);
@@ -268,8 +289,8 @@ export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): Pa
     };
   }
 
-  // 4. Specific weekday (e.g. "every monday", "weekly on friday")
-  const weekdayMatch = lower.match(/(?:every|weekly\s+on)\s+\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i);
+  // 4. Specific weekday (e.g. "every monday", "weekly on friday", "har sunday")
+  const weekdayMatch = lower.match(/(?:every|har|weekly\s+on)\s+\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i);
   if (weekdayMatch) {
     const weekdayMap: Record<string, number> = {
       sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tue: 2,
@@ -284,29 +305,46 @@ export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): Pa
     };
   }
 
-  // 5. General frequencies: daily, weekly, monthly, yearly
-  const dailyMatch = lower.match(/\b(daily|every\s*day|everyday)\b/i) || lower.match(/(हर\s*दिन|रोज़|रोज|प्रतिदिन)/);
+  // 5. General frequencies: daily, weekly, monthly, yearly (including Hinglish)
+  const dailyMatch = lower.match(/\b(daily|every\s*day|everyday|roz|roj|har\s*roz|har\s*roj)\b/i) || lower.match(/(हर\s*दिन|रोज़|रोज|प्रतिदिन)/);
   if (dailyMatch) {
     const rule: RecurrenceRule = { type: 'daily' };
     return { recurrence: rule, frequencyLabel: frequencyLabelFromRule(rule, lang), rawMatch: dailyMatch[0] };
   }
 
-  const weeklyMatch = lower.match(/\b(weekly|every\s*week)\b/i) || lower.match(/(हर\s*हफ्ते)/);
+  const weeklyMatch = lower.match(/\b(weekly|every\s*week|har\s*week|har\s*hafte)\b/i) || lower.match(/(हर\s*हफ्ते)/);
   if (weeklyMatch) {
     const rule: RecurrenceRule = { type: 'weekly' };
     return { recurrence: rule, frequencyLabel: frequencyLabelFromRule(rule, lang), rawMatch: weeklyMatch[0] };
   }
 
-  const yearlyMatch = lower.match(/\b(yearly|annually|every\s*year)\b/i) || lower.match(/(हर\s*साल)/);
+  const yearlyMatch = lower.match(/\b(yearly|annually|every\s*year|har\s*saal|har\s*sal)\b/i) || lower.match(/(हर\s*साल)/);
   if (yearlyMatch) {
     const rule: RecurrenceRule = { type: 'yearly' };
     return { recurrence: rule, frequencyLabel: frequencyLabelFromRule(rule, lang), rawMatch: yearlyMatch[0] };
   }
 
-  const monthlyMatch = lower.match(/\b(monthly|every\s*month)\b/i) || lower.match(/(हर\s*महीने)/);
+  const monthlyMatch = lower.match(/\b(monthly|every\s*month|har\s*month|har\s*mahine)\b/i) || lower.match(/(हर\s*महीने)/);
   if (monthlyMatch) {
     const rule: RecurrenceRule = { type: 'monthly' };
     return { recurrence: rule, frequencyLabel: frequencyLabelFromRule(rule, lang), rawMatch: monthlyMatch[0] };
+  }
+
+  // 6. Intelligent habit-based fallback for lazy non-technical users
+  if (/plant|पौधे|गमले|gym|workout|walk|टहल|yoga|दवा|medicine|vitamin|brush|bath|read|water|दूध|milk|newspaper|अखबार/i.test(lower)) {
+    const habitRule: RecurrenceRule = { type: 'daily' };
+    return {
+      recurrence: habitRule,
+      frequencyLabel: frequencyLabelFromRule(habitRule, lang),
+    };
+  }
+
+  if (/rent|किराया|salary|वेतन|maid|कामवाली|cook/i.test(lower)) {
+    const rentRule: RecurrenceRule = { type: 'monthDay', dayOfMonth: 1 };
+    return {
+      recurrence: rentRule,
+      frequencyLabel: frequencyLabelFromRule(rentRule, lang),
+    };
   }
 
   // Default fallback to monthly
@@ -342,22 +380,28 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
   // 5. Clean Title Extraction
   let cleanTitle = text;
 
+  const removeToken = (src: string, token?: string) => {
+    if (!token) return src;
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return src.replace(new RegExp(escaped, 'gi'), ' ');
+  };
+
   if (amountRaw) {
-    cleanTitle = cleanTitle.replace(amountRaw, ' ');
+    cleanTitle = removeToken(cleanTitle, amountRaw);
   }
   if (doseRaw) {
-    cleanTitle = cleanTitle.replace(doseRaw, ' ');
+    cleanTitle = removeToken(cleanTitle, doseRaw);
   }
   for (const timeRaw of timeRaws) {
-    cleanTitle = cleanTitle.replace(timeRaw, ' ');
+    cleanTitle = removeToken(cleanTitle, timeRaw);
   }
   if (recRaw) {
-    cleanTitle = cleanTitle.replace(recRaw, ' ');
+    cleanTitle = removeToken(cleanTitle, recRaw);
   }
 
-  // Clean trailing prepositions & connectors (e.g. "at", "on", "for", "every")
+  // Clean trailing prepositions, articles & connectors (including Hindi/Hinglish connectors)
   cleanTitle = cleanTitle
-    .replace(/\b(at|on|for|every|in|and)\b/gi, ' ')
+    .replace(/\b(at|on|for|every|in|and|the|ko|me|mein|se|ki|ka)\b/gi, ' ')
     .replace(/[₹,.\-—:;]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

@@ -6,7 +6,7 @@ import { signInWithGoogle as authSignIn, signInWithEmail as authSignInWithEmail,
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
-import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain } from '@/domain/household';
+import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain, normalizeInviteCode } from '@/domain/household';
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { restoreUserRemote, purgeUserDataRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
@@ -233,10 +233,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await userRepository.saveLocal(profile);
               }
 
-              // Ensure all user household contexts exist in remote /households collection
+              // Ensure user-owned household contexts exist in remote /households collection
               if (profile.households && profile.households.length > 0) {
                 for (const hh of profile.households) {
-                  userRepository.saveHousehold(hh).catch(() => {});
+                  if (hh.ownerUid === profile.id) {
+                    userRepository.saveHousehold(hh).catch(() => {});
+                  }
                 }
               }
 
@@ -275,9 +277,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Add remote authoritative households first
               remoteHhs.forEach((h) => hhMap.set(h.id, h));
 
-              // Check existing local households
+              // Check existing local households: ONLY preserve local households owned by this user (e.g. pending offline sync)
               existingHhs.forEach((localHh) => {
                 if (hhMap.has(localHh.id)) return;
+
+                // If not owned by this user, the user left or was removed from this household — discard it!
+                if (localHh.ownerUid !== prevUser.id) return;
 
                 // Detect starter collision: empty local household with same name as a remote one
                 const isDuplicateStarter =
@@ -543,9 +548,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const remoteHh = await userRepository.loadHousehold(householdId);
       if (remoteHh) {
+        const userHouseholdCode = user.householdCode ? normalizeInviteCode(user.householdCode) : undefined;
         const updatedHh: HouseholdContext = {
           ...remoteHh,
-          members: remoteHh.members.filter(m => m.userId !== user.id),
+          members: remoteHh.members.filter(m => {
+            if (m.userId && m.userId === user.id) return false;
+            if (userHouseholdCode && normalizeInviteCode(m.code) === userHouseholdCode) return false;
+            return true;
+          }),
           memberUids: (remoteHh.memberUids ?? []).filter(uid => uid !== user.id),
         };
         await userRepository.saveHousehold(updatedHh);
@@ -595,12 +605,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const remoteHh = await userRepository.loadHousehold(householdId);
         if (remoteHh) {
+          const targetCode = normalizeInviteCode(memberCode);
+          const memberToRemove = remoteHh.members.find(
+            (m) => normalizeInviteCode(m.code) === targetCode || (memberUserId && m.userId === memberUserId)
+          );
+          const targetUid = memberUserId || memberToRemove?.userId;
           const updatedHh: HouseholdContext = {
             ...remoteHh,
-            members: remoteHh.members.filter(m => m.code !== memberCode),
-            memberUids: memberUserId
-              ? (remoteHh.memberUids ?? []).filter(uid => uid !== memberUserId)
-              : remoteHh.memberUids,
+            members: remoteHh.members.filter(
+              (m) => normalizeInviteCode(m.code) !== targetCode && (!targetUid || m.userId !== targetUid)
+            ),
+            memberUids: targetUid
+              ? (remoteHh.memberUids ?? []).filter((uid) => uid !== targetUid)
+              : (remoteHh.memberUids ?? []),
           };
           await userRepository.saveHousehold(updatedHh);
         }
@@ -608,20 +625,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Repeato] Failed to update household on member remove:', err);
       }
 
-      // 3. Remove household from the removed member's profile + notify them
+      // 3. Notify the removed member via in-app notification
       if (memberUserId) {
         try {
-          const remoteB = await userRepository.loadRemote(memberUserId);
-          if (remoteB) {
-            const updatedHouseholds = (remoteB.households ?? []).filter(h => h.id !== householdId);
-            const nextActiveId = updatedHouseholds[0]?.id ?? undefined;
-            await userRepository.saveOther(memberUserId, {
-              ...remoteB,
-              households: updatedHouseholds,
-              activeHouseholdId: nextActiveId,
-              removedBy: user.name || 'Owner',
-            });
-          }
           await userRepository.saveNotification(memberUserId, {
             id: `${Date.now()}-removed`,
             type: 'household',

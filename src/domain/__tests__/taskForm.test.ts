@@ -15,6 +15,7 @@ import {
   recurrenceTypeLabel,
   recurrenceToFormState,
   validateFormState,
+  validateSmartTitle,
   weekdayLabel,
 } from '@/domain/taskForm';
 import { createTaskFromPreset } from '@/domain/task';
@@ -163,6 +164,36 @@ describe('domain/taskForm', () => {
     expect(restoredState.assignedTo).toBe('user-sarah');
     expect(restoredState.isRotating).toBe(true);
     expect(restoredState.rotationMembers).toEqual(['user-sarah', 'user-malay']);
+  });
+
+  it('validateSmartTitle validates pure numbers, frequencies, symbols, and length', () => {
+    // Empty
+    expect(validateSmartTitle('').isValid).toBe(false);
+    expect(validateSmartTitle('   ').isValid).toBe(false);
+
+    // Too short
+    expect(validateSmartTitle('A').isValid).toBe(false);
+
+    // Pure numbers
+    const numRes = validateSmartTitle('15000');
+    expect(numRes.isValid).toBe(false);
+    expect(numRes.error).toContain('15000');
+
+    // Pure frequency without task name
+    const freqRes = validateSmartTitle('daily');
+    expect(freqRes.isValid).toBe(false);
+
+    // Valid title
+    expect(validateSmartTitle('Water plants').isValid).toBe(true);
+    expect(validateSmartTitle('किराया 15000', 'hi').isValid).toBe(true);
+  });
+
+  it('defaultFormState initializes startDate and reminderTime with current local date and time', () => {
+    const state = defaultFormState('bills');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    expect(state.startDate).toBe(todayStr);
+    expect(state.reminderTime).toMatch(/^\d{2}:\d{2}$/);
+    expect(state.reminderTimes).toContain(state.reminderTime);
   });
 });
 

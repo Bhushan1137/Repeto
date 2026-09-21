@@ -269,6 +269,7 @@ interface HouseholdViewProps {
   setEditingTaskId: (id: string | null) => void;
   setActivityVisible: (v: boolean) => void;
   removeHouseholdMemberAndCleanup: (code: string, deleteTasks: boolean) => Promise<void>;
+  removeMemberFromHousehold: (householdId: string, memberCode: string, memberUserId?: string) => Promise<{ ok: boolean; error?: string }>;
   scrollRef: React.RefObject<ScrollView | null>;
   sharedTasksY: React.MutableRefObject<number>;
   membersY: React.MutableRefObject<number>;
@@ -294,6 +295,7 @@ function HouseholdView({
   setEditingTaskId: _setEditingTaskId,
   setActivityVisible,
   removeHouseholdMemberAndCleanup,
+  removeMemberFromHousehold,
   scrollRef: _scrollRef,
   sharedTasksY,
   membersY: _membersY,
@@ -493,6 +495,13 @@ function HouseholdView({
     const member = activeMembers.find((m: HouseholdMemberProfile) => m.code === code);
     const memberName = member ? member.name : code;
 
+    const performRemoval = async (deleteTasks: boolean) => {
+      if (activeHousehold?.id) {
+        await removeMemberFromHousehold(activeHousehold.id, code, member?.userId);
+      }
+      await removeHouseholdMemberAndCleanup(code, deleteTasks);
+    };
+
     if (Platform.OS === 'web') {
       const confirmRemove = window.confirm(
         language === 'hi'
@@ -505,7 +514,7 @@ function HouseholdView({
           ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
           : 'Do you want to delete all shared tasks associated with this member from both devices?'
       );
-      await removeHouseholdMemberAndCleanup(code, deleteTasks);
+      await performRemoval(deleteTasks);
     } else {
       Alert.alert(
         language === 'hi' ? 'सदस्य को हटाएं?' : 'Remove Member?',
@@ -524,8 +533,8 @@ function HouseholdView({
                   ? 'क्या आप दोनों उपकरणों से इस सदस्य के सभी साझा कार्यों को भी हटाना चाहते हैं?'
                   : 'Do you want to delete all shared tasks associated with this member from both devices?',
                 [
-                  { text: language === 'hi' ? 'कार्य रखें' : 'Keep Tasks', onPress: () => removeHouseholdMemberAndCleanup(code, false) },
-                  { text: language === 'hi' ? 'कार्य हटाएं' : 'Remove Tasks', style: 'destructive', onPress: () => removeHouseholdMemberAndCleanup(code, true) },
+                  { text: language === 'hi' ? 'कार्य रखें' : 'Keep Tasks', onPress: () => performRemoval(false) },
+                  { text: language === 'hi' ? 'कार्य हटाएं' : 'Remove Tasks', style: 'destructive', onPress: () => performRemoval(true) },
                 ]
               );
             },
@@ -1230,6 +1239,7 @@ export default function HouseholdScreen() {
             setEditingTaskId={setEditingTaskId}
             setActivityVisible={setActivityVisible}
             removeHouseholdMemberAndCleanup={removeHouseholdMemberAndCleanup}
+            removeMemberFromHousehold={removeMemberFromHousehold}
             scrollRef={scrollRef}
             sharedTasksY={sharedTasksY}
             membersY={membersY}

@@ -151,18 +151,20 @@ export function normalizeReminderTimes(timesPerDay?: number, reminderTimes?: str
 export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
-  const defaultTime = config.defaultReminderTime ?? '09:00';
+  const now = new Date();
+  const defaultDate = now.toISOString().slice(0, 10);
+  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   return {
     title: '',
     category,
     ...rec,
     amountText: '',
     finance: config.showFinance,
-    reminderTime: config.defaultReminderTime ?? null,
+    reminderTime: defaultTime,
     isMultiTime: false,
     timesPerDay: 1,
     reminderTimes: [defaultTime],
-    startDate: null,
+    startDate: defaultDate,
     assignedTo: null,
     householdId: null,
     icon: null,
@@ -348,16 +350,88 @@ export interface TaskFormErrors {
   recurrence?: string;
 }
 
+export interface SmartTitleValidation {
+  isValid: boolean;
+  error?: string;
+  warning?: string;
+}
+
+export function validateSmartTitle(
+  title: string,
+  lang: Language = 'en'
+): SmartTitleValidation {
+  const trimmed = title.trim();
+
+  if (!trimmed) {
+    return {
+      isValid: false,
+      error: lang === 'hi' ? 'कृपया कार्य का नाम दर्ज करें' : 'Please enter a task name',
+    };
+  }
+
+  // Pure digits or currency: e.g. "15000", "₹15,000", "500"
+  const cleanDigits = trimmed.replace(/[₹$,.\s]/g, '');
+  if (/^\d+$/.test(cleanDigits)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'यह केवल एक राशि है! कृपया कार्य का नाम भी लिखें (उदा. "किराया ₹' + cleanDigits + '")'
+        : `Looks like an amount! Please add a task name (e.g. "Rent ₹${cleanDigits}")`,
+    };
+  }
+
+  // Pure symbols or emojis without alphanumeric
+  const hasWordChars = /[\p{L}\p{N}]/u.test(trimmed);
+  if (!hasWordChars) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया कार्य के नाम में शब्द या अक्षर शामिल करें'
+        : 'Please include letters or words for the task name',
+    };
+  }
+
+  // Minimum length check
+  if (trimmed.length < 2) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कार्य का नाम कम से कम 2 अक्षरों का होना चाहिए'
+        : 'Task name must be at least 2 characters',
+    };
+  }
+
+  // Pure frequency without task name: e.g. "daily", "monthly", "हर दिन", "हर महीने"
+  const lower = trimmed.toLowerCase();
+  if (/^(daily|everyday|every\s*day|weekly|every\s*week|monthly|every\s*month|yearly|हर\s*दिन|रोज़|रोज|हर\s*महीने|हर\s*हफ्ते)$/i.test(lower)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया बताएं कि क्या दोहराना है (उदा. "कसरत हर दिन")'
+        : `Please specify what task to do (e.g. "Workout ${trimmed}")`,
+    };
+  }
+
+  if (trimmed.length > 70) {
+    return {
+      isValid: true,
+      warning: lang === 'hi'
+        ? `${80 - trimmed.length} अक्षर शेष`
+        : `${80 - trimmed.length} characters remaining`,
+    };
+  }
+
+  return { isValid: true };
+}
+
 export function validateFormState(
   state: TaskFormState,
   translate: (key: TranslationKey) => string
 ): TaskFormErrors {
   const errors: TaskFormErrors = {};
 
-  const trimmedTitle = state.title.trim();
-  // eslint-disable-next-line no-misleading-character-class
-  const hasAlphanumeric = /[a-zA-Z0-9\u0900-\u097F]/.test(trimmedTitle);
-  if (trimmedTitle.length < 2 || !hasAlphanumeric) {
+  const titleValidation = validateSmartTitle(state.title);
+  if (!titleValidation.isValid) {
     errors.title = translate('presetTitleRequired');
   }
 

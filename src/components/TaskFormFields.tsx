@@ -16,6 +16,7 @@ import { computeInitialDueDate, daysUntilDue, frequencyLabelFromRule } from '@/d
 import {
   buildRecurrenceRule,
   getDefaultDoseTimes,
+  validateSmartTitle,
   type TaskFormErrors,
   type TaskFormState,
 } from '@/domain/taskForm';
@@ -56,6 +57,17 @@ export function TaskFormFields({
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [detectedTokens, setDetectedTokens] = useState<DetectedToken[]>([]);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  const defaultCurrentTime = useMemo(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }, []);
+
+  const liveTitleValidation = useMemo(() => {
+    if (!titleTouched && !state.title) return { isValid: true };
+    return validateSmartTitle(state.title, language);
+  }, [state.title, titleTouched, language]);
 
   const cleanTitleCandidate = useMemo(() => {
     if (!state.title || !state.title.trim()) return '';
@@ -64,6 +76,7 @@ export function TaskFormFields({
   }, [state.title, language]);
 
   const handleTitleChange = (rawText: string) => {
+    setTitleTouched(true);
     const text = rawText.slice(0, 80);
     if (text.trim()) {
       const res = parseTaskInput(text, language);
@@ -267,7 +280,7 @@ export function TaskFormFields({
           style={[
             styles.titleInputContainer,
             isTitleFocused && styles.titleInputFocused,
-            errors?.title && styles.titleInputError,
+            ((errors?.title) || (titleTouched && !liveTitleValidation.isValid)) && styles.titleInputError,
           ]}
         >
           <AppIcon
@@ -281,11 +294,14 @@ export function TaskFormFields({
             value={state.title}
             onChangeText={handleTitleChange}
             onFocus={() => setIsTitleFocused(true)}
-            onBlur={() => setIsTitleFocused(false)}
+            onBlur={() => {
+              setIsTitleFocused(false);
+              setTitleTouched(true);
+            }}
             placeholder={
               language === 'hi'
-                ? 'उदा. "किराया ₹15000 हर महीने 5 तारीख"'
-                : 'e.g. "Rent ₹15,000 monthly on 5th at 9am"'
+                ? 'उदा. "पौधों को पानी रोज़", "किराया ₹15000 हर महीने 5 तारीख"'
+                : 'e.g. "Water plants daily at 8am", "Rent ₹15,000 monthly 5th"'
             }
             placeholderTextColor={Colors.inkFaint}
             maxLength={80}
@@ -297,7 +313,13 @@ export function TaskFormFields({
             </TouchableOpacity>
           )}
         </View>
-        {errors?.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
+        {errors?.title ? (
+          <Text style={styles.errorText}>{errors.title}</Text>
+        ) : titleTouched && !liveTitleValidation.isValid && liveTitleValidation.error ? (
+          <Text style={styles.smartGuidanceText}>💡 {liveTitleValidation.error}</Text>
+        ) : liveTitleValidation.warning ? (
+          <Text style={styles.smartWarningText}>{liveTitleValidation.warning}</Text>
+        ) : null}
 
         {/* Live Detected Tokens Badges */}
         {detectedTokens.length > 0 && (
@@ -337,14 +359,32 @@ export function TaskFormFields({
         {/* Quick Inspiration Pills */}
         <View style={styles.inspirationContainer}>
           <Text style={styles.inspirationLabel}>
-            💡 {language === 'hi' ? 'उदाहरण:' : 'Try:'}
+            💡 {language === 'hi' ? 'त्वरित सुझाव (1-टैप):' : 'Quick Suggestions (1-tap):'}
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.inspirationScroll}>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'पौधों को पानी रोज़ सुबह 8 बजे' : 'Water plants daily at 8am')}
+            >
+              <Text style={styles.inspirationChipText}>🪴 {language === 'hi' ? 'पौधे (रोज़)' : 'Water plants (Daily)'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
               onPress={() => applyInspirationPrompt(language === 'hi' ? 'किराया ₹15000 हर महीने 5 तारीख' : 'House Rent ₹15,000 monthly on 5th')}
             >
               <Text style={styles.inspirationChipText}>🏠 {language === 'hi' ? 'किराया ₹15,000 (5 तारीख)' : 'Rent ₹15,000 (5th)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'जिम कसरत रोज़ सुबह 7 बजे' : 'Gym workout daily at 7am')}
+            >
+              <Text style={styles.inspirationChipText}>💪 {language === 'hi' ? 'जिम (रोज़ 7am)' : 'Gym (Daily 7am)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹4000 हर महीने 1 तारीख' : 'Maid salary ₹4000 monthly on 1st')}
+            >
+              <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹4,000 (1 तारीख)' : 'Maid ₹4,000 (1st)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
@@ -354,15 +394,21 @@ export function TaskFormFields({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹5000 हर महीने 1 तारीख' : 'Maid salary ₹5000 monthly on 1st')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'वाईफाई बिल ₹800 हर महीने 15 तारीख' : 'Wifi bill ₹800 monthly on 15th')}
             >
-              <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹5,000 (1 तारीख)' : 'Maid ₹5,000 (1st)'}</Text>
+              <Text style={styles.inspirationChipText}>📶 {language === 'hi' ? 'वाईफाई ₹800 (15 तारीख)' : 'Wifi ₹800 (15th)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'पानी बिल ₹500 हर 2 महीने' : 'Water bill ₹500 every 2 months')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'विटामिन डी हर रविवार सुबह 10 बजे' : 'Vitamin D every sunday at 10am')}
             >
-              <Text style={styles.inspirationChipText}>💧 {language === 'hi' ? 'पानी बिल ₹500 (हर 2 महीने)' : 'Water bill ₹500 (2 mos)'}</Text>
+              <Text style={styles.inspirationChipText}>☀️ {language === 'hi' ? 'विटामिन डी (रविवार)' : 'Vitamin D (Sunday)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'गैस सिलेंडर हर 45 दिन' : 'Gas cylinder every 45 days')}
+            >
+              <Text style={styles.inspirationChipText}>🔥 {language === 'hi' ? 'गैस सिलेंडर (45 दिन)' : 'Gas cylinder (45d)'}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -476,7 +522,7 @@ export function TaskFormFields({
               const count = nextMulti ? Math.max(2, state.timesPerDay || 2) : 1;
               const times = nextMulti
                 ? (state.reminderTimes.length >= count ? state.reminderTimes : getDefaultDoseTimes(count))
-                : [state.reminderTimes[0] || state.reminderTime || '09:00'];
+                : [state.reminderTimes[0] || state.reminderTime || defaultCurrentTime];
               onChange({
                 isMultiTime: nextMulti,
                 timesPerDay: count,
@@ -506,7 +552,7 @@ export function TaskFormFields({
             <View style={{ marginTop: 10 }}>
               <TimeField
                 label={language === 'hi' ? 'समय' : 'Time'}
-                value={state.reminderTime || '09:00'}
+                value={state.reminderTime || defaultCurrentTime}
                 onChange={(reminderTime) =>
                   onChange({ reminderTime, reminderTimes: [reminderTime] })
                 }
@@ -1259,6 +1305,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_500Medium',
     fontSize: 11,
     color: Colors.clay,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  smartGuidanceText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11.5,
+    color: '#D97706',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  smartWarningText: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.inkFaint,
     marginTop: 2,
     marginBottom: 6,
   },

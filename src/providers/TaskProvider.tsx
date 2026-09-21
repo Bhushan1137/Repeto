@@ -937,11 +937,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (activeHousehold?.id && updatedHouseholds) {
         updatedHouseholds = updatedHouseholds.map((h) => {
           if (h.id !== activeHousehold.id) return h;
-          return {
+          const targetUid = member.userId;
+          const updatedHh = {
             ...h,
-            members: h.members.filter((m) => m.code !== memberCode && m.userId !== memberCode),
+            members: h.members.filter((m) => m.code !== memberCode && (!targetUid || m.userId !== targetUid)),
             memberUids: (h.memberUids ?? []).filter((uid) => uid !== member.userId),
           };
+          if (firebaseReady) {
+            userRepository.saveHousehold(updatedHh).catch((err) => {
+              console.warn('[Repeato] Failed to save updated household on member remove:', err);
+            });
+          }
+          return updatedHh;
         });
       }
 
@@ -1107,6 +1114,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       targetTasks.forEach((t) => {
         cancelTaskReminder(t.id).catch(() => {});
         cancelOverdueReminders(t.id).catch(() => {});
+        taskRepository.deleteOne(t.id, user.id).catch(() => {});
       });
 
       setTasks(remaining);
