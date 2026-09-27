@@ -5,6 +5,12 @@ import type { RepeatingTask } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { computeNextDueDate } from '@/domain/recurrence';
 import { hasCompletedToday, getTodayDoseProgress, normalizeReminderTimes } from '@/domain/task';
+import {
+  scheduleNativeAlarm,
+  cancelNativeAlarm,
+  cancelAllNativeAlarms,
+  triggerTestAlarm,
+} from '@/services/alarmNative';
 
 try {
   Notifications.setNotificationHandler({
@@ -22,6 +28,17 @@ try {
       name: 'Task Reminders',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
+    }).catch(() => {});
+
+    Notifications.setNotificationChannelAsync('alarm', {
+      name: 'Task Alarm Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'alarm_chime',
+      vibrationPattern: [0, 500, 250, 500, 250, 500],
+      enableLights: true,
+      lightColor: '#E8A33D',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
     }).catch(() => {});
 
     Notifications.setNotificationChannelAsync('household', {
@@ -104,6 +121,7 @@ export async function cancelAllNotifications(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
+    await cancelAllNativeAlarms();
   } catch {
     // ignore
   }
@@ -114,9 +132,12 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 
   try {
     const ids = [`task-${taskId}`];
+    cancelNativeAlarm(taskId).catch(() => {});
     for (let i = 0; i < 10; i++) {
       ids.push(`task-${taskId}-${i}`);
       ids.push(`task-${taskId}-dose-${i}`);
+      cancelNativeAlarm(`${taskId}-dose-${i}`).catch(() => {});
+      cancelNativeAlarm(`${taskId}-${i}`).catch(() => {});
     }
     await Promise.all(
       ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
@@ -147,6 +168,8 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
 
   const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
 
+  const reminderChannelId = Platform.OS === 'android' ? 'alarm' : 'default';
+
   if (isMulti) {
     const progress = getTodayDoseProgress(task);
     const times = normalizeReminderTimes(task.timesPerDay, task.reminderTimes);
@@ -159,9 +182,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const doseContent: Notifications.NotificationContentInput = {
         title: 'Repeto Reminder',
         body: `Reminder: ${task.title} (${i + 1}/${times.length})`,
-        data: { taskId: task.id, doseIndex: i },
+        data: { taskId: task.id, doseIndex: i, isAlarm: true },
         categoryIdentifier: 'task-actions',
-        sound: true,
+        sound: Platform.OS === 'android' ? 'alarm_chime' : true,
       };
 
       const isDoseDoneToday = progress.completedIndices.includes(i);
@@ -176,25 +199,32 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         }
         nextDate.setHours(doseHour, doseMinute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
+          scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, nextDate.getTime()).catch(() => {});
           await Notifications.scheduleNotificationAsync({
             content: doseContent,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: nextDate,
-              channelId: 'default',
+              channelId: reminderChannelId,
             },
             identifier: `task-${task.id}-dose-${i}`,
           });
         }
       } else {
         if (task.recurrence?.type === 'daily') {
+          const doseToday = new Date();
+          doseToday.setHours(doseHour, doseMinute, 0, 0);
+          if (doseToday.getTime() <= Date.now()) {
+            doseToday.setDate(doseToday.getDate() + 1);
+          }
+          scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, doseToday.getTime()).catch(() => {});
           await Notifications.scheduleNotificationAsync({
             content: doseContent,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DAILY,
               hour: doseHour,
               minute: doseMinute,
-              channelId: 'default',
+              channelId: reminderChannelId,
             },
             identifier: `task-${task.id}-dose-${i}`,
           });
@@ -202,12 +232,13 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           const triggerDate = new Date(task.nextDueDate);
           triggerDate.setHours(doseHour, doseMinute, 0, 0);
           if (triggerDate.getTime() > Date.now()) {
+            scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, triggerDate.getTime()).catch(() => {});
             await Notifications.scheduleNotificationAsync({
               content: doseContent,
               trigger: {
                 type: Notifications.SchedulableTriggerInputTypes.DATE,
                 date: triggerDate,
-                channelId: 'default',
+                channelId: reminderChannelId,
               },
               identifier: `task-${task.id}-dose-${i}`,
             });
@@ -229,9 +260,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   const content: Notifications.NotificationContentInput = {
     title: 'Repeto Reminder',
     body: `Reminder for "${task.title}"`,
-    data: { taskId: task.id },
+    data: { taskId: task.id, isAlarm: true },
     categoryIdentifier: 'task-actions',
-    sound: true,
+    sound: Platform.OS === 'android' ? 'alarm_chime' : true,
   };
 
   // If task is currently snoozed, schedule directly for the snooze date
@@ -239,12 +270,13 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     const snoozeDate = new Date(task.snoozedUntil);
     snoozeDate.setHours(hour, minute, 0, 0);
     if (snoozeDate.getTime() > Date.now()) {
+      scheduleNativeAlarm(task.id, task.title, snoozeDate.getTime()).catch(() => {});
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: snoozeDate,
-          channelId: 'default',
+          channelId: reminderChannelId,
         },
         identifier: `task-${task.id}`,
       });
@@ -261,24 +293,31 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         const nextDate = new Date(task.nextDueDate);
         nextDate.setHours(hour, minute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
+          scheduleNativeAlarm(task.id, task.title, nextDate.getTime()).catch(() => {});
           await Notifications.scheduleNotificationAsync({
             content,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: nextDate,
-              channelId: 'default',
+              channelId: reminderChannelId,
             },
             identifier: `task-${task.id}`,
           });
         }
       } else {
+        const todayAlarm = new Date();
+        todayAlarm.setHours(hour, minute, 0, 0);
+        if (todayAlarm.getTime() <= Date.now()) {
+          todayAlarm.setDate(todayAlarm.getDate() + 1);
+        }
+        scheduleNativeAlarm(task.id, task.title, todayAlarm.getTime()).catch(() => {});
         await Notifications.scheduleNotificationAsync({
           content,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour,
             minute,
-            channelId: 'default',
+            channelId: reminderChannelId,
           },
           identifier: `task-${task.id}`,
         });
@@ -286,6 +325,11 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     } else if (recType === 'weekly') {
       const jsWeekday = task.recurrence.weekday ?? new Date(task.nextDueDate).getDay();
       const expoWeekday = jsWeekday + 1; // JS 0=Sun..6=Sat -> Expo 1=Sun..7=Sat
+      const targetDate = new Date(task.nextDueDate);
+      targetDate.setHours(hour, minute, 0, 0);
+      if (targetDate.getTime() > Date.now()) {
+        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+      }
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
@@ -293,12 +337,17 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           weekday: expoWeekday,
           hour,
           minute,
-          channelId: 'default',
+          channelId: reminderChannelId,
         },
         identifier: `task-${task.id}`,
       });
     } else if (recType === 'monthly') {
       const dayOfMonth = task.recurrence.dayOfMonth ?? new Date(task.nextDueDate).getDate();
+      const targetDate = new Date(task.nextDueDate);
+      targetDate.setHours(hour, minute, 0, 0);
+      if (targetDate.getTime() > Date.now()) {
+        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+      }
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
@@ -306,7 +355,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           day: dayOfMonth,
           hour,
           minute,
-          channelId: 'default',
+          channelId: reminderChannelId,
         },
         identifier: `task-${task.id}`,
       });
@@ -314,6 +363,11 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const dueDateObj = new Date(task.nextDueDate);
       const month = dueDateObj.getMonth() + 1;
       const day = dueDateObj.getDate();
+      const targetDate = new Date(task.nextDueDate);
+      targetDate.setHours(hour, minute, 0, 0);
+      if (targetDate.getTime() > Date.now()) {
+        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+      }
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
@@ -322,7 +376,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           day,
           hour,
           minute,
-          channelId: 'default',
+          channelId: reminderChannelId,
         },
         identifier: `task-${task.id}`,
       });
@@ -335,12 +389,15 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         triggerDate.setHours(hour, minute, 0, 0);
 
         if (triggerDate.getTime() > Date.now()) {
+          if (i === 0) {
+            scheduleNativeAlarm(task.id, task.title, triggerDate.getTime()).catch(() => {});
+          }
           await Notifications.scheduleNotificationAsync({
             content,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: triggerDate,
-              channelId: 'default',
+              channelId: reminderChannelId,
             },
             identifier: `task-${task.id}-${i}`,
           });
@@ -363,17 +420,21 @@ export async function sendTestNotification(): Promise<boolean> {
   if (!granted) return false;
 
   try {
+    if (Platform.OS === 'android') {
+      triggerTestAlarm(2, 'Test Task Reminder 🔔').catch(() => {});
+    }
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Repeto Reminder 🔔',
-        body: 'Notifications are working properly on your device!',
+        body: 'Notifications and alarms are working properly on your device!',
+        data: { taskId: 'test-reminder', isAlarm: true },
         categoryIdentifier: 'task-actions',
-        sound: true,
+        sound: Platform.OS === 'android' ? 'alarm_chime' : true,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 2,
-        channelId: 'default',
+        channelId: Platform.OS === 'android' ? 'alarm' : 'default',
       },
     });
     return true;

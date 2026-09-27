@@ -1,7 +1,7 @@
 import type { Language, UserProfile } from '@/types';
 import type { User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { signInWithGoogleNative, getAuthErrorMessage, signOutFirebase } from '@/services/firebase/auth';
+import { signInWithGoogleNative, getAuthErrorMessage } from '@/services/firebase/auth';
 import { loadUserRemote, softDeleteUserRemote } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { normalizeHouseholdProfile } from '@/domain/household';

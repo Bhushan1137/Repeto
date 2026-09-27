@@ -21,6 +21,7 @@ import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary';
+import { AlarmOverlay } from '@/components/AlarmOverlay';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -191,6 +192,7 @@ export default function RootLayout() {
             <NavigationGuard>
               <StatusBar style="dark" />
               <OfflineBanner />
+              <AlarmOverlay />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.surfaceMuted } }}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(onboarding)" />
