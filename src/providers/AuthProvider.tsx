@@ -40,7 +40,7 @@ interface AuthContextValue {
   /** Owner removes a specific member from the household */
   removeMemberFromHousehold: (householdId: string, memberCode: string, memberUserId?: string) => Promise<{ ok: boolean; error?: string }>;
   /** Soft-delete the current user account — stamps Firestore, clears local data, signs out */
-  deleteAccount: (deletionReason?: string) => Promise<{ ok: boolean; error?: string }>;
+  deleteAccount: (deletionReason?: string, onSoftDeleted?: () => Promise<void>) => Promise<{ ok: boolean; error?: string }>;
   /**
    * Set when a deleted account is detected on sign-in.
    * Contains {deletedAt, purgeAfter, userId} so the recovery screen can show the right UI.
@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const firebaseReady = isFirebaseConfigured() && initFirebase();
 
   const isDeletingAccountRef = useRef(false);
+  const isAccountActionInProgressRef = useRef(false);
   const unsubscribeProfileRef = useRef<(() => void) | null>(null);
   const unsubscribeHouseholdsRef = useRef<(() => void) | null>(null);
 
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
         if (cancelled) return;
-        if (isDeletingAccountRef.current) return;
+        if (isDeletingAccountRef.current || isAccountActionInProgressRef.current) return;
 
         if (unsubscribeProfile) {
           unsubscribeProfile();
@@ -171,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const db = getFirestoreDb();
         if (db) {
           unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
-            if (cancelled || isDeletingAccountRef.current) return;
+            if (cancelled || isDeletingAccountRef.current || isAccountActionInProgressRef.current) return;
 
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
@@ -451,7 +452,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const userId = user?.id ?? deletedAccountInfo?.userId;
     setDeletedAccountInfo(null);
     setUser(null);
-    await userRepository.clear(userId);
+    // Guard against undefined userId if both user and deletedAccountInfo are null (edge case)
+    if (userId) await userRepository.clear(userId);
     await cancelAllNotifications();
     try {
       await signOutFirebase();
@@ -647,9 +649,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Delete Account (Soft Delete) ───────────────────────────────────────────
   const deleteAccount = useCallback(
-    async (deletionReason = 'user_requested'): Promise<{ ok: boolean; error?: string }> => {
+    async (deletionReason = 'user_requested', onSoftDeleted?: () => Promise<void>): Promise<{ ok: boolean; error?: string }> => {
       if (!user) return { ok: false, error: 'not_signed_in' };
       const userId = user.id;
+      // Capture a stable snapshot before any async mutations to avoid stale-closure
+      // issues when leaveHousehold's persistUser callback fires after setUser(null)
+      const userSnapshot = { ...user };
       isDeletingAccountRef.current = true;
 
       try {
@@ -664,23 +669,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unsubscribeHouseholdsRef.current = null;
         }
 
-        // 2. Clear state and recovery info immediately so UI does not flash recovery screen
-        setDeletedAccountInfo(null);
-
-        // 3. Leave all households: removes self from member lists, notifies owners
-        const userHouseholds = user.households ?? [];
+        // 2. Leave all households using the stable snapshot — avoids race with setUser(null)
+        // Directly cleans up Firestore without calling persistUser (which depends on live `user`)
+        const userHouseholds = userSnapshot.households ?? [];
         await Promise.allSettled(
-          userHouseholds.map((hh) => leaveHousehold(hh.id))
+          userHouseholds.map(async (hh) => {
+            try {
+              const remoteHh = await userRepository.loadHousehold(hh.id);
+              if (remoteHh) {
+                const userHouseholdCode = userSnapshot.householdCode
+                  ? normalizeInviteCode(userSnapshot.householdCode)
+                  : undefined;
+                const updatedHh = {
+                  ...remoteHh,
+                  members: remoteHh.members.filter((m) => {
+                    if (m.userId && m.userId === userSnapshot.id) return false;
+                    if (userHouseholdCode && normalizeInviteCode(m.code) === userHouseholdCode) return false;
+                    return true;
+                  }),
+                  memberUids: (remoteHh.memberUids ?? []).filter((uid) => uid !== userSnapshot.id),
+                };
+                await userRepository.saveHousehold(updatedHh);
+              }
+              // Notify owner that this member left (only if not the owner themselves)
+              if (hh.ownerUid && hh.ownerUid !== userSnapshot.id) {
+                notifyOwnerMemberLeftHousehold({
+                  householdId: hh.id,
+                  householdName: hh.name || 'Home',
+                  leavingUser: userSnapshot,
+                  ownerUid: hh.ownerUid,
+                }).catch((err) => {
+                  console.warn('[Repeato] deleteAccount: failed to notify owner on leave:', err);
+                });
+              }
+            } catch (err) {
+              console.warn('[Repeato] deleteAccount: failed to leave household', hh.id, err);
+            }
+          })
         );
 
-        // 4. Stamp Firestore with soft-delete marker and sign out Firebase Auth
+        // 3. Stamp Firestore with soft-delete marker (does not sign out auth yet)
         const result = await deleteAccountSoft(userId, deletionReason);
         if (!result.ok) {
           // Non-blocking: still proceed with local cleanup even if remote stamp failed
           console.warn('[Repeato] Remote soft-delete stamp failed:', result.error);
         }
 
-        // 5. Clear local data and session
+        // 4. If a UI hook was provided (e.g. 30-day recovery popup dialog), invoke it while screen is mounted
+        if (onSoftDeleted) {
+          try {
+            await onSoftDeleted();
+          } catch (hookErr) {
+            console.warn('[Repeato] onSoftDeleted hook error:', hookErr);
+          }
+        }
+
+        // 5. Sign out Firebase Auth now that user acknowledged the recovery popup
+        await signOutFirebase().catch(() => {});
+
+        // 6. Clear local data and session
         setUser(null);
         setDeletedAccountInfo(null);
         await userRepository.clear(userId).catch(() => {});
@@ -693,12 +740,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }, 1500);
       }
     },
-    [user, leaveHousehold]
+    [user]
   );
 
   // ── Restore Deleted Account ────────────────────────────────────────────────
   const restoreAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     if (!deletedAccountInfo) return { ok: false, error: 'no_deleted_account' };
+    isAccountActionInProgressRef.current = true;
     try {
       const targetUid = deletedAccountInfo.userId;
       await restoreUserRemote(targetUid);
@@ -722,24 +770,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[Repeato] restoreAccount failed:', msg);
       return { ok: false, error: msg };
+    } finally {
+      setTimeout(() => {
+        isAccountActionInProgressRef.current = false;
+      }, 1000);
     }
   }, [deletedAccountInfo]);
 
   // ── Fresh Start (Permanent Purge) ─────────────────────────────────────────
   const freshStartAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     if (!deletedAccountInfo) return { ok: false, error: 'no_deleted_account' };
+    isAccountActionInProgressRef.current = true;
     try {
       const targetUid = deletedAccountInfo.userId;
       const auth = getFirebaseAuth();
       const fbUser = auth?.currentUser;
       const userEmail = fbUser?.email || deletedAccountInfo.email || '';
 
-      await purgeUserDataRemote(targetUid, userEmail);
-      // Clear local data
-      await userRepository.clear(targetUid).catch(() => {});
-      await cancelAllNotifications().catch(() => {});
-
-      // Build a clean fresh user profile so onboarding begins immediately
+      // Build a clean fresh user profile: start fresh with language selection
       const baseProfile: UserProfile = fbUser
         ? {
             ...profileFromFirebaseUser(fbUser, savedLanguage),
@@ -751,7 +799,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: userEmail,
             phone: '',
             language: savedLanguage,
-            languageSelected: Boolean(languageSelected),
+            languageSelected: false,
             pushOptIn: true,
             profileComplete: false,
             onboardingComplete: false,
@@ -765,10 +813,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deletedAt: undefined,
         purgeAfter: undefined,
         deletionReason: undefined,
-        languageSelected: Boolean(languageSelected),
+        languageSelected: false,
         profileComplete: false,
         onboardingComplete: false,
       });
+
+      // Write authoritative clean profile directly to Firestore in one atomic operation
+      await purgeUserDataRemote(targetUid, userEmail, freshProfile);
+
+      // Clear local storage and cancel lingering notifications
+      await userRepository.clear(targetUid).catch(() => {});
+      await cancelAllNotifications().catch(() => {});
 
       await userRepository.save(freshProfile);
       setUser(freshProfile);
@@ -778,8 +833,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[Repeato] freshStartAccount failed:', msg);
       return { ok: false, error: msg };
+    } finally {
+      setTimeout(() => {
+        isAccountActionInProgressRef.current = false;
+      }, 1000);
     }
-  }, [deletedAccountInfo, savedLanguage, languageSelected]);
+  }, [deletedAccountInfo, savedLanguage]);
 
   const value = useMemo(
     () => ({

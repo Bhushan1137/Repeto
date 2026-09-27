@@ -14,11 +14,9 @@
     "icon": "./assets/images/app-icon.png",
     "scheme": "repeto",
     "userInterfaceStyle": "light",
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.repeto.tasks",
-      "googleServicesFile": "./google-services.json"
-    },
+    "platforms": [
+      "android"
+    ],
     "android": {
       "package": "com.repeto.tasks",
       "versionCode": 2,
@@ -36,11 +34,6 @@
         "POST_NOTIFICATIONS",
         "CAMERA"
       ]
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",

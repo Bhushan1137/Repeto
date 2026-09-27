@@ -7,11 +7,11 @@ import { Colors, Radius } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { AppIcon } from '@/components/AppIcon';
 import type { CategoryKey } from '@/types';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { OnboardingStepIndicator } from '@/components/OnboardingStepIndicator';
 
 export default function CategoriesScreen() {
   const router = useRouter();
@@ -33,19 +33,27 @@ export default function CategoriesScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.container,
-        {
-          paddingTop: Math.max(insets.top, 16) + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 16,
-        },
-      ]}
-      showsVerticalScrollIndicator={false}
-      testID="categories-screen-scroll"
-    >
-      <OnboardingProgress step={3} />
-      
+    <View style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}>
+      <View style={{ paddingTop: Math.max(insets.top, 16) }}>
+        <OnboardingStepIndicator
+          currentStep={3}
+          totalSteps={5}
+          stepLabel={language === 'hi' ? 'श्रेणियां' : 'Categories'}
+          onBack={() => router.replace('/(onboarding)/profile')}
+        />
+      </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        testID="categories-screen-scroll"
+      >
+
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title} testID="categories-title">{translate('whatRepeats')}</Text>
@@ -148,6 +156,7 @@ export default function CategoriesScreen() {
         <Text style={styles.privacyText} testID="categories-privacy-text">{translate('privacyNotice')}</Text>
       </View>
     </ScrollView>
+    </View>
   );
 }
 

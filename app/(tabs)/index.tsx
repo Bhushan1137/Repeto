@@ -29,7 +29,7 @@ import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
-import { Card } from 'react-native-paper';
+import { Card, ActivityIndicator } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth' | 'secLater'> = {
   overdue: 'secOverdue',
@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const {
     tasks,
     loading,
+    isOnboardingTasksAdding,
     completeTask: rawCompleteTask,
     snoozeTask,
     skipTask,
@@ -680,7 +681,22 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {loading && !hasTasks ? (
+        {isOnboardingTasksAdding ? (
+          <Card style={styles.onboardingAddingCard} mode="elevated" testID="homescreen-adding-presets-card">
+            <View style={styles.onboardingAddingInner}>
+              <View style={styles.onboardingAddingIconCircle}>
+                <AppIcon name="sparkles" size={30} color={Colors.marigoldDeep} />
+              </View>
+              <Text style={styles.onboardingAddingTitle}>
+                {translate('addingOnboardingTasks')}
+              </Text>
+              <Text style={styles.onboardingAddingSub}>
+                {translate('addingOnboardingTasksSub')}
+              </Text>
+              <ActivityIndicator size="small" color={Colors.marigoldDeep} style={{ marginTop: 16 }} />
+            </View>
+          </Card>
+        ) : loading && !hasTasks ? (
           <DashboardSkeleton />
         ) : !hasTasks ? (
           <EmptyState
@@ -1516,5 +1532,46 @@ const styles = StyleSheet.create({
   chipBtnClear: {
     borderColor: Colors.marigold,
     backgroundColor: 'rgba(232,163,61,0.1)',
+  },
+  onboardingAddingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    marginVertical: 24,
+    padding: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232,163,61,0.25)',
+    elevation: 3,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  onboardingAddingInner: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  onboardingAddingIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FEF8EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  onboardingAddingTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 19,
+    color: Colors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  onboardingAddingSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
   },
 });

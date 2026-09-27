@@ -5,8 +5,7 @@ import { useRouter } from 'expo-router';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { Button } from '@/components/Button';
 import { LanguagePicker } from '@/components/SettingRow';
-import { ProgressRing } from '@/components/ProgressRing';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
+import { AppIcon } from '@/components/AppIcon';
 import { Colors } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Language } from '@/types';
@@ -23,16 +22,17 @@ export default function LanguageScreen() {
       contentContainerStyle={[
         styles.container,
         {
-          paddingTop: Math.max(insets.top, 16) + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 16,
+          paddingTop: Math.max(insets.top, 24) + 24,
+          paddingBottom: Math.max(insets.bottom, 24) + 24,
         },
       ]}
       showsVerticalScrollIndicator={false}
       testID="language-screen-scroll"
     >
-      <OnboardingProgress step={1} />
       <View style={styles.hero} testID="language-hero-container">
-        <ProgressRing percent={100} color={Colors.marigold} size={72} stroke={6} />
+        <View style={styles.iconCircle}>
+          <AppIcon name="globe-outline" size={32} color={Colors.marigoldDeep} />
+        </View>
         <Text style={styles.heroTitle}>
           {language === 'hi' ? 'भाषा का चयन करें' : 'Choose Your Language'}
         </Text>
@@ -76,27 +76,36 @@ export default function LanguageScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
-  hero: { alignItems: 'center', paddingVertical: 26 },
+  container: { paddingHorizontal: 24, backgroundColor: Colors.surfaceMuted, flexGrow: 1, justifyContent: 'center' },
+  hero: { alignItems: 'center', paddingBottom: 24 },
+  iconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FEF3E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   heroTitle: {
     fontFamily: 'Fraunces_700Bold',
-    fontSize: 26,
+    fontSize: 28,
     color: Colors.ink,
-    marginTop: 18,
+    marginTop: 14,
     marginBottom: 8,
     textAlign: 'center',
   },
   heroSub: {
     fontFamily: 'Manrope_500Medium',
-    fontSize: 13.5,
+    fontSize: 14,
     color: Colors.inkSoft,
     textAlign: 'center',
-    lineHeight: 21,
+    lineHeight: 22,
     maxWidth: 320,
   },
   pickerCard: {
-    marginVertical: 12,
+    marginVertical: 16,
   },
-  cta: { marginTop: 22, height: 48, borderRadius: 24 },
+  cta: { marginTop: 24, height: 50, borderRadius: 25 },
 });
 

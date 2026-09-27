@@ -8,7 +8,7 @@ import {
 } from '@expo-google-fonts/manrope';
 import { Stack, useSegments, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
@@ -50,34 +50,40 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
   const { ready, user, deletedAccountInfo } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const inFlightTargetRef = useRef<string | null>(null);
+
+  const safeReplace = useCallback(
+    (target: string) => {
+      if (inFlightTargetRef.current === target) return;
+      inFlightTargetRef.current = target;
+      router.replace(target as unknown as Parameters<typeof router.replace>[0]);
+    },
+    [router]
+  );
 
   useEffect(() => {
     if (!ready) return;
 
     const rootSegment = segments[0];
     const isInsideOnboarding = rootSegment === '(onboarding)';
-    const isWebLegalPath =
-      Platform.OS === 'web' &&
-      typeof window !== 'undefined' &&
-      Boolean(
-        window.location?.pathname &&
-          (window.location.pathname.includes('privacy') ||
-            window.location.pathname.includes('terms') ||
-            window.location.pathname.includes('deletion'))
-      );
-    const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms' || isWebLegalPath;
+    const isPrivacyOrTerms = rootSegment === 'privacy' || rootSegment === 'terms';
     const isStandaloneModal =
       rootSegment === 'help-support' ||
       rootSegment === 'notifications' ||
       rootSegment === 'presets';
     const currentScreen = segments[segments.length - 1];
 
+    // Reset inFlightTarget if we have arrived at the destination
+    if (inFlightTargetRef.current && (currentScreen === inFlightTargetRef.current.split('/').pop() || (rootSegment === '(tabs)' && inFlightTargetRef.current === '/(tabs)'))) {
+      inFlightTargetRef.current = null;
+    }
+
     if (isPrivacyOrTerms) return;
 
     // 0. Soft-deleted account detected -> MUST be on account-recovery
     if (deletedAccountInfo) {
       if (!isInsideOnboarding || currentScreen !== 'account-recovery') {
-        router.replace('/(onboarding)/account-recovery');
+        safeReplace('/(onboarding)/account-recovery');
       }
       return;
     }
@@ -87,7 +93,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       if (rootSegment === 'help-support') return;
       const isAllowedUnauthScreen = currentScreen === 'sign-in' || currentScreen === 'language';
       if (!isInsideOnboarding || !isAllowedUnauthScreen) {
-        router.replace('/(onboarding)/sign-in');
+        safeReplace('/(onboarding)/sign-in');
       }
       return;
     }
@@ -96,7 +102,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     const isFullyOnboarded = !!(user.languageSelected && user.profileComplete && user.onboardingComplete);
     if (isFullyOnboarded) {
       if (rootSegment !== '(tabs)' && !isStandaloneModal) {
-        router.replace('/(tabs)');
+        safeReplace('/(tabs)');
       }
       return;
     }
@@ -106,11 +112,11 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     //    route them into onboarding where they left off
     if (!isInsideOnboarding && !isStandaloneModal) {
       if (!user.languageSelected) {
-        router.replace('/(onboarding)/language');
+        safeReplace('/(onboarding)/language');
       } else if (!user.profileComplete) {
-        router.replace('/(onboarding)/profile');
+        safeReplace('/(onboarding)/profile');
       } else {
-        router.replace('/(onboarding)/categories');
+        safeReplace('/(onboarding)/categories');
       }
       return;
     }
@@ -119,18 +125,28 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     //    route them into onboarding where they left off
     if (currentScreen === 'sign-in' || currentScreen === 'account-recovery') {
       if (!user.languageSelected) {
-        router.replace('/(onboarding)/language');
+        safeReplace('/(onboarding)/language');
       } else if (!user.profileComplete) {
-        router.replace('/(onboarding)/profile');
+        safeReplace('/(onboarding)/profile');
       } else {
-        router.replace('/(onboarding)/categories');
+        safeReplace('/(onboarding)/categories');
       }
       return;
     }
 
     // C) If user is already on an active onboarding screen (language, profile, categories, suggestions, finish):
     //    Do not interfere — let screen transitions and back buttons work cleanly without double navigation.
-  }, [ready, user, deletedAccountInfo, segments]);
+  }, [
+    ready,
+    user?.id,
+    user?.languageSelected,
+    user?.profileComplete,
+    user?.onboardingComplete,
+    deletedAccountInfo,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    segments.join('/'),
+    safeReplace,
+  ]);
 
   if (!ready) {
     return (

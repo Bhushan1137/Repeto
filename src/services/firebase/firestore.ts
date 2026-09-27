@@ -339,9 +339,13 @@ export async function restoreUserRemote(userId: string): Promise<void> {
  * Deletes all sub-collections (tasks, notifications) and overwrites the user doc
  * with a clean slate preserving id and email. The Firebase Auth account is kept.
  */
-export async function purgeUserDataRemote(userId: string, email?: string): Promise<void> {
+export async function purgeUserDataRemote(userId: string, email?: string, initialProfile?: Partial<UserProfile>): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;
+
+  // Ensure Firebase auth token is valid before making writes that require authentication
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
 
   // Delete all personal tasks
   try {
@@ -360,10 +364,20 @@ export async function purgeUserDataRemote(userId: string, email?: string): Promi
   }
 
   // Overwrite the user doc with a clean slate (id and email preserved)
-  await setDoc(doc(db, 'users', userId), {
+  const cleanDoc = forFirestore({
     id: userId,
     email: email || '',
     isDeleted: false,
     purgedAt: new Date().toISOString(),
+    name: initialProfile?.name ?? '',
+    language: initialProfile?.language ?? 'en',
+    languageSelected: initialProfile?.languageSelected ?? false,
+    profileComplete: false,
+    onboardingComplete: false,
+    plan: 'free',
+    pushOptIn: true,
+    ...(initialProfile ?? {}),
   });
+
+  await setDoc(doc(db, 'users', userId), cleanDoc);
 }

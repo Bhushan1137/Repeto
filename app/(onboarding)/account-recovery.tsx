@@ -2,17 +2,17 @@ import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/AppIcon';
 import { Button } from '@/components/Button';
 import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
+import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function AccountRecoveryScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { deletedAccountInfo, restoreAccount, freshStartAccount, signOut, language, languageSelected } = useAuth();
+  const { deletedAccountInfo, restoreAccount, freshStartAccount, signOut, language } = useAuth();
+  const { showToast } = useToast();
   const { translate } = useTranslation(language);
 
   const [loading, setLoading] = useState<'restore' | 'fresh' | 'signout' | null>(null);
@@ -60,8 +60,10 @@ export default function AccountRecoveryScreen() {
       if (!res.ok) {
         setError(res.error || translate('recoveryError'));
       } else {
-        router.replace('/(tabs)');
+        showToast(translate('recoveryRestoreSuccess'));
       }
+      // NavigationGuard watches user + deletedAccountInfo and routes automatically
+      // once restoreAccount() commits the new state — no manual router.replace() needed
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : translate('recoveryError'));
     } finally {
@@ -98,12 +100,10 @@ export default function AccountRecoveryScreen() {
       if (!res.ok) {
         setError(res.error || translate('recoveryError'));
       } else {
-        if (!languageSelected) {
-          router.replace('/(onboarding)/language');
-        } else {
-          router.replace('/(onboarding)/profile');
-        }
+        showToast(translate('recoveryFreshSuccess'));
       }
+      // NavigationGuard reads the fresh user's languageSelected/profileComplete flags
+      // and routes to the correct onboarding step automatically — no manual router.replace() needed
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : translate('recoveryError'));
     } finally {

@@ -1,36 +1,36 @@
-import React, { useState, useMemo } from 'react';
-import {
-  View,
-  StyleSheet,
-  Alert,
-  Platform,
-  Modal,
-  Pressable,
-  KeyboardAvoidingView,
-  ScrollView,
-} from 'react-native';
-import { Text, Card, TouchableRipple, ActivityIndicator } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { AppIcon } from '@/components/AppIcon';
+import { ArchivedTasksSheet } from '@/components/ArchivedTasksSheet';
+import { Button } from '@/components/Button';
+import { FormField } from '@/components/FormField';
+import { GroupedSettingCard, SettingItem } from '@/components/profile/GroupedSettingCard';
+import { MemberPassModal } from '@/components/profile/MemberPassModal';
+import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
+import { Toggle } from '@/components/Toggle';
+import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
+import { initials } from '@/domain/insights';
+import { formatPhone, validateName, validatePhone } from '@/domain/validation';
+import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
-import { useTranslation } from '@/hooks/useTranslation';
-import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
-import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
-import { initials } from '@/domain/insights';
-import { requestNotificationPermission, cancelAllNotifications, scheduleTaskReminder } from '@/services/notifications';
-import { AppIcon } from '@/components/AppIcon';
-import { Button } from '@/components/Button';
-import { FormField } from '@/components/FormField';
-import { Toggle } from '@/components/Toggle';
-import { validateName, validatePhone, formatPhone } from '@/domain/validation';
-import type { Language } from '@/types';
 import { exportCalendar } from '@/services/calendarExport';
-import { ArchivedTasksSheet } from '@/components/ArchivedTasksSheet';
-import { GroupedSettingCard, SettingItem } from '@/components/profile/GroupedSettingCard';
-import { MemberPassModal } from '@/components/profile/MemberPassModal';
+import { cancelAllNotifications, requestNotificationPermission, scheduleTaskReminder } from '@/services/notifications';
+import type { Language } from '@/types';
 import { getAppVersionLabel } from '@/utils/version';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { ActivityIndicator, Card, Text, TouchableRipple } from 'react-native-paper';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -99,22 +99,81 @@ export default function ProfileScreen() {
     }
   };
 
+  const [showDeletedNoticeModal, setShowDeletedNoticeModal] = useState(false);
+  const deleteModalResolverRef = useRef<(() => void) | null>(null);
+
   const executeDelete = async (reason: string) => {
     setDeleting(true);
     try {
-      const res = await deleteAccount(reason);
+      const res = await deleteAccount(reason, async () => {
+        setDeleting(false);
+        setShowDeletedNoticeModal(true);
+        await new Promise<void>((resolve) => {
+          deleteModalResolverRef.current = resolve;
+          // Generous timeout fallback so modal doesn't prematurely disappear while reading
+          setTimeout(() => {
+            if (deleteModalResolverRef.current) {
+              deleteModalResolverRef.current();
+              deleteModalResolverRef.current = null;
+            }
+          }, 60000);
+        });
+      });
       if (!res.ok) {
         showToast(translate('deleteAccountError'));
         setDeleting(false);
         return;
       }
       resetTasks();
-      showToast(translate('deleteAccountSuccess'));
     } catch {
       showToast(translate('deleteAccountError'));
       setDeleting(false);
     }
   };
+
+  const handleDismissDeletedNotice = () => {
+    setShowDeletedNoticeModal(false);
+    if (deleteModalResolverRef.current) {
+      deleteModalResolverRef.current();
+      deleteModalResolverRef.current = null;
+    }
+  };
+
+  const renderRecoveryNoticeModal = () => (
+    <Modal
+      visible={showDeletedNoticeModal}
+      transparent
+      animationType="fade"
+      onRequestClose={handleDismissDeletedNotice}
+    >
+      <View style={styles.noticeModalBackdrop} testID="delete-recovery-notice-modal">
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleDismissDeletedNotice} />
+        <Card style={styles.noticeModalCard} mode="elevated">
+          <View style={styles.noticeIconCircle}>
+            <AppIcon name="shield-checkmark" size={36} color={Colors.tealDeep} />
+          </View>
+          <Text style={styles.noticeModalTitle}>
+            {translate('deleteAccountPopupTitle')}
+          </Text>
+          <View style={styles.graceBadge}>
+            <AppIcon name="time-outline" size={16} color={Colors.marigoldDeep} />
+            <Text style={styles.graceBadgeText}>
+              {isHi ? '30 दिन की रिकवरी अवधि' : '30-Day Recovery Window'}
+            </Text>
+          </View>
+          <Text style={styles.noticeModalBody}>
+            {translate('deleteAccountRecoveryNotice')}
+          </Text>
+          <Button
+            title={translate('deleteAccountPopupBtn')}
+            onPress={handleDismissDeletedNotice}
+            style={styles.noticeModalBtn}
+            testID="delete-recovery-popup-ok-btn"
+          />
+        </Card>
+      </View>
+    </Modal>
+  );
 
   // Activity stats calculation
   const stats = useMemo(() => {
@@ -150,6 +209,7 @@ export default function ProfileScreen() {
         <View style={{ padding: 20, alignItems: 'center' }}>
           <Text style={{ fontSize: 14, color: Colors.inkSoft }}>Loading profile...</Text>
         </View>
+        {renderRecoveryNoticeModal()}
       </ScreenShell>
     );
   }
@@ -274,7 +334,7 @@ export default function ProfileScreen() {
                   updateUser({ pushOptIn: true });
                   if (granted) {
                     for (const t of tasks) {
-                      if (!t.archived) scheduleTaskReminder(t).catch(() => {});
+                      if (!t.archived) scheduleTaskReminder(t).catch(() => { });
                     }
                   }
                 } else {
@@ -683,12 +743,21 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.deletingSub}>
               {isHi
-                ? 'आपका डेटा सुरक्षित रूप से हटाया जा रहा है और साइन आउट किया जा रहा है...'
-                : 'Safely wiping your data and signing out...'}
+                ? 'आपका डेटा सुरक्षित रूप से हटाया जा रहा है...'
+                : 'Safely scheduling deletion...'}
             </Text>
+            <View style={styles.deletingRecoveryNoticeCard}>
+              <AppIcon name="shield-outline" size={18} color={Colors.marigoldDeep} style={{ marginRight: 6 }} />
+              <Text style={styles.deletingRecoveryNoticeText}>
+                {translate('deleteAccountRecoveryNotice')}
+              </Text>
+            </View>
           </View>
         </View>
       )}
+
+      {/* 30-Day Recovery Notice Modal Popup */}
+      {renderRecoveryNoticeModal()}
     </ScreenShell>
   );
 }
@@ -1096,6 +1165,82 @@ const styles = StyleSheet.create({
     color: Colors.inkSoft,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  deletingRecoveryNoticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF8EE',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.25)',
+    borderRadius: Radius.md,
+    padding: 10,
+    marginTop: 14,
+  },
+  deletingRecoveryNoticeText: {
+    flex: 1,
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: Colors.indigo950,
+    lineHeight: 17,
+  },
+  noticeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(23, 27, 54, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  noticeModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    ...Shadows.md,
+  },
+  noticeIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(20, 110, 120, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  noticeModalTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.ink,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  graceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(232, 163, 61, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    gap: 6,
+    marginBottom: 12,
+  },
+  graceBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12.5,
+    color: Colors.indigo950,
+  },
+  noticeModalBody: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  noticeModalBtn: {
+    width: '100%',
+    backgroundColor: Colors.white
   },
 });
 

@@ -81,6 +81,7 @@ interface TaskContextValue {
   addPresetTask: (values: TaskFormValues, shared?: SharedMember[]) => Promise<boolean>;
   updateTask: (taskId: string, values: TaskFormValues, shared?: SharedMember[]) => Promise<void>;
   completeOnboarding: (opts: { selectedPresets: OnboardingPreset[]; pushOptIn: boolean }) => Promise<void>;
+  isOnboardingTasksAdding: boolean;
   resetTasks: () => void;
   deleteHistoryEntry: (taskId: string, entryIndex: number) => Promise<void>;
   undoCompleteTask: (taskId: string, historyIndex?: number) => Promise<void>;
@@ -109,6 +110,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const pendingNotificationResponseRef = useRef<Notifications.NotificationResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isOnboardingTasksAdding, setIsOnboardingTasksAdding] = useState(false);
   const userIdRef = useRef<string | null>(null);
   const wasOfflineRef = useRef<boolean>(false);
   const tasksRef = useRef<RepeatingTask[]>(tasks);
@@ -607,6 +609,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const completeOnboarding = useCallback(
     async (opts: { selectedPresets: OnboardingPreset[]; pushOptIn: boolean }) => {
       if (!user) return;
+      if (opts.selectedPresets.length > 0) {
+        setIsOnboardingTasksAdding(true);
+      }
       try {
         const built = opts.selectedPresets.map((p) =>
           createTaskFromPreset(p.title, p.category, p.freq, p.amount, p.finance, p.icon, user.name)
@@ -621,6 +626,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         showToast(translate('saveError'));
+      } finally {
+        setTimeout(() => {
+          setIsOnboardingTasksAdding(false);
+        }, 600);
       }
     },
     [user, updateUser, showToast, translate]
@@ -1266,6 +1275,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       addPresetTask,
       updateTask,
       completeOnboarding,
+      isOnboardingTasksAdding,
       resetTasks,
       deleteHistoryEntry,
       undoCompleteTask,
@@ -1303,6 +1313,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       addPresetTask,
       updateTask,
       completeOnboarding,
+      isOnboardingTasksAdding,
       resetTasks,
       deleteHistoryEntry,
       undoCompleteTask,

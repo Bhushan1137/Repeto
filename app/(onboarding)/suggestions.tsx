@@ -7,11 +7,11 @@ import { Colors, Radius } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { formValuesToSuggestionPatch, suggestionToFormValues } from '@/domain/preset';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { OnboardingStepIndicator } from '@/components/OnboardingStepIndicator';
 
 export default function SuggestionsScreen() {
   const router = useRouter();
@@ -36,18 +36,25 @@ export default function SuggestionsScreen() {
 
   return (
     <View style={styles.screen} testID="suggestions-screen-root">
+      <View style={{ paddingTop: Math.max(insets.top, 16) }}>
+        <OnboardingStepIndicator
+          currentStep={4}
+          totalSteps={5}
+          stepLabel={language === 'hi' ? 'कार्य' : 'Presets'}
+          onBack={() => router.replace('/(onboarding)/categories')}
+        />
+      </View>
       <ScrollView
         contentContainerStyle={[
           styles.container,
           {
-            paddingTop: Math.max(insets.top, 16) + 16,
+            paddingTop: 8,
             paddingBottom: 100,
           },
         ]}
         showsVerticalScrollIndicator={false}
         testID="suggestions-screen-scroll"
       >
-        <OnboardingProgress step={4} />
         <Text style={styles.title} testID="suggestions-title">{translate('suggestedForYou')}</Text>
         <Text style={styles.sub} testID="suggestions-subtitle">{translate('tasksWillBeAdded', { count: acceptedCount })}</Text>
         <Text style={styles.hint} testID="suggestions-hint">{translate('tapToEditPreset')}</Text>
