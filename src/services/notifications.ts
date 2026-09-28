@@ -168,7 +168,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
 
   const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
 
-  const reminderChannelId = Platform.OS === 'android' ? 'alarm' : 'default';
+  const reminderChannelId = Platform.OS === 'android'
+    ? (task.alarmEnabled ? 'alarm' : 'default')
+    : 'default';
 
   if (isMulti) {
     const progress = getTodayDoseProgress(task);
@@ -199,7 +201,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         }
         nextDate.setHours(doseHour, doseMinute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
-          scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, nextDate.getTime()).catch(() => {});
+          if (task.alarmEnabled) {
+            scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, nextDate.getTime()).catch(() => {});
+          }
           await Notifications.scheduleNotificationAsync({
             content: doseContent,
             trigger: {
@@ -217,7 +221,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           if (doseToday.getTime() <= Date.now()) {
             doseToday.setDate(doseToday.getDate() + 1);
           }
-          scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, doseToday.getTime()).catch(() => {});
+          if (task.alarmEnabled) {
+            scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, doseToday.getTime()).catch(() => {});
+          }
           await Notifications.scheduleNotificationAsync({
             content: doseContent,
             trigger: {
@@ -232,7 +238,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           const triggerDate = new Date(task.nextDueDate);
           triggerDate.setHours(doseHour, doseMinute, 0, 0);
           if (triggerDate.getTime() > Date.now()) {
-            scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, triggerDate.getTime()).catch(() => {});
+            if (task.alarmEnabled) {
+              scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, triggerDate.getTime()).catch(() => {});
+            }
             await Notifications.scheduleNotificationAsync({
               content: doseContent,
               trigger: {
@@ -270,7 +278,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     const snoozeDate = new Date(task.snoozedUntil);
     snoozeDate.setHours(hour, minute, 0, 0);
     if (snoozeDate.getTime() > Date.now()) {
-      scheduleNativeAlarm(task.id, task.title, snoozeDate.getTime()).catch(() => {});
+      if (task.alarmEnabled) {
+        scheduleNativeAlarm(task.id, task.title, snoozeDate.getTime()).catch(() => {});
+      }
       await Notifications.scheduleNotificationAsync({
         content,
         trigger: {
@@ -293,7 +303,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         const nextDate = new Date(task.nextDueDate);
         nextDate.setHours(hour, minute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
-          scheduleNativeAlarm(task.id, task.title, nextDate.getTime()).catch(() => {});
+          if (task.alarmEnabled) {
+            scheduleNativeAlarm(task.id, task.title, nextDate.getTime()).catch(() => {});
+          }
           await Notifications.scheduleNotificationAsync({
             content,
             trigger: {
@@ -310,7 +322,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         if (todayAlarm.getTime() <= Date.now()) {
           todayAlarm.setDate(todayAlarm.getDate() + 1);
         }
-        scheduleNativeAlarm(task.id, task.title, todayAlarm.getTime()).catch(() => {});
+        if (task.alarmEnabled) {
+          scheduleNativeAlarm(task.id, task.title, todayAlarm.getTime()).catch(() => {});
+        }
         await Notifications.scheduleNotificationAsync({
           content,
           trigger: {
@@ -328,7 +342,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
       if (targetDate.getTime() > Date.now()) {
-        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        if (task.alarmEnabled) {
+          scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        }
       }
       await Notifications.scheduleNotificationAsync({
         content,
@@ -346,7 +362,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
       if (targetDate.getTime() > Date.now()) {
-        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        if (task.alarmEnabled) {
+          scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        }
       }
       await Notifications.scheduleNotificationAsync({
         content,
@@ -366,7 +384,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
       if (targetDate.getTime() > Date.now()) {
-        scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        if (task.alarmEnabled) {
+          scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
+        }
       }
       await Notifications.scheduleNotificationAsync({
         content,
@@ -389,7 +409,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         triggerDate.setHours(hour, minute, 0, 0);
 
         if (triggerDate.getTime() > Date.now()) {
-          if (i === 0) {
+          if (i === 0 && task.alarmEnabled) {
             scheduleNativeAlarm(task.id, task.title, triggerDate.getTime()).catch(() => {});
           }
           await Notifications.scheduleNotificationAsync({

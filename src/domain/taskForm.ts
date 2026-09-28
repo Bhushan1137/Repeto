@@ -20,6 +20,8 @@ export interface TaskFormValues {
   note?: string;
   isRotating?: boolean;
   rotationMembers?: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled?: boolean;
 }
 
 export interface TaskFormState {
@@ -44,6 +46,8 @@ export interface TaskFormState {
   note: string;
   isRotating: boolean;
   rotationMembers: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled: boolean;
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -171,6 +175,7 @@ export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState
     note: '',
     isRotating: false,
     rotationMembers: [],
+    alarmEnabled: category === 'medicines',
   };
 }
 
@@ -199,6 +204,7 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     note: values.note ?? '',
     isRotating: !!values.isRotating,
     rotationMembers: values.rotationMembers ?? [],
+    alarmEnabled: values.alarmEnabled ?? false,
   };
 }
 
@@ -231,6 +237,8 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     note: '',
     isRotating: false,
     rotationMembers: [],
+    // Medicine tasks default to alarm ON; all other categories default OFF
+    alarmEnabled: parsed.category === 'medicines',
   };
 }
 
@@ -260,6 +268,8 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     note: '',
     isRotating: !!task.isRotating,
     rotationMembers: task.rotationMembers ?? [],
+    // Preserve existing alarmEnabled; medicine defaults to ON for new tasks
+    alarmEnabled: task.alarmEnabled ?? (task.category === 'medicines'),
   };
 }
 
@@ -319,6 +329,7 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     note: state.note.trim() || undefined,
     isRotating: state.isRotating,
     rotationMembers: state.rotationMembers.length > 0 ? state.rotationMembers : undefined,
+    alarmEnabled: state.alarmEnabled,
   };
 }
 

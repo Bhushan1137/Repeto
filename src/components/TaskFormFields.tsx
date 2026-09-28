@@ -5,6 +5,7 @@ import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
 import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
 import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
 import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
+import { AlarmToggleRow } from '@/components/taskForm/AlarmToggleRow';
 import { TimeField } from '@/components/TimeField';
 import { formatTime12 } from '@/utils/timeFormat';
 import { CATEGORY_MAP } from '@/constants/categories';
@@ -624,6 +625,13 @@ export function TaskFormFields({
               </View>
             </View>
           )}
+
+          {/* Alarm Mode Toggle (Fullscreen Alarm vs Push Notification) */}
+          <AlarmToggleRow
+            value={state.alarmEnabled}
+            onChange={(alarmEnabled) => onChange({ alarmEnabled })}
+            language={language}
+          />
         </View>
 
         {/* 4. Schedule Summary Box */}
@@ -635,8 +643,8 @@ export function TaskFormFields({
             <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
             <Text style={styles.summarySub}>
               {language === 'hi'
-                ? `आपको ${previewLabel} पर ${summaryTimesStr} बजे याद दिलाया जाएगा${state.isMultiTime && state.timesPerDay > 1 ? ` (दिन में ${state.timesPerDay} बार)` : ''}।`
-                : `You'll be reminded ${previewLabel} at ${summaryTimesStr}${state.isMultiTime && state.timesPerDay > 1 ? ` (${state.timesPerDay} times a day)` : ''}.`}
+                ? `आपको ${previewLabel} पर ${summaryTimesStr} बजे याद दिलाया जाएगा${state.isMultiTime && state.timesPerDay > 1 ? ` (दिन में ${state.timesPerDay} बार)` : ''}${state.alarmEnabled ? ' (🔔 अलार्म)' : ' (📲 सूचना)'}।`
+                : `You'll be reminded ${previewLabel} at ${summaryTimesStr}${state.isMultiTime && state.timesPerDay > 1 ? ` (${state.timesPerDay} times a day)` : ''}${state.alarmEnabled ? ' (🔔 Alarm)' : ' (📲 Push)'}.`}
               {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
             </Text>
           </View>

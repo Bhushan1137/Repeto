@@ -195,5 +195,29 @@ describe('domain/taskForm', () => {
     expect(state.reminderTime).toMatch(/^\d{2}:\d{2}$/);
     expect(state.reminderTimes).toContain(state.reminderTime);
   });
+
+  it('alarmEnabled defaults correctly and preserves through form conversions', () => {
+    // Medicine defaults to alarmEnabled: true
+    const medState = defaultFormState('medicines');
+    expect(medState.alarmEnabled).toBe(true);
+
+    // Bills default to alarmEnabled: false
+    const billState = defaultFormState('bills');
+    expect(billState.alarmEnabled).toBe(false);
+
+    // formStateToValues preserves alarmEnabled
+    medState.title = 'Blood pressure med';
+    const values = formStateToValues(medState, 'en');
+    expect(values.alarmEnabled).toBe(true);
+
+    // formStateFromValues reads alarmEnabled
+    const restored = formStateFromValues(values);
+    expect(restored.alarmEnabled).toBe(true);
+
+    // Explicitly toggle off
+    restored.alarmEnabled = false;
+    const toggledValues = formStateToValues(restored, 'en');
+    expect(toggledValues.alarmEnabled).toBe(false);
+  });
 });
 

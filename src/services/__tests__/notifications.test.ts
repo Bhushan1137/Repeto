@@ -71,6 +71,38 @@ describe('services/notifications', () => {
     );
   });
 
+  it('scheduleTaskReminder uses alarm channel on Android when alarmEnabled is true', async () => {
+    Platform.OS = 'android';
+    const task = createTaskFromPreset('Blood pressure med', 'medicines', 'Every day');
+    task.reminderTime = '09:00';
+    task.alarmEnabled = true;
+
+    await scheduleTaskReminder(task);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: expect.objectContaining({
+          channelId: 'alarm',
+        }),
+      })
+    );
+  });
+
+  it('scheduleTaskReminder uses default channel on Android when alarmEnabled is false', async () => {
+    Platform.OS = 'android';
+    const task = createTaskFromPreset('Read book', 'education', 'Every day');
+    task.reminderTime = '21:00';
+    task.alarmEnabled = false;
+
+    await scheduleTaskReminder(task);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: expect.objectContaining({
+          channelId: 'default',
+        }),
+      })
+    );
+  });
+
   it('scheduleTaskReminder schedules 5-occurrence rolling buffer for interval task', async () => {
     const task = createTaskFromPreset('Filter Change', 'home', 'Every 3 days');
     const future = new Date();

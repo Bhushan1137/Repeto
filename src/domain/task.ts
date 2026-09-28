@@ -79,6 +79,7 @@ export function createTaskFromFormValues(
     updatedAt: now,
     escalationCount: 0,
     icon: values.icon,
+    alarmEnabled: values.alarmEnabled,
     creatorName,
   };
 }
@@ -668,6 +669,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     rotationMembers: values.rotationMembers !== undefined ? values.rotationMembers : task.rotationMembers,
     householdId: values.householdId !== undefined ? values.householdId : task.householdId,
     icon: values.icon,
+    alarmEnabled: values.alarmEnabled,
     nextDueDate,
     updatedAt: new Date().toISOString(),
   };

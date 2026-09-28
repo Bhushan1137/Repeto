@@ -123,6 +123,8 @@ export interface RepeatingTask {
   archived?: boolean;
   archivedAt?: string;
   creatorName?: string;
+  /** true = fullscreen native alarm; false/undefined = standard push notification */
+  alarmEnabled?: boolean;
 }
 
 export interface UserProfile {
