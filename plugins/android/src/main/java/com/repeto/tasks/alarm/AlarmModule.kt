@@ -113,8 +113,8 @@ class AlarmModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
     @ReactMethod
     fun getInitialAlarmAction(promise: Promise) {
         try {
-            val currentActivity = currentActivity
-            val intent = currentActivity?.intent
+            val activity = reactApplicationContext.currentActivity
+            val intent = activity?.intent
             val action = intent?.getStringExtra("alarmAction")
             val taskId = intent?.getStringExtra("taskId")
 
