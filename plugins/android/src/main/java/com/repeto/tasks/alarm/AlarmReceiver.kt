@@ -25,13 +25,14 @@ class AlarmReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE = "com.repeto.tasks.ALARM_ACTION_SNOOZE"
         const val ACTION_DISMISS = "com.repeto.tasks.ALARM_DISMISS"
 
-        fun schedule(context: Context, taskId: String, title: String, triggerAtMillis: Long) {
+        fun schedule(context: Context, taskId: String, title: String, triggerAtMillis: Long, snoozeCount: Int = 0) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 action = ACTION_ALARM_TRIGGER
                 putExtra("taskId", taskId)
                 putExtra("title", title)
                 putExtra("notificationId", taskId.hashCode())
+                putExtra("snoozeCount", snoozeCount)
             }
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -69,24 +70,61 @@ class AlarmReceiver : BroadcastReceiver() {
             }
             NotificationManagerCompat.from(context).cancel(taskId.hashCode())
         }
-    }
+
+        fun showMissedNotification(context: Context, taskId: String, title: String, notificationId: Int) {
+            val missedNotifId = notificationId + 5000
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                missedNotifId,
+                launchIntent ?: Intent(),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val smallIcon = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+                .takeIf { it != 0 } ?: android.R.drawable.ic_lock_idle_alarm
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(smallIcon)
+                .setContentTitle("⚠️ Missed Reminder")
+                .setContentText(title)
+                .setStyle(NotificationCompat.BigTextStyle().bigText("You missed your reminder: $title"))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setColor(Color.parseColor("#E8A33D"))
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .build()
+
+            try {
+                NotificationManagerCompat.from(context).notify(missedNotifId, notification)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to show missed notification: ${e.message}", e)
+            }
+        }
+    } // end companion object
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         val taskId = intent.getStringExtra("taskId") ?: ""
         val title = intent.getStringExtra("title") ?: "Task Reminder"
         val notificationId = intent.getIntExtra("notificationId", taskId.hashCode())
+        val snoozeCount = intent.getIntExtra("snoozeCount", 0)
 
-        Log.d(TAG, "Received action: $action for taskId: $taskId")
+        Log.d(TAG, "Received action: $action for taskId: $taskId snoozeCount: $snoozeCount")
 
         when (action) {
             ACTION_ALARM_TRIGGER -> {
-                handleAlarmTrigger(context, taskId, title, notificationId)
+                handleAlarmTrigger(context, taskId, title, notificationId, snoozeCount)
             }
             ACTION_MARK_DONE -> {
                 handleMarkDone(context, taskId, notificationId)
             }
             ACTION_SNOOZE -> {
+                // Manual snooze by user — reset snooze count to 0
                 handleSnooze(context, taskId, title, notificationId)
             }
             ACTION_DISMISS -> {
@@ -95,23 +133,24 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun handleAlarmTrigger(context: Context, taskId: String, title: String, notificationId: Int) {
+    private fun handleAlarmTrigger(context: Context, taskId: String, title: String, notificationId: Int, snoozeCount: Int = 0) {
         // 1. Acquire temporary wake lock to ensure CPU is awake
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val wakeLock = powerManager?.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "repeto:alarm_trigger_wakelock"
         )
-        wakeLock?.acquire(10 * 1000L)
+        wakeLock?.acquire(15 * 1000L)
 
         // 2. Ensure notification channel exists
         createAlarmChannel(context)
 
-        // 3. Full-Screen Intent pointing to AlarmActivity
+        // 3. Full-Screen Intent pointing to AlarmActivity (carries snoozeCount)
         val fullScreenIntent = Intent(context, AlarmActivity::class.java).apply {
             putExtra("taskId", taskId)
             putExtra("title", title)
             putExtra("notificationId", notificationId)
+            putExtra("snoozeCount", snoozeCount)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
@@ -139,6 +178,8 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra("taskId", taskId)
             putExtra("title", title)
             putExtra("notificationId", notificationId)
+            // Manual snooze resets auto-snooze count
+            putExtra("snoozeCount", 0)
         }
         val snoozePendingIntent = PendingIntent.getBroadcast(
             context,
@@ -181,9 +222,19 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.e(TAG, "Failed to display notification: ${e.message}", e)
         }
 
+        // 5. Also directly launch AlarmActivity to guarantee fullscreen on all Android versions
+        try {
+            context.startActivity(fullScreenIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not directly launch AlarmActivity: ${e.message}")
+        }
+
+        wakeLock?.release()
+
         // Notify active React Native bridge if running
         AlarmModule.notifyTrigger(taskId, title)
     }
+
 
     private fun handleMarkDone(context: Context, taskId: String, notificationId: Int) {
         NotificationManagerCompat.from(context).cancel(notificationId)

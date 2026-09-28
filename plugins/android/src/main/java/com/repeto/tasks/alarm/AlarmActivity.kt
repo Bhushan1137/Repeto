@@ -12,6 +12,8 @@ import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -29,6 +31,13 @@ class AlarmActivity : Activity() {
     private var taskId: String = ""
     private var title: String = ""
     private var notificationId: Int = 1001
+    private var snoozeCount: Int = 0
+
+    // Auto-snooze: dismiss after 1 min if user doesn't interact
+    private val autoSnoozeHandler = Handler(Looper.getMainLooper())
+    private val autoSnoozeRunnable = Runnable { autoSnoozeOrMiss() }
+    private val AUTO_SNOOZE_DELAY_MS = 60 * 1000L  // 1 minute
+    private val AUTO_SNOOZE_DURATION_MS = 15 * 60 * 1000L // 15 minutes
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,10 +62,37 @@ class AlarmActivity : Activity() {
         taskId = intent.getStringExtra("taskId") ?: ""
         title = intent.getStringExtra("title") ?: "Task Reminder"
         notificationId = intent.getIntExtra("notificationId", taskId.hashCode())
+        snoozeCount = intent.getIntExtra("snoozeCount", 0)
 
         startAlarmSound()
         startVibrator()
         setupUI()
+
+        // Start auto-snooze countdown (1 minute)
+        autoSnoozeHandler.postDelayed(autoSnoozeRunnable, AUTO_SNOOZE_DELAY_MS)
+    }
+
+    /**
+     * Called when user ignores the alarm for 1 minute.
+     * First miss:  auto-snooze for 15 min (snoozeCount becomes 1)
+     * Second miss: show "Missed Reminder" notification and dismiss
+     */
+    private fun autoSnoozeOrMiss() {
+        stopAlarm()
+        NotificationManagerCompat.from(this).cancel(notificationId)
+
+        if (snoozeCount == 0) {
+            // First miss — auto-snooze 15 minutes
+            val snoozeTime = System.currentTimeMillis() + AUTO_SNOOZE_DURATION_MS
+            AlarmReceiver.schedule(this, taskId, title, snoozeTime, snoozeCount = 1)
+            AlarmModule.notifyAction("SNOOZE_AUTO", taskId)
+        } else {
+            // Second miss — show missed notification, no further re-scheduling
+            AlarmReceiver.showMissedNotification(this, taskId, title, notificationId)
+            AlarmModule.notifyAction("MISSED", taskId)
+        }
+
+        finishAndRemoveTask()
     }
 
     private fun startAlarmSound() {
@@ -238,6 +274,7 @@ class AlarmActivity : Activity() {
                 bottomMargin = dp(14)
             }
             setOnClickListener {
+                autoSnoozeHandler.removeCallbacks(autoSnoozeRunnable)
                 stopAlarm()
                 NotificationManagerCompat.from(this@AlarmActivity).cancel(notificationId)
                 AlarmModule.notifyAction("MARK_DONE", taskId)
@@ -273,6 +310,7 @@ class AlarmActivity : Activity() {
                 bottomMargin = dp(14)
             }
             setOnClickListener {
+                autoSnoozeHandler.removeCallbacks(autoSnoozeRunnable)
                 stopAlarm()
                 NotificationManagerCompat.from(this@AlarmActivity).cancel(notificationId)
                 val snoozeTime = System.currentTimeMillis() + (2L * 24 * 60 * 60 * 1000)
@@ -305,6 +343,7 @@ class AlarmActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
             setOnClickListener {
+                autoSnoozeHandler.removeCallbacks(autoSnoozeRunnable)
                 stopAlarm()
                 NotificationManagerCompat.from(this@AlarmActivity).cancel(notificationId)
                 finishAndRemoveTask()
@@ -325,6 +364,7 @@ class AlarmActivity : Activity() {
     }
 
     override fun onDestroy() {
+        autoSnoozeHandler.removeCallbacks(autoSnoozeRunnable)
         stopAlarm()
         super.onDestroy()
     }
