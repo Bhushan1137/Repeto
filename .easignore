@@ -17,5 +17,6 @@ firebase.json
 .firebaserc
 firestore.rules
 Reapeato_change_request.md
-android/
-ios/
+/android/
+/ios/
+!plugins/android/**
