@@ -1,8 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Platform, DeviceEventEmitter } from 'react-native';
+import { Platform, DeviceEventEmitter, AppState, type AppStateStatus } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useTasks } from '@/providers/TaskProvider';
-import { getInitialAlarmAction, type AlarmActionPayload } from '@/services/alarmNative';
+import {
+  getInitialAlarmAction,
+  getPendingAlarmActions,
+} from '@/services/alarmNative';
 
 export interface ActiveAlarm {
   taskId: string;
@@ -12,10 +15,28 @@ export interface ActiveAlarm {
 export function useAlarmListener() {
   const [activeAlarm, setActiveAlarm] = useState<ActiveAlarm | null>(null);
   const { completeTask, snoozeTask } = useTasks();
-  const processedColdStartRef = useRef(false);
+  const recentActionsRef = useRef<Map<string, number>>(new Map());
 
   const handleAlarmAction = useCallback(
     async (action: 'MARK_DONE' | 'SNOOZE_2D', taskId: string) => {
+      if (!taskId) return;
+
+      // Debounce duplicate events for same task & action within 3 seconds
+      const now = Date.now();
+      const dedupKey = `${action}:${taskId}`;
+      const lastRan = recentActionsRef.current.get(dedupKey) || 0;
+      if (now - lastRan < 3000) {
+        return;
+      }
+      recentActionsRef.current.set(dedupKey, now);
+
+      // Clean up map entries older than 10s
+      for (const [key, ts] of recentActionsRef.current.entries()) {
+        if (now - ts > 10000) {
+          recentActionsRef.current.delete(key);
+        }
+      }
+
       setActiveAlarm((prev) => (prev?.taskId === taskId ? null : prev));
       try {
         if (action === 'MARK_DONE') {
@@ -34,19 +55,47 @@ export function useAlarmListener() {
     setActiveAlarm(null);
   }, []);
 
-  // 1. Cold-start check for alarm action intent
-  useEffect(() => {
-    if (Platform.OS !== 'android' || processedColdStartRef.current) return;
-    processedColdStartRef.current = true;
-
-    getInitialAlarmAction()
-      .then((actionPayload: AlarmActionPayload | null) => {
-        if (actionPayload?.action && actionPayload.taskId) {
-          handleAlarmAction(actionPayload.action, actionPayload.taskId);
+  const drainPendingActions = useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      // 1. Drain the persistent multi-action queue from SharedPreferences
+      const pending = await getPendingAlarmActions();
+      if (pending && pending.length > 0) {
+        for (const item of pending) {
+          if (item?.action && item?.taskId) {
+            await handleAlarmAction(item.action, item.taskId);
+          }
         }
-      })
-      .catch(() => {});
+      }
+
+      // 2. Check legacy initial intent action (if any)
+      const initial = await getInitialAlarmAction();
+      if (initial?.action && initial?.taskId) {
+        await handleAlarmAction(initial.action, initial.taskId);
+      }
+    } catch (err) {
+      console.warn('[useAlarmListener] Error draining pending alarm actions:', err);
+    }
   }, [handleAlarmAction]);
+
+  // 1. Cold-start and AppState resume check for alarm actions
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    // Drain on mount
+    drainPendingActions();
+
+    // Drain when returning to foreground (e.g., after AlarmActivity finishes)
+    const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        drainPendingActions();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [drainPendingActions]);
 
   // 2. Native module event listeners (when app is in foreground/running)
   useEffect(() => {

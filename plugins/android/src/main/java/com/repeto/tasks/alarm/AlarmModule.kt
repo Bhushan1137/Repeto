@@ -3,6 +3,7 @@ package com.repeto.tasks.alarm
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.Arguments
@@ -11,11 +12,15 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AlarmModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     companion object {
         const val NAME = "AlarmModule"
         const val TAG = "AlarmModule"
+        private const val PREFS_NAME = "repeato_alarm_actions_queue"
+        private const val KEY_ACTIONS = "pending_actions"
         private var instance: AlarmModule? = null
 
         fun notifyTrigger(taskId: String, title: String) {
@@ -48,6 +53,33 @@ class AlarmModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                     Log.w(TAG, "Failed to emit onAlarmAction: ${e.message}")
                 }
             }
+        }
+
+        /**
+         * Persistently records an alarm action into SharedPreferences so that
+         * actions triggered while React Native is backgrounded, suspended, or cold-started
+         * are never lost when multiple tasks/alarms are handled.
+         */
+        fun recordAction(context: Context, action: String, taskId: String) {
+            if (taskId.isEmpty()) return
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val existing = prefs.getString(KEY_ACTIONS, "[]") ?: "[]"
+                val jsonArray = JSONArray(existing)
+                val item = JSONObject().apply {
+                    put("action", action)
+                    put("taskId", taskId)
+                    put("timestamp", System.currentTimeMillis())
+                }
+                jsonArray.put(item)
+                prefs.edit().putString(KEY_ACTIONS, jsonArray.toString()).apply()
+                Log.d(TAG, "Recorded pending alarm action: $action for $taskId (queue size: ${jsonArray.length()})")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to record pending alarm action: ${e.message}", e)
+            }
+
+            // Also emit via DeviceEventEmitter in case React Native is already active in foreground
+            notifyAction(action, taskId)
         }
     }
 
@@ -107,6 +139,41 @@ class AlarmModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("ALARM_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getPendingAlarmActions(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString(KEY_ACTIONS, "[]") ?: "[]"
+            val jsonArray = JSONArray(jsonStr)
+
+            val array = Arguments.createArray()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val map = Arguments.createMap().apply {
+                    putString("action", obj.optString("action"))
+                    putString("taskId", obj.optString("taskId"))
+                }
+                array.pushMap(map)
+            }
+
+            // Clear the drained actions
+            prefs.edit().remove(KEY_ACTIONS).apply()
+            Log.d(TAG, "Drained ${array.size()} pending alarm actions")
+
+            // Also clean legacy intent extras so getInitialAlarmAction doesn't re-trigger
+            reactApplicationContext.currentActivity?.intent?.let { intent ->
+                intent.removeExtra("alarmAction")
+                intent.removeExtra("taskId")
+            }
+
+            promise.resolve(array)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get pending alarm actions: ${e.message}", e)
+            promise.resolve(Arguments.createArray())
         }
     }
 

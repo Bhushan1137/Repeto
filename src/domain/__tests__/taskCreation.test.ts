@@ -234,6 +234,12 @@ describe('Task Creation Comprehensive Test Suite (100% Coverage)', () => {
       expect(task.amount).toBeUndefined();
       expect(task.finance).toBe(false);
       expect(task.recurrence).toEqual({ type: 'daily' });
+      expect(task.alarmEnabled).toBe(false);
+    });
+
+    it('sets alarmEnabled to true for medicines category preset', () => {
+      const medTask = createTaskFromPreset('Blood Pressure Tablet', 'medicines', 'Daily');
+      expect(medTask.alarmEnabled).toBe(true);
     });
   });
 
@@ -275,6 +281,31 @@ describe('Task Creation Comprehensive Test Suite (100% Coverage)', () => {
       const task = createTaskFromParsed(parsed, { finance: false, shared: [] });
 
       expect(task.householdId).toBeNull();
+    });
+
+    it('respects parsed alarmEnabled true from smart input "with alarm"', () => {
+      const parsed = parseTaskInput('Wake up at 6am daily with alarm');
+      const task = createTaskFromParsed(parsed, { finance: false, shared: [] });
+
+      expect(task.alarmEnabled).toBe(true);
+      expect(task.reminderTime).toBe('06:00');
+    });
+
+    it('respects parsed alarmEnabled false from smart input "no alarm"', () => {
+      const parsed = parseTaskInput('Water plants weekly 8am no alarm');
+      const task = createTaskFromParsed(parsed, { finance: false, shared: [] });
+
+      expect(task.alarmEnabled).toBe(false);
+    });
+
+    it('defaults alarmEnabled to true for medicines category when unspecified in parsed input', () => {
+      const parsed = parseTaskInput('Take Paracetamol daily at 9am');
+      // Category is health or medicines
+      parsed.category = 'medicines';
+      delete parsed.alarmEnabled;
+
+      const task = createTaskFromParsed(parsed, { finance: false, shared: [] });
+      expect(task.alarmEnabled).toBe(true);
     });
   });
 

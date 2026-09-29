@@ -1165,6 +1165,10 @@ export default function HouseholdScreen() {
   }, [tasks, selectedTaskId]);
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
+  const editingInitialValues = useMemo(
+    () => (editingTask ? taskToFormValues(editingTask, language) : null),
+    [editingTask?.id, editingTask?.updatedAt, language]
+  );
 
   useEffect(() => {
     if (user?.removedBy) {
@@ -1356,7 +1360,7 @@ export default function HouseholdScreen() {
         language={language}
         translate={translate}
         heading={translate('editTask')}
-        initial={editingTask ? taskToFormValues(editingTask, language) : null}
+        initial={editingInitialValues}
         initialShared={editingTask?.sharedWith}
         editingTaskId={editingTask?.id}
         mode="edit"

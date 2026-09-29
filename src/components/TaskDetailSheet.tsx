@@ -272,6 +272,13 @@ function TaskDetailSheetComponent({
                   {hhContext ? `${hhContext.icon || '🏠'} ${hhContext.name}` : '👤 Personal'}
                 </Text>
               </View>
+              {task.alarmEnabled && (
+                <View style={[styles.catPill, { backgroundColor: 'rgba(245, 158, 11, 0.35)' }]}>
+                  <Text style={styles.catBadge}>
+                    🔔 {language === 'hi' ? 'अलार्म' : 'Alarm'}
+                  </Text>
+                </View>
+              )}
             </View>
             <Text style={styles.title} numberOfLines={2}>
               {task.title}
@@ -1779,6 +1786,7 @@ export const TaskDetailSheet = React.memo(TaskDetailSheetComponent, (prev, next)
     prev.task?.updatedAt === next.task?.updatedAt &&
     prev.task?.nextDueDate === next.task?.nextDueDate &&
     prev.task?.title === next.task?.title &&
+    prev.task?.alarmEnabled === next.task?.alarmEnabled &&
     prev.task?.history?.length === next.task?.history?.length &&
     prev.language === next.language
   );

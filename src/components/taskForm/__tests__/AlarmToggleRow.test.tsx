@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import React from 'react';
 import { Platform } from 'react-native';
 
 vi.mock('@/components/AppIcon', () => ({

@@ -6,6 +6,7 @@ import {
   cancelAllNativeAlarms,
   triggerTestAlarm,
   getInitialAlarmAction,
+  getPendingAlarmActions,
   addAlarmEventListener,
 } from '../alarmNative';
 
@@ -23,6 +24,10 @@ describe('alarmNative service', () => {
         cancelAllAlarms: vi.fn().mockResolvedValue(true),
         triggerTestAlarm: vi.fn().mockResolvedValue(true),
         getInitialAlarmAction: vi.fn().mockResolvedValue({ action: 'MARK_DONE', taskId: 'task-1' }),
+        getPendingAlarmActions: vi.fn().mockResolvedValue([
+          { action: 'MARK_DONE', taskId: 'task-1' },
+          { action: 'SNOOZE_2D', taskId: 'task-2' },
+        ]),
       };
     });
 
@@ -60,6 +65,15 @@ describe('alarmNative service', () => {
       expect(NativeModules.AlarmModule.getInitialAlarmAction).toHaveBeenCalled();
     });
 
+    it('getPendingAlarmActions returns array of pending action payloads from native module', async () => {
+      const res = await getPendingAlarmActions();
+      expect(res).toEqual([
+        { action: 'MARK_DONE', taskId: 'task-1' },
+        { action: 'SNOOZE_2D', taskId: 'task-2' },
+      ]);
+      expect(NativeModules.AlarmModule.getPendingAlarmActions).toHaveBeenCalled();
+    });
+
     it('addAlarmEventListener registers a listener on DeviceEventEmitter', () => {
       const listener = vi.fn();
       const sub = addAlarmEventListener('onAlarmTriggered', listener);
@@ -86,6 +100,11 @@ describe('alarmNative service', () => {
     it('getInitialAlarmAction returns null', async () => {
       const res = await getInitialAlarmAction();
       expect(res).toBeNull();
+    });
+
+    it('getPendingAlarmActions returns empty array', async () => {
+      const res = await getPendingAlarmActions();
+      expect(res).toEqual([]);
     });
   });
 });

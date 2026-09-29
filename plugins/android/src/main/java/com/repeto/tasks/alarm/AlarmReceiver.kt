@@ -211,6 +211,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .setContentIntent(fullScreenPendingIntent)
             .setAutoCancel(true)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setSound(soundUri)
             .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
             .addAction(0, "Mark Done", donePendingIntent)
@@ -238,7 +239,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun handleMarkDone(context: Context, taskId: String, notificationId: Int) {
         NotificationManagerCompat.from(context).cancel(notificationId)
-        AlarmModule.notifyAction("MARK_DONE", taskId)
+        AlarmModule.recordAction(context, "MARK_DONE", taskId)
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             putExtra("alarmAction", "MARK_DONE")
@@ -255,7 +256,7 @@ class AlarmReceiver : BroadcastReceiver() {
         // Snooze 2 days in milliseconds
         val snoozeTime = System.currentTimeMillis() + (2L * 24 * 60 * 60 * 1000)
         schedule(context, taskId, title, snoozeTime)
-        AlarmModule.notifyAction("SNOOZE_2D", taskId)
+        AlarmModule.recordAction(context, "SNOOZE_2D", taskId)
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             putExtra("alarmAction", "SNOOZE_2D")

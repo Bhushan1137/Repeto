@@ -197,6 +197,10 @@ export default function HomeScreen() {
     d1.getDate() === d2.getDate();
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
+  const editingInitialValues = useMemo(
+    () => (editingTask ? taskToFormValues(editingTask, language) : null),
+    [editingTask?.id, editingTask?.updatedAt, language]
+  );
   const firstName = user?.name?.split(' ')[0] ?? 'there';
 
   // Apply search + filter before grouping
@@ -951,7 +955,7 @@ export default function HomeScreen() {
           language={language}
           translate={translate}
           heading={translate('editTask')}
-          initial={editingTask ? taskToFormValues(editingTask, language) : null}
+          initial={editingInitialValues}
           initialShared={editingTask?.sharedWith}
           editingTaskId={editingTask?.id}
           mode="edit"

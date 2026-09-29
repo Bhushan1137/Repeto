@@ -101,6 +101,9 @@ export function TaskFormFields({
         if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
         if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
       }
+      if (res.alarmEnabled !== undefined) {
+        patch.alarmEnabled = res.alarmEnabled;
+      }
       if (res.category && res.category !== state.category) {
         onCategoryChange(res.category);
       }
@@ -135,6 +138,9 @@ export function TaskFormFields({
       if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
       if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
     }
+    if (res.alarmEnabled !== undefined) {
+      patch.alarmEnabled = res.alarmEnabled;
+    }
     if (res.category && res.category !== state.category) {
       onCategoryChange(res.category);
     }
@@ -152,6 +158,8 @@ export function TaskFormFields({
       onChange({ isMultiTime: false, timesPerDay: 1 });
     } else if (tokenId === 'recurrence') {
       onChange({ recurrenceType: 'monthly', interval: 1, dayOfMonth: 1 });
+    } else if (tokenId === 'alarm') {
+      onChange({ alarmEnabled: !state.alarmEnabled });
     }
   };
 

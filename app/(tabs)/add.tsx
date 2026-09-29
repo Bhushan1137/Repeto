@@ -99,8 +99,14 @@ export default function AddTaskScreen() {
           amount: values.amount,
           category: values.category,
           reminderTime: values.reminderTime,
+          timesPerDay: values.timesPerDay,
+          reminderTimes: values.reminderTimes,
           startDate: values.startDate,
           assignedTo: values.assignedTo,
+          isRotating: values.isRotating,
+          rotationMembers: values.rotationMembers,
+          icon: values.icon,
+          alarmEnabled: values.alarmEnabled,
         },
         { finance: values.finance, shared }
       );

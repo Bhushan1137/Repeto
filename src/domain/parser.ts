@@ -355,6 +355,44 @@ export function parseRecurrenceToken(text: string, lang: 'en' | 'hi' = 'en'): Pa
   };
 }
 
+interface ParsedAlarmResult {
+  alarmEnabled?: boolean;
+  rawMatch?: string;
+}
+
+export function parseAlarmToken(text: string): ParsedAlarmResult {
+  const lower = text.toLowerCase();
+
+  // 1. Negative intent: "no alarm", "without alarm", "alarm off", "quiet notification", "silent notification", "push only", "notification only", "बिना अलार्म", "अलार्म बंद", "अलार्म नहीं"
+  const negativeMatch = lower.match(
+    /\b(?:without\s+alarms?|no\s+alarms?|alarms?\s+off|quiet\s+notifications?|silent\s+notifications?|push\s+only|notifications?\s+only)\b|बिना\s*अलार्म|अलार्म\s*(?:बंद|नहीं)|bina\s*alarm|alarm\s*(?:band|off|mat\s*bajao)/i
+  );
+  if (negativeMatch) {
+    return { alarmEnabled: false, rawMatch: negativeMatch[0] };
+  }
+
+  // 2. Explicit positive phrases: "with alarm", "alarm on", "set alarm", "full screen alarm", "fullscreen alarm", "loud alarm", "wake up alarm", "अलार्म के साथ", "अलार्म ऑन", "अलार्म चालू", "अलार्म लगाओ"
+  const explicitPositiveMatch = lower.match(
+    /\b(?:with\s+alarms?|alarms?\s+on|set\s+alarms?|full\s*screen\s*alarms?|fullscreen\s*alarms?|loud\s*alarms?|wake\s*up\s*alarms?)\b|अलार्म\s*(?:के\s*साथ|ऑन|चालू|लगाओ|लगाएं)|alarm\s*(?:ke\s*sath|lagao|chalu)/i
+  );
+  if (explicitPositiveMatch) {
+    return { alarmEnabled: true, rawMatch: explicitPositiveMatch[0] };
+  }
+
+  // 3. Standalone "alarm" / "alarms" / "अलार्म"
+  // Avoid treating physical device sensors ("smoke alarm", "fire alarm", "car alarm", "burglar alarm", "security alarm") as toggles
+  const standaloneMatch = text.match(/\b(alarms?)\b|अलार्म/i);
+  if (standaloneMatch && standaloneMatch.index !== undefined) {
+    const prefix = text.slice(0, standaloneMatch.index).trim().toLowerCase();
+    const isDeviceSensor = /(?:smoke|fire|car|burglar|security|theft)$/i.test(prefix);
+    if (!isDeviceSensor) {
+      return { alarmEnabled: true, rawMatch: standaloneMatch[0] };
+    }
+  }
+
+  return {};
+}
+
 export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTaskInput {
   if (!text || !text.trim()) {
     return {
@@ -377,7 +415,10 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
   // 4. Extract Recurrence
   const { recurrence, frequencyLabel, rawMatch: recRaw } = parseRecurrenceToken(text, lang);
 
-  // 5. Clean Title Extraction
+  // 5. Extract Alarm Toggle
+  const { alarmEnabled, rawMatch: alarmRaw } = parseAlarmToken(text);
+
+  // 6. Clean Title Extraction
   let cleanTitle = text;
 
   const removeToken = (src: string, token?: string) => {
@@ -398,10 +439,14 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
   if (recRaw) {
     cleanTitle = removeToken(cleanTitle, recRaw);
   }
+  if (alarmRaw) {
+    cleanTitle = removeToken(cleanTitle, alarmRaw);
+  }
 
   // Clean trailing prepositions, articles & connectors (including Hindi/Hinglish connectors)
   cleanTitle = cleanTitle
-    .replace(/\b(at|on|for|every|in|and|the|ko|me|mein|se|ki|ka)\b/gi, ' ')
+    .replace(/\b(at|on|for|every|in|and|the|with|without|ke|saath|sath|bina|ko|me|mein|se|ki|ka)\b/gi, ' ')
+    .replace(/(?:के\s*साथ|के|बिना)/g, ' ')
     .replace(/[₹,.\-—:;]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -412,11 +457,11 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
   }
   cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
 
-  // 6. Category & Icon
+  // 7. Category & Icon
   const category = guessCategory(text);
   const icon = guessIcon(text);
 
-  // 7. Setup multi-dose reminderTimes if multi-time is active
+  // 8. Setup multi-dose reminderTimes if multi-time is active
   let finalReminderTimes = reminderTimes;
   if (isMultiTime && timesPerDay && timesPerDay > 1) {
     if (!finalReminderTimes || finalReminderTimes.length === 0) {
@@ -426,7 +471,7 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
     }
   }
 
-  // 8. Detected Tokens for UI Badges
+  // 9. Detected Tokens for UI Badges
   const detectedTokens: DetectedToken[] = [];
 
   // Category token
@@ -473,6 +518,21 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
     });
   }
 
+  // Alarm token (if explicitly matched)
+  if (alarmEnabled === true) {
+    detectedTokens.push({
+      id: 'alarm',
+      label: lang === 'hi' ? 'अलार्म चालू' : 'Alarm ON',
+      icon: '🔔',
+    });
+  } else if (alarmEnabled === false && alarmRaw) {
+    detectedTokens.push({
+      id: 'alarm',
+      label: lang === 'hi' ? 'अलार्म बंद' : 'Alarm OFF',
+      icon: '🔕',
+    });
+  }
+
   return {
     title: cleanTitle,
     frequencyLabel,
@@ -484,6 +544,7 @@ export function parseTaskInput(text: string, lang: 'en' | 'hi' = 'en'): ParsedTa
     timesPerDay,
     reminderTimes: finalReminderTimes,
     icon,
+    alarmEnabled,
     detectedTokens,
   };
 }

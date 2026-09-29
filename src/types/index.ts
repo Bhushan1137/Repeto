@@ -167,7 +167,7 @@ export interface AppState {
 }
 
 export interface DetectedToken {
-  id: 'amount' | 'time' | 'recurrence' | 'category' | 'doses';
+  id: 'amount' | 'time' | 'recurrence' | 'category' | 'doses' | 'alarm';
   label: string;
   icon: string;
 }
@@ -188,5 +188,7 @@ export interface ParsedTaskInput {
   isRotating?: boolean;
   rotationMembers?: string[];
   detectedTokens?: DetectedToken[];
+  /** true = fullscreen native alarm; false/undefined = standard push notification */
+  alarmEnabled?: boolean;
 }
 

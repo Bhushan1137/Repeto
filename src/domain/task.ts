@@ -110,6 +110,7 @@ export function createTaskFromPreset(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
+    alarmEnabled: category === 'medicines',
     creatorName,
   };
 }
@@ -126,10 +127,18 @@ export function createTaskFromParsed(
     category: parsed.category,
     recurrence: parsed.recurrence,
     frequencyLabel: parsed.frequencyLabel,
-    nextDueDate: computeInitialDueDate(parsed.recurrence, parsed.startDate, parsed.reminderTime),
+    nextDueDate: computeInitialDueDate(
+      parsed.recurrence,
+      parsed.startDate,
+      parsed.reminderTime,
+      new Date(),
+      parsed.reminderTimes
+    ),
     amount: parsed.amount,
     finance: opts.finance || !!parsed.amount,
     reminderTime: parsed.reminderTime,
+    timesPerDay: parsed.timesPerDay,
+    reminderTimes: parsed.reminderTimes,
     startDate: parsed.startDate,
     sharedWith: opts.shared,
     assignedTo: parsed.assignedTo,
@@ -140,6 +149,7 @@ export function createTaskFromParsed(
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
     icon: parsed.icon,
+    alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
     creatorName,
   };
 }
@@ -669,7 +679,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     rotationMembers: values.rotationMembers !== undefined ? values.rotationMembers : task.rotationMembers,
     householdId: values.householdId !== undefined ? values.householdId : task.householdId,
     icon: values.icon,
-    alarmEnabled: values.alarmEnabled,
+    alarmEnabled: values.alarmEnabled !== undefined ? values.alarmEnabled : task.alarmEnabled,
     nextDueDate,
     updatedAt: new Date().toISOString(),
   };

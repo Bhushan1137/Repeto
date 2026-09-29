@@ -167,10 +167,7 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   await cancelTaskReminder(task.id);
 
   const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
-
-  const reminderChannelId = Platform.OS === 'android'
-    ? (task.alarmEnabled ? 'alarm' : 'default')
-    : 'default';
+  const isAndroidAlarm = Boolean(task.alarmEnabled && Platform.OS === 'android');
 
   if (isMulti) {
     const progress = getTodayDoseProgress(task);
@@ -184,9 +181,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const doseContent: Notifications.NotificationContentInput = {
         title: 'Repeto Reminder',
         body: `Reminder: ${task.title} (${i + 1}/${times.length})`,
-        data: { taskId: task.id, doseIndex: i, isAlarm: true },
+        data: { taskId: task.id, doseIndex: i, isAlarm: false },
         categoryIdentifier: 'task-actions',
-        sound: Platform.OS === 'android' ? 'alarm_chime' : true,
+        sound: true,
       };
 
       const isDoseDoneToday = progress.completedIndices.includes(i);
@@ -201,18 +198,19 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         }
         nextDate.setHours(doseHour, doseMinute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
-          if (task.alarmEnabled) {
+          if (isAndroidAlarm) {
             scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, nextDate.getTime()).catch(() => {});
+          } else {
+            await Notifications.scheduleNotificationAsync({
+              content: doseContent,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: nextDate,
+                channelId: 'default',
+              },
+              identifier: `task-${task.id}-dose-${i}`,
+            });
           }
-          await Notifications.scheduleNotificationAsync({
-            content: doseContent,
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: nextDate,
-              channelId: reminderChannelId,
-            },
-            identifier: `task-${task.id}-dose-${i}`,
-          });
         }
       } else {
         if (task.recurrence?.type === 'daily') {
@@ -221,35 +219,37 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
           if (doseToday.getTime() <= Date.now()) {
             doseToday.setDate(doseToday.getDate() + 1);
           }
-          if (task.alarmEnabled) {
+          if (isAndroidAlarm) {
             scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, doseToday.getTime()).catch(() => {});
+          } else {
+            await Notifications.scheduleNotificationAsync({
+              content: doseContent,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DAILY,
+                hour: doseHour,
+                minute: doseMinute,
+                channelId: 'default',
+              },
+              identifier: `task-${task.id}-dose-${i}`,
+            });
           }
-          await Notifications.scheduleNotificationAsync({
-            content: doseContent,
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DAILY,
-              hour: doseHour,
-              minute: doseMinute,
-              channelId: reminderChannelId,
-            },
-            identifier: `task-${task.id}-dose-${i}`,
-          });
         } else {
           const triggerDate = new Date(task.nextDueDate);
           triggerDate.setHours(doseHour, doseMinute, 0, 0);
           if (triggerDate.getTime() > Date.now()) {
-            if (task.alarmEnabled) {
+            if (isAndroidAlarm) {
               scheduleNativeAlarm(`${task.id}-dose-${i}`, `${task.title} (${i + 1}/${times.length})`, triggerDate.getTime()).catch(() => {});
+            } else {
+              await Notifications.scheduleNotificationAsync({
+                content: doseContent,
+                trigger: {
+                  type: Notifications.SchedulableTriggerInputTypes.DATE,
+                  date: triggerDate,
+                  channelId: 'default',
+                },
+                identifier: `task-${task.id}-dose-${i}`,
+              });
             }
-            await Notifications.scheduleNotificationAsync({
-              content: doseContent,
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: triggerDate,
-                channelId: reminderChannelId,
-              },
-              identifier: `task-${task.id}-dose-${i}`,
-            });
           }
         }
       }
@@ -268,9 +268,9 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   const content: Notifications.NotificationContentInput = {
     title: 'Repeto Reminder',
     body: `Reminder for "${task.title}"`,
-    data: { taskId: task.id, isAlarm: true },
+    data: { taskId: task.id, isAlarm: false },
     categoryIdentifier: 'task-actions',
-    sound: Platform.OS === 'android' ? 'alarm_chime' : true,
+    sound: true,
   };
 
   // If task is currently snoozed, schedule directly for the snooze date
@@ -278,18 +278,19 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
     const snoozeDate = new Date(task.snoozedUntil);
     snoozeDate.setHours(hour, minute, 0, 0);
     if (snoozeDate.getTime() > Date.now()) {
-      if (task.alarmEnabled) {
+      if (isAndroidAlarm) {
         scheduleNativeAlarm(task.id, task.title, snoozeDate.getTime()).catch(() => {});
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: snoozeDate,
+            channelId: 'default',
+          },
+          identifier: `task-${task.id}`,
+        });
       }
-      await Notifications.scheduleNotificationAsync({
-        content,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: snoozeDate,
-          channelId: reminderChannelId,
-        },
-        identifier: `task-${task.id}`,
-      });
     }
     return;
   }
@@ -303,18 +304,19 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         const nextDate = new Date(task.nextDueDate);
         nextDate.setHours(hour, minute, 0, 0);
         if (nextDate.getTime() > Date.now()) {
-          if (task.alarmEnabled) {
+          if (isAndroidAlarm) {
             scheduleNativeAlarm(task.id, task.title, nextDate.getTime()).catch(() => {});
+          } else {
+            await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: nextDate,
+                channelId: 'default',
+              },
+              identifier: `task-${task.id}`,
+            });
           }
-          await Notifications.scheduleNotificationAsync({
-            content,
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: nextDate,
-              channelId: reminderChannelId,
-            },
-            identifier: `task-${task.id}`,
-          });
         }
       } else {
         const todayAlarm = new Date();
@@ -322,84 +324,88 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         if (todayAlarm.getTime() <= Date.now()) {
           todayAlarm.setDate(todayAlarm.getDate() + 1);
         }
-        if (task.alarmEnabled) {
+        if (isAndroidAlarm) {
           scheduleNativeAlarm(task.id, task.title, todayAlarm.getTime()).catch(() => {});
+        } else {
+          await Notifications.scheduleNotificationAsync({
+            content,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour,
+              minute,
+              channelId: 'default',
+            },
+            identifier: `task-${task.id}`,
+          });
         }
-        await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DAILY,
-            hour,
-            minute,
-            channelId: reminderChannelId,
-          },
-          identifier: `task-${task.id}`,
-        });
       }
     } else if (recType === 'weekly') {
       const jsWeekday = task.recurrence.weekday ?? new Date(task.nextDueDate).getDay();
       const expoWeekday = jsWeekday + 1; // JS 0=Sun..6=Sat -> Expo 1=Sun..7=Sat
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
-      if (targetDate.getTime() > Date.now()) {
-        if (task.alarmEnabled) {
+      if (isAndroidAlarm) {
+        if (targetDate.getTime() > Date.now()) {
           scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
         }
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            weekday: expoWeekday,
+            hour,
+            minute,
+            channelId: 'default',
+          },
+          identifier: `task-${task.id}`,
+        });
       }
-      await Notifications.scheduleNotificationAsync({
-        content,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-          weekday: expoWeekday,
-          hour,
-          minute,
-          channelId: reminderChannelId,
-        },
-        identifier: `task-${task.id}`,
-      });
     } else if (recType === 'monthly') {
       const dayOfMonth = task.recurrence.dayOfMonth ?? new Date(task.nextDueDate).getDate();
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
-      if (targetDate.getTime() > Date.now()) {
-        if (task.alarmEnabled) {
+      if (isAndroidAlarm) {
+        if (targetDate.getTime() > Date.now()) {
           scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
         }
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.MONTHLY,
+            day: dayOfMonth,
+            hour,
+            minute,
+            channelId: 'default',
+          },
+          identifier: `task-${task.id}`,
+        });
       }
-      await Notifications.scheduleNotificationAsync({
-        content,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.MONTHLY,
-          day: dayOfMonth,
-          hour,
-          minute,
-          channelId: reminderChannelId,
-        },
-        identifier: `task-${task.id}`,
-      });
     } else if (recType === 'yearly') {
       const dueDateObj = new Date(task.nextDueDate);
       const month = dueDateObj.getMonth() + 1;
       const day = dueDateObj.getDate();
       const targetDate = new Date(task.nextDueDate);
       targetDate.setHours(hour, minute, 0, 0);
-      if (targetDate.getTime() > Date.now()) {
-        if (task.alarmEnabled) {
+      if (isAndroidAlarm) {
+        if (targetDate.getTime() > Date.now()) {
           scheduleNativeAlarm(task.id, task.title, targetDate.getTime()).catch(() => {});
         }
+      } else {
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.YEARLY,
+            month,
+            day,
+            hour,
+            minute,
+            channelId: 'default',
+          },
+          identifier: `task-${task.id}`,
+        });
       }
-      await Notifications.scheduleNotificationAsync({
-        content,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.YEARLY,
-          month,
-          day,
-          hour,
-          minute,
-          channelId: reminderChannelId,
-        },
-        identifier: `task-${task.id}`,
-      });
     } else {
       // Custom interval / monthDay / nthWeekday / single occurrence
       // Schedule up to 5 upcoming occurrences using DATE triggers
@@ -409,18 +415,19 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
         triggerDate.setHours(hour, minute, 0, 0);
 
         if (triggerDate.getTime() > Date.now()) {
-          if (i === 0 && task.alarmEnabled) {
+          if (i === 0 && isAndroidAlarm) {
             scheduleNativeAlarm(task.id, task.title, triggerDate.getTime()).catch(() => {});
+          } else if (!isAndroidAlarm) {
+            await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+                channelId: 'default',
+              },
+              identifier: `task-${task.id}-${i}`,
+            });
           }
-          await Notifications.scheduleNotificationAsync({
-            content,
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: triggerDate,
-              channelId: reminderChannelId,
-            },
-            identifier: `task-${task.id}-${i}`,
-          });
         }
 
         // Calculate next occurrence date for buffer
@@ -441,22 +448,23 @@ export async function sendTestNotification(): Promise<boolean> {
 
   try {
     if (Platform.OS === 'android') {
-      triggerTestAlarm(2, 'Test Task Reminder 🔔').catch(() => {});
+      await triggerTestAlarm(2, 'Test Task Reminder 🔔');
+    } else {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Repeto Reminder 🔔',
+          body: 'Notifications and alarms are working properly on your device!',
+          data: { taskId: 'test-reminder', isAlarm: false },
+          categoryIdentifier: 'task-actions',
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 2,
+          channelId: 'default',
+        },
+      });
     }
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Repeto Reminder 🔔',
-        body: 'Notifications and alarms are working properly on your device!',
-        data: { taskId: 'test-reminder', isAlarm: true },
-        categoryIdentifier: 'task-actions',
-        sound: Platform.OS === 'android' ? 'alarm_chime' : true,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 2,
-        channelId: Platform.OS === 'android' ? 'alarm' : 'default',
-      },
-    });
     return true;
   } catch (error) {
     console.warn('[Repeato] Failed to send test notification:', error);

@@ -276,7 +276,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (task.archived) {
         await cancelTaskReminder(task.id);
         await cancelOverdueReminders(task.id);
-      } else if (user.pushOptIn !== false || task.reminderTime) {
+      } else if (user.pushOptIn !== false || task.reminderTime || task.alarmEnabled) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
         // Cancel overdue reminders whenever the task is mutated (completed/snoozed/skipped/updated).

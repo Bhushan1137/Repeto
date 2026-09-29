@@ -83,6 +83,23 @@ export async function triggerTestAlarm(seconds = 2, title = 'Test Task Reminder'
 }
 
 /**
+ * Read and drain all pending alarm actions recorded while the app was
+ * in background or cold-started, handling multi-alarm batches and individual actions.
+ */
+export async function getPendingAlarmActions(): Promise<AlarmActionPayload[]> {
+  const native = getAlarmNative();
+  if (Platform.OS !== 'android' || !native?.getPendingAlarmActions) {
+    return [];
+  }
+  try {
+    const list = await native.getPendingAlarmActions();
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Read any initial alarm action if the app was launched by tapping Mark Done or Snooze
  * from the native AlarmActivity or notification.
  */

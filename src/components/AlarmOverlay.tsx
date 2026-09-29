@@ -29,7 +29,7 @@ export function AlarmOverlay() {
   const glowAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
-    if (!activeAlarm) {
+    if (Platform.OS === 'android' || !activeAlarm) {
       try {
         player.pause();
       } catch {
@@ -92,7 +92,7 @@ export function AlarmOverlay() {
     };
   }, [activeAlarm, player, pulseAnim, glowAnim]);
 
-  if (!activeAlarm) {
+  if (Platform.OS === 'android' || !activeAlarm) {
     return null;
   }
 

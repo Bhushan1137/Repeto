@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   calculateStreak,
   calculateDailyStreak,
@@ -115,18 +115,22 @@ describe('insights domain module', () => {
   });
 
   it('correctly calculates upcomingThisMonth for bills due later this month', () => {
-    const today = new Date();
-    const currentMonthIso = today.toISOString().slice(0, 7);
-    const pendingTask: RepeatingTask = {
-      ...mockTask,
-      id: 'task-pending',
-      amount: 4500,
-      nextDueDate: `${currentMonthIso}-28T10:00:00.000Z`,
-      history: [],
-    };
-    const forecast = computeSpendForecast([pendingTask], 'en');
-    expect(forecast.upcomingThisMonth).toBe(4500);
-    expect(forecast.spentSoFarThisMonth).toBe(0);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T10:00:00.000Z'));
+    try {
+      const pendingTask: RepeatingTask = {
+        ...mockTask,
+        id: 'task-pending',
+        amount: 4500,
+        nextDueDate: '2026-06-28T10:00:00.000Z',
+        history: [],
+      };
+      const forecast = computeSpendForecast([pendingTask], 'en');
+      expect(forecast.upcomingThisMonth).toBe(4500);
+      expect(forecast.spentSoFarThisMonth).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('calculates true daily streak across multiple days', () => {

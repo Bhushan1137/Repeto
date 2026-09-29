@@ -190,6 +190,43 @@ describe('domain/task', () => {
     expect(updated2.title).toBe('Gym Updated Again');
   });
 
+  it('updateTaskDetails updates and toggles alarmEnabled while preserving existing when omitted', () => {
+    const task = createTaskFromPreset('Gym', 'health', 'Monthly');
+    expect(task.alarmEnabled).toBe(false);
+
+    // Turn alarm on
+    const withAlarm = updateTaskDetails(task, {
+      title: 'Gym',
+      category: 'health',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+      alarmEnabled: true,
+    });
+    expect(withAlarm.alarmEnabled).toBe(true);
+
+    // Update title without providing alarmEnabled -> preserves existing true
+    const preserved = updateTaskDetails(withAlarm, {
+      title: 'Morning Gym',
+      category: 'health',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+    });
+    expect(preserved.alarmEnabled).toBe(true);
+
+    // Explicitly turn alarm off
+    const alarmOff = updateTaskDetails(preserved, {
+      title: 'Morning Gym',
+      category: 'health',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+      alarmEnabled: false,
+    });
+    expect(alarmOff.alarmEnabled).toBe(false);
+  });
+
   it('updateTaskInList updates target task in list', () => {
     const task1 = createTaskFromPreset('Gym', 'health', 'Monthly');
     const task2 = createTaskFromPreset('Milk', 'home', 'Daily');

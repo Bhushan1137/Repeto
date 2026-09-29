@@ -188,4 +188,76 @@ describe('parseTaskInput natural language engine', () => {
       expect(result.recurrence).toEqual({ type: 'interval', interval: 15, intervalUnit: 'days' });
     });
   });
+
+  describe('Alarm toggle Smart Input parsing', () => {
+    it('parses "with alarm" in English and enables alarm with cleaned title and detected token', () => {
+      const res = parseTaskInput('Take BP medicine daily at 9am with alarm');
+      expect(res.alarmEnabled).toBe(true);
+      expect(res.title).toBe('Take BP medicine');
+      expect(res.reminderTime).toBe('09:00');
+      expect(res.detectedTokens?.some((t) => t.id === 'alarm' && t.label === 'Alarm ON')).toBe(true);
+    });
+
+    it('parses "alarm on" and "fullscreen alarm"', () => {
+      const res1 = parseTaskInput('Wake up daily 6am alarm on');
+      expect(res1.alarmEnabled).toBe(true);
+      expect(res1.title).toBe('Wake up');
+
+      const res2 = parseTaskInput('Morning run 6:30am fullscreen alarm');
+      expect(res2.alarmEnabled).toBe(true);
+      expect(res2.title).toBe('Morning run');
+    });
+
+    it('parses "no alarm" and "without alarm" to explicitly disable alarm', () => {
+      const res1 = parseTaskInput('Water plants weekly 8am no alarm');
+      expect(res1.alarmEnabled).toBe(false);
+      expect(res1.title).toBe('Water plants');
+      expect(res1.detectedTokens?.some((t) => t.id === 'alarm' && t.label === 'Alarm OFF')).toBe(true);
+
+      const res2 = parseTaskInput('Pay electricity bill monthly without alarm');
+      expect(res2.alarmEnabled).toBe(false);
+      expect(res2.title).toBe('Pay electricity bill');
+
+      const res3 = parseTaskInput('Read book daily 10pm alarm off');
+      expect(res3.alarmEnabled).toBe(false);
+      expect(res3.title).toBe('Read book');
+    });
+
+    it('parses Hindi "अलार्म के साथ" and "अलार्म" with Hindi badge', () => {
+      const res1 = parseTaskInput('दवाई रोज़ सुबह 9 बजे अलार्म के साथ', 'hi');
+      expect(res1.alarmEnabled).toBe(true);
+      expect(res1.title).toBe('दवाई');
+      expect(res1.detectedTokens?.some((t) => t.id === 'alarm' && t.label === 'अलार्म चालू')).toBe(true);
+
+      const res2 = parseTaskInput('कसरत सुबह 7 बजे अलार्म', 'hi');
+      expect(res2.alarmEnabled).toBe(true);
+      expect(res2.title).toBe('कसरत');
+    });
+
+    it('parses Hindi "बिना अलार्म" and "अलार्म बंद" to disable alarm', () => {
+      const res1 = parseTaskInput('किराया बिना अलार्म', 'hi');
+      expect(res1.alarmEnabled).toBe(false);
+      expect(res1.title).toBe('किराया');
+      expect(res1.detectedTokens?.some((t) => t.id === 'alarm' && t.label === 'अलार्म बंद')).toBe(true);
+
+      const res2 = parseTaskInput('सब्जी लाना अलार्म बंद', 'hi');
+      expect(res2.alarmEnabled).toBe(false);
+      expect(res2.title).toBe('सब्जी लाना');
+    });
+
+    it('does NOT trigger alarm toggle for physical device sensors like smoke alarm or car alarm', () => {
+      const res1 = parseTaskInput('Check smoke alarm battery yearly');
+      expect(res1.alarmEnabled).toBeUndefined();
+      expect(res1.title).toBe('Check smoke alarm battery');
+
+      const res2 = parseTaskInput('Inspect car alarm every 6 months');
+      expect(res2.alarmEnabled).toBeUndefined();
+      expect(res2.title).toBe('Inspect car alarm');
+
+      // But if explicit "with alarm" is attached, it triggers alarm
+      const res3 = parseTaskInput('Smoke alarm test monthly at 10am with alarm');
+      expect(res3.alarmEnabled).toBe(true);
+      expect(res3.title).toBe('Smoke alarm test');
+    });
+  });
 });

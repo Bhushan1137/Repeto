@@ -18,7 +18,8 @@ import {
   validateSmartTitle,
   weekdayLabel,
 } from '@/domain/taskForm';
-import { createTaskFromPreset } from '@/domain/task';
+import { createTaskFromParsed, createTaskFromPreset, updateTaskDetails } from '@/domain/task';
+import { taskToFormValues } from '@/domain/preset';
 import type { TaskFormState } from '@/domain/taskForm';
 
 describe('domain/taskForm', () => {
@@ -58,6 +59,7 @@ describe('domain/taskForm', () => {
     const state1 = formStateFromTask(task);
     expect(state1.title).toBe('Rent');
     expect(state1.amountText).toBe('10000');
+    expect(state1.alarmEnabled).toBe(false);
 
     const state2 = formStateFromParsed({
       title: 'Gym',
@@ -67,6 +69,7 @@ describe('domain/taskForm', () => {
       amount: 1500,
     });
     expect(state2.title).toBe('Gym');
+    expect(state2.alarmEnabled).toBe(false);
 
     const state3 = formStateFromValues({
       title: 'Car Service',
@@ -76,6 +79,108 @@ describe('domain/taskForm', () => {
       finance: false,
     });
     expect(state3.title).toBe('Car Service');
+    expect(state3.alarmEnabled).toBe(false);
+  });
+
+  it('manages alarmEnabled state consistency across parsed, values, task, and category changes', () => {
+    // 1. formStateFromParsed with explicit alarmEnabled true
+    const parsedAlarmOn = formStateFromParsed({
+      title: 'Wake up',
+      category: 'personal',
+      recurrence: { type: 'daily' },
+      frequencyLabel: 'Daily',
+      alarmEnabled: true,
+    });
+    expect(parsedAlarmOn.alarmEnabled).toBe(true);
+
+    // 2. formStateFromParsed with explicit alarmEnabled false
+    const parsedAlarmOff = formStateFromParsed({
+      title: 'BP Tablets',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      frequencyLabel: 'Daily',
+      alarmEnabled: false,
+    });
+    expect(parsedAlarmOff.alarmEnabled).toBe(false);
+
+    // 3. formStateFromValues defaults medicines to true if unspecified
+    const medValues = formStateFromValues({
+      title: 'Insulin',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+    });
+    expect(medValues.alarmEnabled).toBe(true);
+
+    // 4. formStateFromValues preserves explicit false for medicines
+    const medValuesOff = formStateFromValues({
+      title: 'Vitamins',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+      alarmEnabled: false,
+    });
+    expect(medValuesOff.alarmEnabled).toBe(false);
+
+    // 5. applyCategoryChange switches alarm to true when category becomes medicines
+    const baseState = defaultFormState('home');
+    expect(baseState.alarmEnabled).toBe(false);
+    const medState = applyCategoryChange(baseState, 'medicines');
+    expect(medState.alarmEnabled).toBe(true);
+  });
+
+  it('preserves alarmEnabled throughout full create -> save -> open edit -> update -> re-open lifecycle', () => {
+    // 1. User starts Add Task form and enables Alarm Mode
+    const createFormState = defaultFormState('home');
+    createFormState.title = 'Morning Workout';
+    createFormState.alarmEnabled = true;
+    createFormState.reminderTime = '06:30';
+
+    // 2. Form state is converted to submit values (as done in AddTaskSheet and add.tsx)
+    const submitValues = formStateToValues(createFormState, 'en');
+    expect(submitValues.alarmEnabled).toBe(true);
+
+    // 3. Task is created via createTaskFromParsed (with alarmEnabled passed)
+    const createdTask = createTaskFromParsed(
+      {
+        title: submitValues.title,
+        frequencyLabel: submitValues.freq,
+        recurrence: submitValues.recurrence,
+        category: submitValues.category,
+        reminderTime: submitValues.reminderTime,
+        timesPerDay: submitValues.timesPerDay,
+        reminderTimes: submitValues.reminderTimes,
+        startDate: submitValues.startDate,
+        alarmEnabled: submitValues.alarmEnabled,
+      },
+      { finance: submitValues.finance, shared: [] }
+    );
+    expect(createdTask.alarmEnabled).toBe(true);
+
+    // 4. User opens Edit Sheet -> initial values extracted via taskToFormValues
+    const editInitialValues = taskToFormValues(createdTask, 'en');
+    expect(editInitialValues.alarmEnabled).toBe(true);
+
+    // 5. Edit TaskFormSheet initializes formStateFromValues
+    const editFormState = formStateFromValues(editInitialValues);
+    expect(editFormState.alarmEnabled).toBe(true);
+
+    // 6. User edits task title and saves
+    editFormState.title = 'Morning Cardio & Workout';
+    const updatedValues = formStateToValues(editFormState, 'en');
+    expect(updatedValues.alarmEnabled).toBe(true);
+
+    const updatedTask = updateTaskDetails(createdTask, updatedValues);
+    expect(updatedTask.alarmEnabled).toBe(true);
+    expect(updatedTask.title).toBe('Morning Cardio & Workout');
+
+    // 7. User re-opens edit on updated task
+    const reOpenInitial = taskToFormValues(updatedTask, 'en');
+    expect(reOpenInitial.alarmEnabled).toBe(true);
+    const reOpenState = formStateFromValues(reOpenInitial);
+    expect(reOpenState.alarmEnabled).toBe(true);
   });
 
   it('applyCategoryChange updates defaults and limits allowed recurrence types', () => {

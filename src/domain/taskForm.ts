@@ -204,7 +204,8 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     note: values.note ?? '',
     isRotating: !!values.isRotating,
     rotationMembers: values.rotationMembers ?? [],
-    alarmEnabled: values.alarmEnabled ?? false,
+    // Respect explicit alarmEnabled; fallback to true for medicines, false for others
+    alarmEnabled: values.alarmEnabled !== undefined ? values.alarmEnabled : (values.category === 'medicines'),
   };
 }
 
@@ -237,8 +238,8 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     note: '',
     isRotating: false,
     rotationMembers: [],
-    // Medicine tasks default to alarm ON; all other categories default OFF
-    alarmEnabled: parsed.category === 'medicines',
+    // Respect explicit alarm intent from smart input parser; otherwise medicine defaults to ON
+    alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
   };
 }
 
@@ -290,6 +291,8 @@ export function applyCategoryChange(state: TaskFormState, category: CategoryKey)
     finance: config.showFinance ? state.finance || config.showAmount : false,
     reminderTime: state.reminderTime ?? config.defaultReminderTime ?? null,
     startDate: state.startDate,
+    // Switch to alarm ON when switching category to medicines
+    alarmEnabled: category === 'medicines' ? true : state.alarmEnabled,
   };
 }
 
