@@ -8,6 +8,7 @@ import {
   householdMemberFromInvite,
   pendingMemberFromCode,
   normalizeInviteCode,
+  isValidInviteCode,
   addHouseholdMember,
   removeHouseholdMember,
   toSharedMember,
@@ -58,6 +59,19 @@ describe('household domain module', () => {
   it('normalizes invite codes cleanly', () => {
     expect(normalizeInviteCode('rpt123456')).toBe('RPT-123456');
     expect(normalizeInviteCode('RPT-ABCDEF')).toBe('RPT-ABCDEF');
+  });
+
+  it('validates invite code format', () => {
+    expect(isValidInviteCode('RPT-123456')).toBe(true);
+    expect(isValidInviteCode('RPT-ABCDEF')).toBe(true);
+    expect(isValidInviteCode('123456')).toBe(true);
+    expect(isValidInviteCode('ABCDEF')).toBe(true);
+    expect(isValidInviteCode('rpt123456')).toBe(true);
+    expect(isValidInviteCode('')).toBe(false);
+    expect(isValidInviteCode('RPT-12')).toBe(false);
+    expect(isValidInviteCode('12345')).toBe(false);
+    expect(isValidInviteCode('1234567')).toBe(false);
+    expect(isValidInviteCode('RPT-12345678')).toBe(false);
   });
 
   it('handles member creation from invite and pending code', () => {

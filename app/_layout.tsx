@@ -12,7 +12,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { View, Platform, StyleSheet } from 'react-native';
+import { View, Platform, StyleSheet, AppState } from 'react-native';
 import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
 
 import { AppProviders, useAuth } from '@/providers/AppProviders';
@@ -22,6 +22,7 @@ import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary';
 import { AlarmOverlay } from '@/components/AlarmOverlay';
+import { checkAndSendHeartbeat } from '@/services/heartbeatService';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -48,10 +49,32 @@ const paperTheme = {
 };
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
-  const { ready, user, deletedAccountInfo } = useAuth();
+  const { ready, user, deletedAccountInfo, updateUser } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const inFlightTargetRef = useRef<string | null>(null);
+
+  const updateUserRef = useRef(updateUser);
+  updateUserRef.current = updateUser;
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  // Heartbeat & presence tracking (once per day gate + version check, minimal Firestore writes)
+  useEffect(() => {
+    if (!ready || !user?.id || deletedAccountInfo) return;
+
+    checkAndSendHeartbeat(userRef.current, (patch) => updateUserRef.current(patch));
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkAndSendHeartbeat(userRef.current, (patch) => updateUserRef.current(patch));
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [ready, user?.id, !!deletedAccountInfo]);
 
   const safeReplace = useCallback(
     (target: string) => {

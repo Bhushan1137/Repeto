@@ -103,6 +103,11 @@ function TaskDetailSheetComponent({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [snoozeOptionsVisible, setSnoozeOptionsVisible] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  React.useEffect(() => {
+    setCompleting(false);
+  }, [task?.id, visible]);
 
   const { findMatch, logImpression, logClick } = useRecommendations();
   const match = task ? findMatch(task) : null;
@@ -211,21 +216,33 @@ function TaskDetailSheetComponent({
     : translate('markDone');
 
   const handleMarkDone = () => {
+    if (completing) return;
     if (!noteExpanded) {
       setNoteExpanded(true);
       return;
     }
+    setCompleting(true);
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
-    setNoteText('');
-    setNoteExpanded(false);
+    try {
+      onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
+    } finally {
+      setNoteText('');
+      setNoteExpanded(false);
+      setTimeout(() => setCompleting(false), 500);
+    }
   };
 
   const handleMarkDoneDirectly = () => {
+    if (completing) return;
+    setCompleting(true);
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
-    setNoteText('');
-    setNoteExpanded(false);
+    try {
+      onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
+    } finally {
+      setNoteText('');
+      setNoteExpanded(false);
+      setTimeout(() => setCompleting(false), 500);
+    }
   };
 
   return (
@@ -661,6 +678,8 @@ function TaskDetailSheetComponent({
                               <Button
                                 title={language === 'hi' ? 'पूर्ण करें' : 'Mark Done'}
                                 onPress={handleMarkDoneDirectly}
+                                loading={completing}
+                                disabled={completing}
                                 style={styles.multiDoseQuickDoneBtn}
                               />
                             )}
@@ -701,6 +720,8 @@ function TaskDetailSheetComponent({
                         <Button
                           title={markDoneButtonTitle}
                           onPress={handleMarkDoneDirectly}
+                          loading={completing}
+                          disabled={completing}
                           style={styles.noteConfirmBtn}
                         />
                       </View>
@@ -710,12 +731,15 @@ function TaskDetailSheetComponent({
                       <Button
                         title={markDoneButtonTitle}
                         onPress={handleMarkDoneDirectly}
+                        loading={completing}
+                        disabled={completing}
                         style={styles.donePrimaryBtn}
                       />
                       <Button
                         title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
                         variant="outline"
                         onPress={handleMarkDone}
+                        disabled={completing}
                         style={styles.doneSecondaryBtn}
                       />
                     </View>

@@ -125,6 +125,7 @@ export interface RepeatingTask {
   creatorName?: string;
   /** true = fullscreen native alarm; false/undefined = standard push notification */
   alarmEnabled?: boolean;
+  note?: string;
 }
 
 export interface UserProfile {
@@ -159,6 +160,13 @@ export interface UserProfile {
   deletionReason?: string;
   /** ISO timestamp after which a server-side job may permanently purge the data */
   purgeAfter?: string;
+  /** Activity tracking for presence & device diagnostics */
+  lastActiveAt?: string;
+  deviceInfo?: {
+    platform: 'ios' | 'android' | 'web';
+    appVersion: string;
+    osVersion?: string;
+  };
 }
 
 export interface AppState {
@@ -190,5 +198,6 @@ export interface ParsedTaskInput {
   detectedTokens?: DetectedToken[];
   /** true = fullscreen native alarm; false/undefined = standard push notification */
   alarmEnabled?: boolean;
+  note?: string;
 }
 

@@ -324,5 +324,82 @@ describe('domain/taskForm', () => {
     const toggledValues = formStateToValues(restored, 'en');
     expect(toggledValues.alarmEnabled).toBe(false);
   });
+
+  it('preserves task note across form conversions and task creation (VAL-021, VAL-022)', () => {
+    // 1. formStateFromParsed preserves note
+    const parsedWithNote = {
+      title: 'Water filter replacement',
+      category: 'home' as const,
+      recurrence: { type: 'monthly' as const },
+      frequencyLabel: 'Monthly',
+      note: 'Order filter model RO-75',
+    };
+    const stateFromParsed = formStateFromParsed(parsedWithNote);
+    expect(stateFromParsed.note).toBe('Order filter model RO-75');
+
+    // 2. formStateToValues extracts note
+    const values = formStateToValues(stateFromParsed, 'en');
+    expect(values.note).toBe('Order filter model RO-75');
+
+    // 3. createTaskFromParsed stores note in RepeatingTask
+    const task = createTaskFromParsed(parsedWithNote, { finance: false, shared: [] });
+    expect(task.note).toBe('Order filter model RO-75');
+
+    // 4. formStateFromTask restores existing note (VAL-021 fix)
+    const stateFromTask = formStateFromTask(task);
+    expect(stateFromTask.note).toBe('Order filter model RO-75');
+  });
+
+  it('validates smart title sanitization and rejects HTML/script tags (VAL-019, VAL-063)', () => {
+    // 1. Rejects script and HTML tags
+    const scriptCheck = validateSmartTitle('<script>alert("xss")</script>');
+    expect(scriptCheck.isValid).toBe(false);
+    expect(scriptCheck.error).toContain('HTML tags');
+
+    const htmlCheck = validateSmartTitle('<b>Bold Title</b>');
+    expect(htmlCheck.isValid).toBe(false);
+
+    // 2. Strips zero-width/control characters
+    const controlCharsTitle = 'Daily\u200B Medicine\u0000';
+    const sanitizedCheck = validateSmartTitle(controlCharsTitle);
+    expect(sanitizedCheck.isValid).toBe(true);
+    expect(sanitizedCheck.sanitized).toBe('Daily Medicine');
+  });
+
+  it('validates multi-dose time conflicts and note length limits (VAL-014, VAL-016)', () => {
+    const dummyTranslate = (k: string) => k;
+    const baseState: TaskFormState = {
+      ...defaultFormState('medicines'),
+      title: 'Antibiotics',
+    };
+
+    // Note > 500 chars fails validation
+    const longNoteState: TaskFormState = {
+      ...baseState,
+      note: 'A'.repeat(501),
+    };
+    const noteErrors = validateFormState(longNoteState, dummyTranslate);
+    expect(noteErrors.note).toBeDefined();
+
+    // Multi-dose with identical / close times (< 5 min apart) fails validation
+    const conflictTimesState: TaskFormState = {
+      ...baseState,
+      isMultiTime: true,
+      timesPerDay: 2,
+      reminderTimes: ['09:00', '09:03'],
+    };
+    const timeErrors = validateFormState(conflictTimesState, dummyTranslate);
+    expect(timeErrors.time).toBeDefined();
+
+    // Multi-dose with separated times passes
+    const validTimesState: TaskFormState = {
+      ...baseState,
+      isMultiTime: true,
+      timesPerDay: 2,
+      reminderTimes: ['09:00', '13:00'],
+    };
+    const validErrors = validateFormState(validTimesState, dummyTranslate);
+    expect(validErrors.time).toBeUndefined();
+  });
 });
 

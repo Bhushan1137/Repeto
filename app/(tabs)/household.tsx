@@ -23,6 +23,7 @@ import {
   addMemberToHousehold,
   HOUSEHOLD_COLORS,
   householdMemberFromInvite,
+  isValidInviteCode,
   listHouseholds,
   memberColor,
   normalizeInviteCode,
@@ -400,7 +401,7 @@ function HouseholdView({
     if (!user) return;
 
     const code = normalizeInviteCode(customCode ?? codeInput);
-    if (!code || code.length < 7) {
+    if (!isValidInviteCode(code)) {
       showToast(translate('invalidInviteCode'));
       return;
     }
@@ -1401,7 +1402,7 @@ function ZeroHouseholdCard({
   const addByCode = async (customCode?: string) => {
     if (!user) return;
     const code = normalizeInviteCode(customCode ?? codeInput);
-    if (!code || code.length < 7) {
+    if (!isValidInviteCode(code)) {
       showToast(translate('invalidInviteCode'));
       return;
     }

@@ -85,8 +85,13 @@ export function HouseholdSettingsSheet({
       onRemoveMember(activeHousehold.id, member.code, member.userId)
         .then((res) => {
           setRemovingCode(null);
-          if (res.ok) showToast(hi ? `${member.name} को हटाया गया` : `${member.name} removed`);
-          else showToast(hi ? 'सदस्य हटाने में विफल' : 'Failed to remove member');
+          if (res.ok) {
+            showToast(hi ? `${member.name} को हटाया गया` : `${member.name} removed`);
+          } else if (res.error === 'offline') {
+            showToast(hi ? 'आप ऑफ़लाइन हैं। सदस्य हटाने के लिए इंटरनेट आवश्यक है।' : 'You are offline. Member removal requires an internet connection.');
+          } else {
+            showToast(hi ? 'सदस्य हटाने में विफल' : 'Failed to remove member');
+          }
         })
         .catch(() => setRemovingCode(null));
     };

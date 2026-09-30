@@ -140,18 +140,29 @@ describe('domain/task', () => {
     expect(updatedDate.nextDueDate).toBe('2026-10-01T10:00:00.000Z');
   });
 
-  it('duplicateTask creates copy with reset stats', () => {
+  it('duplicateTask creates copy with reset stats and validates household scope (VAL-049)', () => {
     const task = createTaskFromPreset('Gym', 'health', 'Monthly');
     task.history = [{ month: 'Jan', status: 'on_time', completedAt: 'iso' }];
     task.pinned = true;
     task.archived = true;
+    task.householdId = 'hh-123';
 
-    const copy = duplicateTask(task);
-    expect(copy.id).not.toBe(task.id);
-    expect(copy.title).toBe('Gym (copy)');
-    expect(copy.history).toHaveLength(0);
-    expect(copy.pinned).toBe(false);
-    expect(copy.archived).toBe(false);
+    // 1. Without valid list, preserves householdId
+    const copy1 = duplicateTask(task);
+    expect(copy1.id).not.toBe(task.id);
+    expect(copy1.title).toBe('Gym (copy)');
+    expect(copy1.history).toHaveLength(0);
+    expect(copy1.pinned).toBe(false);
+    expect(copy1.archived).toBe(false);
+    expect(copy1.householdId).toBe('hh-123');
+
+    // 2. With valid list containing the householdId, preserves it
+    const copy2 = duplicateTask(task, ['hh-123', 'hh-456']);
+    expect(copy2.householdId).toBe('hh-123');
+
+    // 3. With valid list missing the householdId, clears it
+    const copy3 = duplicateTask(task, ['hh-999']);
+    expect(copy3.householdId).toBeUndefined();
   });
 
   it('snoozeTaskInstance and skipTaskInstance add history entries', () => {
@@ -167,6 +178,12 @@ describe('domain/task', () => {
     const snoozed = snoozeTaskInstance(task, 3, 'UserA');
     expect(snoozed.snoozedUntil).toBeDefined();
     expect(snoozed.history[0].status).toBe('snoozed');
+
+    // Clamping checks (VAL-026)
+    const clampedUnder = snoozeTaskInstance(task, -5, 'UserA');
+    const clampedOver = snoozeTaskInstance(task, 999, 'UserA');
+    expect(clampedUnder.snoozedUntil).toBeDefined();
+    expect(clampedOver.snoozedUntil).toBeDefined();
   });
 
   it('updateTaskDetails updates fields and recalculates date if recurrence or start date changes', () => {

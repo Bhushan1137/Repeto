@@ -92,6 +92,15 @@ export function normalizeInviteCode(code: string): string {
   return cleaned.length > 3 ? `RPT-${cleaned.slice(0, 6)}` : cleaned;
 }
 
+export function isValidInviteCode(code: string): boolean {
+  if (!code || typeof code !== 'string') return false;
+  const cleaned = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (cleaned.startsWith('RPT')) {
+    return cleaned.length === 9;
+  }
+  return cleaned.length === 6;
+}
+
 export function addHouseholdMember(
   user: UserProfile,
   member: HouseholdMemberProfile

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,11 +17,12 @@ export default function AccountRecoveryScreen() {
 
   const [loading, setLoading] = useState<'restore' | 'fresh' | 'signout' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isExecutingRef = useRef(false);
 
   // Compute grace period info
   const { isWithinGrace, daysRemaining, formattedDeletedDate } = useMemo(() => {
     if (!deletedAccountInfo) {
-      return { isWithinGrace: true, daysRemaining: 30, formattedDeletedDate: '' };
+      return { isWithinGrace: false, daysRemaining: 0, formattedDeletedDate: '' };
     }
 
     const dDate = new Date(deletedAccountInfo.deletedAt);
@@ -93,6 +94,8 @@ export default function AccountRecoveryScreen() {
   };
 
   const executeFreshStart = async () => {
+    if (isExecutingRef.current) return;
+    isExecutingRef.current = true;
     try {
       setError(null);
       setLoading('fresh');
@@ -107,6 +110,7 @@ export default function AccountRecoveryScreen() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : translate('recoveryError'));
     } finally {
+      isExecutingRef.current = false;
       setLoading(null);
     }
   };
@@ -119,6 +123,30 @@ export default function AccountRecoveryScreen() {
       setLoading(null);
     }
   };
+
+  if (!deletedAccountInfo) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24, alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={styles.badge}>
+          <AppIcon name="alert-circle-outline" size={32} color={Colors.clay} />
+        </View>
+        <Text style={[styles.title, { textAlign: 'center', marginTop: 16 }]}>
+          {language === 'hi' ? 'खाता जानकारी अनुपलब्ध है' : 'Account Info Unavailable'}
+        </Text>
+        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 8, marginBottom: 24, paddingHorizontal: 20 }]}>
+          {language === 'hi'
+            ? 'हटाए गए खाते का विवरण प्राप्त नहीं हो सका। कृपया पुनः साइन इन करें।'
+            : 'No deleted account record was found. Please sign in again.'}
+        </Text>
+        <Button
+          title={language === 'hi' ? 'साइन इन पर जाएं' : 'Back to Sign In'}
+          onPress={handleSignOut}
+          loading={loading === 'signout'}
+          disabled={loading !== null}
+        />
+      </View>
+    );
+  }
 
   const subtitleText = isWithinGrace
     ? translate('recoverySubWithinGrace')

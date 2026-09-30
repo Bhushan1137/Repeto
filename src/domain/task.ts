@@ -151,6 +151,7 @@ export function createTaskFromParsed(
     icon: parsed.icon,
     alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
     creatorName,
+    note: parsed.note,
   };
 }
 
@@ -568,12 +569,17 @@ export function setNextDueDate(task: RepeatingTask, date: Date): RepeatingTask {
   return { ...task, nextDueDate: date.toISOString(), updatedAt: new Date().toISOString() };
 }
 
-export function duplicateTask(task: RepeatingTask): RepeatingTask {
+export function duplicateTask(task: RepeatingTask, validHouseholdIds?: string[]): RepeatingTask {
   const now = new Date().toISOString();
+  const householdId =
+    task.householdId && validHouseholdIds && !validHouseholdIds.includes(task.householdId)
+      ? undefined
+      : task.householdId;
   return {
     ...task,
     id: createTaskId(),
     title: `${task.title} (copy)`,
+    householdId,
     history: [],
     escalationCount: 0,
     pinned: false,
@@ -587,17 +593,18 @@ export function duplicateTask(task: RepeatingTask): RepeatingTask {
 }
 
 export function snoozeTaskInstance(task: RepeatingTask, days = 2, userId?: string): RepeatingTask {
+  const safeDays = Math.min(Math.max(1, days), 30);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const base = new Date(task.nextDueDate);
   const due = base < today ? today : base;
-  due.setDate(due.getDate() + days);
+  due.setDate(due.getDate() + safeDays);
   const now = new Date().toISOString();
   return {
     ...task,
     history: [
       ...(task.history ?? []).slice(-12),
-      { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${days} days` },
+      { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${safeDays} days` },
     ],
     nextDueDate: due.toISOString(),
     snoozedUntil: due.toISOString(),

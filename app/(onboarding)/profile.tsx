@@ -64,6 +64,8 @@ export default function ProfileScreen() {
       setCtxPhone(formattedPhone);
       setCtxEmail(finalEmail);
       router.replace('/(onboarding)/categories');
+    } catch {
+      setErrors({ name: language === 'hi' ? 'प्रोफ़ाइल सहेजने में विफल। कृपया पुनः प्रयास करें।' : 'Failed to save profile. Please check your connection and try again.' });
     } finally {
       setLoading(false);
     }

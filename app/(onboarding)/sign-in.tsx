@@ -6,6 +6,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { requestSignupOtp, verifySignupOtp } from '@/services/otpService';
+import { validateEmail, validateName } from '@/domain/validation';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
@@ -103,6 +104,8 @@ export default function SignInScreen() {
     setFormError('');
     setIsEmailInUse(false);
     setResetSent(false);
+    setShowPassword(false);
+    setShowConfirmPass(false);
   };
 
   const handleSignInSubmit = async () => {
@@ -114,6 +117,15 @@ export default function SignInScreen() {
     const cleanEmail = emailVal.trim().toLowerCase();
     if (!cleanEmail || !passwordVal) {
       setFormError('Please enter your email and password.');
+      return;
+    }
+    if (/\s/.test(emailVal.trim())) {
+      setFormError('Email address cannot contain spaces.');
+      return;
+    }
+    const emailValidation = validateEmail(cleanEmail);
+    if (!emailValidation.valid) {
+      setFormError('Please enter a valid email address (e.g. name@example.com).');
       return;
     }
     isSubmittingRef.current = true;
@@ -147,8 +159,26 @@ export default function SignInScreen() {
       setFormError('Please enter your email and password.');
       return;
     }
+    if (/\s/.test(emailVal.trim())) {
+      setFormError('Email address cannot contain spaces.');
+      return;
+    }
+    const emailValidation = validateEmail(cleanEmail);
+    if (!emailValidation.valid) {
+      setFormError('Please enter a valid email address (e.g. name@example.com).');
+      return;
+    }
+    const nameValidation = validateName(nameVal);
+    if (!nameValidation.valid) {
+      setFormError('Please enter your full name (2–50 characters, letters only).');
+      return;
+    }
     if (passwordVal.length < 6) {
       setFormError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (passwordVal.length > 128) {
+      setFormError('Password must be between 6 and 128 characters.');
       return;
     }
     if (passwordVal !== confirmPassVal) {
@@ -211,6 +241,11 @@ export default function SignInScreen() {
     isSubmittingRef.current = true;
     setLoading(true);
     setOtpError('');
+    const nameValidation = validateName(nameVal);
+    if (!nameValidation.valid) {
+      setOtpError('Please enter your full name (2–50 characters, letters only).');
+      return;
+    }
     try {
       const cleanEmail = emailVal.trim().toLowerCase();
       const verifyRes = await verifySignupOtp(cleanEmail, code, otpToken);
@@ -262,8 +297,14 @@ export default function SignInScreen() {
   };
 
   const handleForgotPassword = async () => {
-    if (!emailVal.trim()) {
+    const cleanEmail = emailVal.trim().toLowerCase();
+    if (!cleanEmail) {
       setFormError('Please enter your email above to receive a reset link.');
+      return;
+    }
+    const emailValidation = validateEmail(cleanEmail);
+    if (!emailValidation.valid) {
+      setFormError('Please enter a valid email address to receive a reset link.');
       return;
     }
     setLoading(true);

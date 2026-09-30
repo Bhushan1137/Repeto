@@ -414,7 +414,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateUser = useCallback(
     async (patch: Partial<UserProfile>) => {
       if (!user) return;
-      await persistUser({ ...user, ...patch });
+      const allowedPatch: Partial<UserProfile> = {};
+      const allowedKeys: (keyof UserProfile)[] = [
+        'name',
+        'phone',
+        'language',
+        'languageSelected',
+        'pushOptIn',
+        'expoPushToken',
+        'profileComplete',
+        'onboardingComplete',
+        'termsAcceptedAt',
+        'activeHouseholdId',
+        'householdMembers',
+        'households',
+        'householdCode',
+        'lastActiveAt',
+        'deviceInfo',
+      ];
+      for (const key of allowedKeys) {
+        if (key in patch) {
+          (allowedPatch as any)[key] = patch[key];
+        }
+      }
+      await persistUser({ ...user, ...allowedPatch });
     },
     [user, persistUser]
   );
@@ -545,6 +568,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return { ok: false, error: 'not_signed_in' };
     const hh = (user.households ?? []).find(h => h.id === householdId);
     if (!hh) return { ok: false, error: 'not_found' };
+    if (hh.ownerUid === user.id) {
+      return { ok: false, error: 'owner_cannot_leave' };
+    }
 
     // 1. Remove self from /households/{id} in Firestore
     try {
@@ -595,6 +621,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const removeMemberFromHousehold = useCallback(
     async (householdId: string, memberCode: string, memberUserId?: string): Promise<{ ok: boolean; error?: string }> => {
       if (!user) return { ok: false, error: 'not_signed_in' };
+      if (!isOnline) return { ok: false, error: 'offline' };
       const hh = (user.households ?? []).find(h => h.id === householdId);
       if (!hh) return { ok: false, error: 'not_found' };
       if (hh.ownerUid !== user.id) return { ok: false, error: 'not_owner' };

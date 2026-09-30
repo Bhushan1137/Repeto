@@ -75,8 +75,8 @@ export default function AddTaskScreen() {
     setShared(nextShared);
   };
 
-  const removeContact = (phone: string) => {
-    setShared(shared.filter((s) => s.phone !== phone));
+  const removeContact = (key: string) => {
+    setShared(shared.filter((s) => (s.code || s.userId || s.phone) !== key));
   };
 
   const save = async () => {
@@ -107,6 +107,7 @@ export default function AddTaskScreen() {
           rotationMembers: values.rotationMembers,
           icon: values.icon,
           alarmEnabled: values.alarmEnabled,
+          note: values.note,
         },
         { finance: values.finance, shared }
       );
@@ -140,19 +141,22 @@ export default function AddTaskScreen() {
       <View style={styles.shareSection}>
         <Text style={styles.shareTitle}>{translate('shareHousehold')}</Text>
         <View style={styles.shareChipsRow}>
-          {shared.map((s) => (
-            <Card key={s.phone} style={styles.chipCard} mode="elevated">
-              <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                <View style={styles.chipContent}>
-                  <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                    <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
+          {shared.map((s) => {
+            const memberKey = s.code || s.userId || s.phone;
+            return (
+              <Card key={memberKey} style={styles.chipCard} mode="elevated">
+                <TouchableRipple onPress={() => removeContact(memberKey)} style={styles.chipRipple} borderless>
+                  <View style={styles.chipContent}>
+                    <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
+                      <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
+                    </View>
+                    <Text style={styles.chipText}>{s.name}</Text>
+                    <Text style={styles.chipRemove}>×</Text>
                   </View>
-                  <Text style={styles.chipText}>{s.name}</Text>
-                  <Text style={styles.chipRemove}>×</Text>
-                </View>
-              </TouchableRipple>
-            </Card>
-          ))}
+                </TouchableRipple>
+              </Card>
+            );
+          })}
           <Card style={styles.addChipCard} mode="elevated">
             <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
               <Text style={styles.addChipText}>{translate('addContact')}</Text>

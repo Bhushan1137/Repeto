@@ -670,7 +670,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing) return false;
       try {
-        const copy = duplicateTask(existing);
+        const validHhIds = (user?.households ?? []).map((h) => h.id);
+        const copy = duplicateTask(existing, validHhIds);
         const next = [copy, ...currentTasks];
         setTasks(next);
         tasksRef.current = next;
@@ -718,7 +719,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       try {
         setTasks(next);
         tasksRef.current = next;
-        showToast(translate('markedDone'));
+        const count = completedTasksList.length;
+        const msg =
+          user?.language === 'hi'
+            ? `${count} कार्य पूरे किए गए`
+            : `${count} task${count > 1 ? 's' : ''} marked as done`;
+        showToast(msg);
         await persistAll(next);
         for (const t of completedTasksList) {
           syncTask(t, 'update').catch(() => {});
@@ -750,7 +756,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       try {
         setTasks(next);
         tasksRef.current = next;
-        showToast(translate('snoozed'));
+        const count = snoozedList.length;
+        const msg =
+          user?.language === 'hi'
+            ? `${count} कार्य स्थगित किए गए`
+            : `${count} task${count > 1 ? 's' : ''} snoozed`;
+        showToast(msg);
         await persistAll(next);
         for (const t of snoozedList) {
           syncTask(t, 'update').catch(() => {});
@@ -759,7 +770,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, persistAll, syncTask, showToast, translate]
+    [user?.id, user?.language, persistAll, syncTask, showToast, translate]
   );
 
   const skipTasks = useCallback(
@@ -778,7 +789,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       try {
         setTasks(next);
         tasksRef.current = next;
-        showToast(translate('skippedToast'));
+        const count = skippedList.length;
+        const msg =
+          user?.language === 'hi'
+            ? `${count} कार्य छोड़े गए`
+            : `${count} task${count > 1 ? 's' : ''} skipped`;
+        showToast(msg);
         await persistAll(next);
         for (const t of skippedList) {
           syncTask(t, 'update').catch(() => {});
@@ -787,7 +803,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, persistAll, syncTask, showToast, translate]
+    [user?.id, user?.language, persistAll, syncTask, showToast, translate]
   );
 
   const undoCompleteTasks = useCallback(

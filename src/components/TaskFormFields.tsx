@@ -634,6 +634,10 @@ export function TaskFormFields({
             </View>
           )}
 
+          {errors?.time ? (
+            <Text style={[styles.errorText, { marginTop: 8 }]}>{errors.time}</Text>
+          ) : null}
+
           {/* Alarm Mode Toggle (Fullscreen Alarm vs Push Notification) */}
           <AlarmToggleRow
             value={state.alarmEnabled}
@@ -699,7 +703,7 @@ export function TaskFormFields({
               label={language === 'hi' ? 'राशि (₹)' : 'Amount (₹)'}
               value={state.amountText}
               onChangeText={(val) => {
-                const cleaned = val.replace(/\D/g, '').slice(0, 7);
+                const cleaned = val.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 7);
                 onChange({ amountText: cleaned });
               }}
               placeholder={language === 'hi' ? 'राशि प्रविष्ट करें (उदा. ₹1,500)' : 'Enter amount (e.g. ₹1,500)'}
@@ -726,6 +730,8 @@ export function TaskFormFields({
           onChangeText={(note) => onChange({ note })}
           placeholder={language === 'hi' ? 'जैसे: खाता विवरण, मीटर नंबर, आदि...' : 'e.g., Account ID, meter number, instructions...'}
           multiline
+          maxLength={500}
+          error={errors?.note}
           testID="task-note-input"
         />
       </View>

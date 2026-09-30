@@ -2,74 +2,140 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read their own profile. Household members can read each other's profiles
-    // (needed for avatar/name display). Full profile is NOT public — push tokens, phone, etc. are private.
+
+    // Helper: Determine if the authenticated caller has administrator privileges.
+    // Checks custom claims (token.role / token.admin) or Firestore /users/{uid}.role == 'admin'.
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.get('role', '') == 'admin' ||
+        request.auth.token.get('admin', false) == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin')
+      );
+    }
+
+    // Users collection
     match /users/{userId} {
+      // Admin can read all user profiles (needed for Admin Console user directory).
+      // Normal users can only read their own profile or fellow household members' profiles.
       allow read: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid == userId ||
         request.auth.uid in resource.data.get('householdMemberUids', [])
       );
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if request.auth != null && request.auth.uid == userId;
 
-      // Tasks subcollection — allowed if owner or household member
+      // New user accounts default to 'user' role and 'free' plan — self-assignment of 'admin' or 'plus' is rejected.
+      // Admin can provision new accounts with any role/plan.
+      allow create: if request.auth != null && (
+        isAdmin() ||
+        (request.auth.uid == userId
+          && request.resource.data.get('role', 'user') == 'user'
+          && request.resource.data.get('plan', 'free') == 'free')
+      );
+
+      // Admin can update any profile (e.g., plan upgrade, role assignment, soft-delete, onboarding reset).
+      // Non-admins can update their own profile, but cannot elevate their role or plan.
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (request.auth.uid == userId && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan', 'planTier', 'planExpiresAt'])
+          || resource.data.get('role', 'user') == 'admin'
+        ))
+      );
+
+      // Admin or the user themselves can delete an account.
+      allow delete: if request.auth != null && (
+        isAdmin() ||
+        request.auth.uid == userId
+      );
+
+      // Tasks subcollection — owner has full access; admin has oversight; household members can read & update
       match /tasks/{taskId} {
-        allow read, write: if request.auth != null && (
+        allow create, delete: if request.auth != null && (
+          request.auth.uid == userId ||
+          isAdmin()
+        );
+        allow read, update: if request.auth != null && (
+          isAdmin() ||
           request.auth.uid == userId ||
           request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.get('householdMemberUids', [])
         );
       }
 
-      // Notifications subcollection — owner has full access, authenticated users can deliver notifications
+      // Notifications subcollection — owner has full access; creator must be self, validated household member, or admin
       match /notifications/{notifId} {
-        allow read, delete, update: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null;
+        allow read, delete, update: if request.auth != null && (
+          request.auth.uid == userId ||
+          isAdmin()
+        );
+        allow create: if request.auth != null && (
+          request.auth.uid == userId ||
+          isAdmin() ||
+          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.get('householdMemberUids', [])
+        );
       }
     }
 
-    // Public user code index for lookup by admin when adding members
+    // Public user code index for lookup when adding members
     match /userCodes/{code} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.resource.data.userId == request.auth.uid;
-      allow delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null && (
+        isAdmin() ||
+        (request.resource.data.userId == request.auth.uid && request.resource.data.userCode == code)
+      );
+      allow delete: if request.auth != null && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
     }
 
     // Legacy public invite lookup for backward compatibility
     match /householdInvites/{code} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.resource.data.userId == request.auth.uid;
-      allow delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null && (
+        isAdmin() ||
+        (request.resource.data.userId == request.auth.uid && request.resource.data.code == code)
+      );
+      allow delete: if request.auth != null && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid
+      );
     }
 
     // First-Class Households Entity Collection
     match /households/{householdId} {
       allow read: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid in resource.data.get('memberUids', []) ||
         request.auth.uid == resource.data.get('ownerUid', '')
       );
       allow create: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid == request.resource.data.get('ownerUid', '') ||
         request.auth.uid in request.resource.data.get('memberUids', [])
       );
-      // Only existing members or the owner can update a household.
-      // NOTE: Removed the condition that checked request.resource.data memberUids —
-      // that condition allowed any authenticated user to self-join any household.
+      // Existing members, owner, admin, OR an authenticated user joining themselves via invite code
       allow update: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid in resource.data.get('memberUids', []) ||
-        request.auth.uid == resource.data.get('ownerUid', '')
+        request.auth.uid == resource.data.get('ownerUid', '') ||
+        (
+          // Self-join: caller is adding strictly themselves to memberUids and members
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids', 'updatedAt']) &&
+          request.resource.data.memberUids.hasAll(resource.data.get('memberUids', [])) &&
+          request.auth.uid in request.resource.data.memberUids &&
+          request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        )
       );
       allow delete: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid == resource.data.get('ownerUid', '')
       );
 
-      // Single Source of Truth Household Tasks Subcollection
+      // Household Tasks Subcollection
       match /tasks/{taskId} {
         allow read, write: if request.auth != null && (
+          isAdmin() ||
           request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.get('memberUids', []) ||
           request.auth.uid == get(/databases/$(database)/documents/households/$(householdId)).data.get('ownerUid', '')
         );
@@ -87,31 +153,48 @@ service cloud.firestore {
         && request.resource.data.status == 'open';
       allow read: if request.auth != null && (
         resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        isAdmin()
       );
       allow update: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        isAdmin() ||
+        (
+          resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replies', 'updatedAt', 'status'])
+        )
       )
-      && request.resource.data.replies.size() <= 30
       && (
-        request.resource.data.replies.size() <= resource.data.replies.size() + 1
-      )
-      && (
-        request.resource.data.replies.size() == resource.data.replies.size() ||
-        request.resource.data.replies[request.resource.data.replies.size() - 1].message.size() <= 1000
+        isAdmin() || (
+          request.resource.data.replies.size() <= 30
+          && request.resource.data.replies.size() <= resource.data.replies.size() + 1
+          && (
+            request.resource.data.replies.size() == resource.data.replies.size() ||
+            request.resource.data.replies[request.resource.data.replies.size() - 1].message.size() <= 1000
+          )
+        )
       );
-      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if request.auth != null && isAdmin();
     }
 
     // Recommendations Campaigns
     match /recommendations/{recommendationId} {
       allow read: if request.auth != null;
-      allow create, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow create, delete: if request.auth != null && isAdmin();
       allow update: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['impressions', 'clicks'])
+        isAdmin() ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['impressions', 'clicks']) &&
+          request.resource.data.get('impressions', 0) >= resource.data.get('impressions', 0) &&
+          request.resource.data.get('impressions', 0) <= resource.data.get('impressions', 0) + 1 &&
+          request.resource.data.get('clicks', 0) >= resource.data.get('clicks', 0) &&
+          request.resource.data.get('clicks', 0) <= resource.data.get('clicks', 0) + 1
+        )
       );
+    }
+
+    // Admin notification dispatch history (audit logs)
+    match /admin_notification_history/{historyId} {
+      allow read, write: if request.auth != null && isAdmin();
     }
   }
 }
