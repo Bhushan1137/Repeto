@@ -1,7 +1,7 @@
-import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { computeNextDueDate, frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
 import type { TranslationKey } from '@/i18n';
+import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 
 export interface TaskFormValues {
   title: string;
@@ -496,7 +496,7 @@ export function validateFormState(
       if (hasConflict) break;
     }
     if (hasConflict) {
-      errors.time = 'Dose times must be at least 5 minutes apart';
+      errors.time = 'Reocurrence time must be at least 5 minutes apart';
     }
   }
 

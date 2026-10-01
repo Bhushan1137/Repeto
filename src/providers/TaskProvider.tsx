@@ -353,6 +353,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         // Asynchronously sync remote, schedule reminders & send notifications
         (async () => {
           try {
+            if (existing.householdId && existing.householdId !== mutated.householdId && user?.id) {
+              taskRepository.deleteOneHousehold(taskId, existing.householdId, user.id).catch(() => {});
+            }
             await syncTask(mutated, 'update');
 
             const lastHistory = mutated.history[mutated.history.length - 1];

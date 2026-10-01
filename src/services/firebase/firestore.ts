@@ -89,7 +89,15 @@ export async function deleteTaskRemote(userId: string, taskId: string): Promise<
   await deleteDoc(doc(db, 'users', userId, 'tasks', taskId));
 }
 
-export async function saveUserCodeRemote(profile: { userCode: string; userId: string; name: string; color: string; photoUrl?: string }): Promise<void> {
+export async function saveUserCodeRemote(profile: {
+  userCode: string;
+  userId: string;
+  name: string;
+  color: string;
+  photoUrl?: string;
+  activeHouseholdCode?: string;
+  activeHouseholdId?: string;
+}): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;
   const uid = await waitForAuthUid();
@@ -99,13 +107,97 @@ export async function saveUserCodeRemote(profile: { userCode: string; userId: st
   await setDoc(doc(db, 'userCodes', upperCode), payload, { merge: true });
 }
 
-export async function loadUserCodeRemote(code: string): Promise<{ userCode: string; userId: string; name: string; color: string; photoUrl?: string } | null> {
+export async function loadUserCodeRemote(code: string): Promise<{
+  userCode: string;
+  userId: string;
+  name: string;
+  color: string;
+  photoUrl?: string;
+  activeHouseholdCode?: string;
+  activeHouseholdId?: string;
+} | null> {
   const db = getFirestoreDb();
   if (!db) return null;
   const uid = await waitForAuthUid();
   if (!uid) throw new Error('not_authenticated');
   const snap = await getDoc(doc(db, 'userCodes', code.toUpperCase()));
-  return snap.exists() ? (snap.data() as { userCode: string; userId: string; name: string; color: string; photoUrl?: string }) : null;
+  return snap.exists() ? (snap.data() as {
+    userCode: string;
+    userId: string;
+    name: string;
+    color: string;
+    photoUrl?: string;
+    activeHouseholdCode?: string;
+    activeHouseholdId?: string;
+  }) : null;
+}
+
+export async function findHouseholdCodeByOwnerRemote(ownerUid: string): Promise<HouseholdCodeRecord | null> {
+  const db = getFirestoreDb();
+  if (!db) return null;
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
+  try {
+    const q = query(collection(db, 'householdCodes'), where('ownerUid', '==', ownerUid), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs[0].data() as HouseholdCodeRecord;
+    }
+  } catch (err) {
+    console.warn('[Repeato] findHouseholdCodeByOwnerRemote failed:', err);
+  }
+  return null;
+}
+
+export interface HouseholdCodeRecord {
+  code: string;
+  householdId: string;
+  name: string;
+  icon: string;
+  color: string;
+  ownerUid: string;
+  memberUids: string[];
+  members?: import('@/types').HouseholdMemberProfile[];
+  updatedAt: string;
+}
+
+export async function saveHouseholdCodeRemote(household: import('@/types').HouseholdContext): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db || !household.code) return;
+  const uid = await waitForAuthUid();
+  if (!uid) return;
+  const upperCode = household.code.trim().toUpperCase();
+  const payload = forFirestore({
+    code: upperCode,
+    householdId: household.id,
+    name: household.name,
+    icon: household.icon || '🏠',
+    color: household.color || '#363E71',
+    ownerUid: household.ownerUid || uid,
+    memberUids: household.memberUids || [uid],
+    members: household.members || [],
+    updatedAt: new Date().toISOString(),
+  } as unknown as Record<string, unknown>);
+  await setDoc(doc(db, 'householdCodes', upperCode), payload, { merge: true });
+}
+
+export async function deleteHouseholdCodeRemote(code: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db || !code) return;
+  const uid = await waitForAuthUid();
+  if (!uid) return;
+  const upperCode = code.trim().toUpperCase();
+  await deleteDoc(doc(db, 'householdCodes', upperCode));
+}
+
+export async function resolveHouseholdCodeRemote(code: string): Promise<HouseholdCodeRecord | null> {
+  const db = getFirestoreDb();
+  if (!db) return null;
+  const uid = await waitForAuthUid();
+  if (!uid) throw new Error('not_authenticated');
+  const upperCode = code.trim().toUpperCase();
+  const snap = await getDoc(doc(db, 'householdCodes', upperCode));
+  return snap.exists() ? (snap.data() as HouseholdCodeRecord) : null;
 }
 
 export async function saveHouseholdRemote(household: import('@/types').HouseholdContext): Promise<void> {
@@ -127,13 +219,20 @@ export async function saveHouseholdRemote(household: import('@/types').Household
   } as unknown as Record<string, unknown>);
 
   await setDoc(doc(db, 'households', household.id), payload, { merge: true });
+
+  if (household.code) {
+    await saveHouseholdCodeRemote(household).catch(() => {});
+  }
 }
 
-export async function deleteHouseholdRemote(householdId: string): Promise<void> {
+export async function deleteHouseholdRemote(householdId: string, code?: string): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;
   await waitForAuthUid();
   await deleteDoc(doc(db, 'households', householdId));
+  if (code) {
+    await deleteHouseholdCodeRemote(code).catch(() => {});
+  }
 }
 
 export async function loadHouseholdRemote(householdId: string): Promise<import('@/types').HouseholdContext | null> {

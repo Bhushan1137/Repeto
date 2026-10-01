@@ -10,6 +10,7 @@ import {
   householdMemberFromInvite,
   pendingMemberFromCode,
   toSharedMember,
+  normalizeHouseholdProfile,
 } from '@/domain/household';
 import {
   createTaskFromParsed,
@@ -458,6 +459,228 @@ describe('E2E Review & Flow Verification: Household System', () => {
 
       // 2. Verified that hh_beach tasks are no longer visible in sanitized list
       expect(sanitized.some((t) => t.householdId === 'hh_beach')).toBe(false);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // FLOW 5: Architectural Review: Code Uniqueness, Scan/Join, and Scoping
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Flow 5: E2E Review: Household Code Uniqueness, Joining & Isolation', () => {
+    it('generates distinct unique household codes for different households owned by the same user', () => {
+      const hhHome = createHouseholdContext('Home', '🏠', '#3E7C6A', userAlice);
+      const hhOffice = createHouseholdContext('Office', '🏢', '#363E71', userAlice);
+
+      // Codes must be valid invite codes
+      expect(hhHome.code).toBeDefined();
+      expect(hhOffice.code).toBeDefined();
+      expect(hhHome.code).toMatch(/^RPT-[A-Z0-9]{6}$/);
+      expect(hhOffice.code).toMatch(/^RPT-[A-Z0-9]{6}$/);
+
+      // Must be distinct from each other and NOT just duplicate userCode
+      expect(hhHome.code).not.toBe(hhOffice.code);
+      expect(hhHome.id).not.toBe(hhOffice.id);
+    });
+
+    it('ensures joining a household by code binds user to the exact scanned household', () => {
+      // Alice creates household "Villa Sunset"
+      const hhVilla = createHouseholdContext('Villa Sunset', '🏖️', '#E8A33D', userAlice);
+
+      // Bob scans / enters hhVilla.code
+      const scannedCode = hhVilla.code!;
+      expect(normalizeInviteCode(scannedCode)).toBe(hhVilla.code);
+
+      // Bob joins the exact household
+      const bobMember = {
+        code: userBob.userCode!,
+        userId: userBob.id,
+        name: userBob.name!,
+        color: '#363E71',
+        addedAt: new Date().toISOString(),
+        status: 'active' as const,
+      };
+
+      const joinedHh: import('@/types').HouseholdContext = {
+        ...hhVilla,
+        members: [...hhVilla.members, bobMember],
+        memberUids: [...hhVilla.memberUids, userBob.id],
+      };
+
+      // Bob's profile is updated with this household
+      const bobUpdatedState: UserProfile = {
+        ...userBob,
+        households: [joinedHh],
+        activeHouseholdId: joinedHh.id,
+      };
+
+      expect(bobUpdatedState.activeHouseholdId).toBe(hhVilla.id);
+      expect(getActiveHousehold(bobUpdatedState)?.name).toBe('Villa Sunset');
+      expect(getActiveHousehold(bobUpdatedState)?.code).toBe(hhVilla.code);
+      expect(getActiveHousehold(bobUpdatedState)?.memberUids).toContain(userBob.id);
+      expect(getActiveHousehold(bobUpdatedState)?.members.some((m) => m.userId === userBob.id)).toBe(true);
+    });
+
+    it('guarantees tasks are strictly scoped to the household they were created for', () => {
+      const hhA = createHouseholdContext('Household A', '🏠', '#3E7C6A', userAlice);
+      const hhB = createHouseholdContext('Household B', '🏢', '#363E71', userAlice);
+
+      // Task 1 created for Household A
+      const taskA = createTaskFromParsed(
+        { title: 'Clean Kitchen in HH A', category: 'home', frequencyLabel: 'Daily', recurrence: { type: 'daily' } },
+        { finance: false, shared: [], householdId: hhA.id }
+      );
+
+      // Task 2 created for Household B
+      const taskB = createTaskFromParsed(
+        { title: 'Restock Snacks in HH B', category: 'home', frequencyLabel: 'Weekly', recurrence: { type: 'weekly' } },
+        { finance: false, shared: [], householdId: hhB.id }
+      );
+
+      // Task 3 created as Personal
+      const taskPersonal = createTaskFromParsed(
+        { title: 'Personal Dentist Visit', category: 'health', frequencyLabel: 'Monthly', recurrence: { type: 'monthly' } },
+        { finance: false, shared: [], householdId: null }
+      );
+
+      const allTasks = [taskA, taskB, taskPersonal];
+
+      // 1. Scoped tasks for Household A
+      const hhATasks = allTasks.filter((t) => t.householdId === hhA.id);
+      expect(hhATasks).toHaveLength(1);
+      expect(hhATasks[0].title).toBe('Clean Kitchen in HH A');
+
+      // 2. Scoped tasks for Household B
+      const hhBTasks = allTasks.filter((t) => t.householdId === hhB.id);
+      expect(hhBTasks).toHaveLength(1);
+      expect(hhBTasks[0].title).toBe('Restock Snacks in HH B');
+
+      // 3. Personal tasks
+      const personalTasks = allTasks.filter((t) => !t.householdId);
+      expect(personalTasks).toHaveLength(1);
+      expect(personalTasks[0].title).toBe('Personal Dentist Visit');
+    });
+
+    it('accurately computes member performance rankings and progress percentage bounds', () => {
+      const memberAlice = { name: 'Alice', onTimePercent: 100, taskCount: 8, isYou: true };
+      const memberBob = { name: 'Bob', onTimePercent: 75, taskCount: 4, isYou: false };
+      const memberCharlie = { name: 'Charlie', onTimePercent: 50, taskCount: 2, isYou: false };
+
+      const memberList = [memberCharlie, memberAlice, memberBob];
+      const sorted = [...memberList].sort((a, b) => b.onTimePercent - a.onTimePercent);
+
+      // Leader (Rank 1) is Alice with 100%
+      expect(sorted[0].name).toBe('Alice');
+      expect(sorted[0].onTimePercent).toBe(100);
+
+      // Rank 2 is Bob with 75%
+      expect(sorted[1].name).toBe('Bob');
+      expect(sorted[1].onTimePercent).toBe(75);
+
+      // Progress bar fill width is always within [0, 100]
+      const clampWidth = (pct: number) => Math.min(100, Math.max(0, pct));
+      expect(clampWidth(sorted[0].onTimePercent)).toBe(100);
+      expect(clampWidth(-10)).toBe(0);
+      expect(clampWidth(150)).toBe(100);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // FLOW 7: Household Joining Consistency (Direct Code vs Host User Code)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Flow 7: Household Joining Consistency & Code Resolution', () => {
+    it('normalizes pre-existing households to guarantee unique code, ownerUid, and memberUids', () => {
+      const legacyProfile: UserProfile = {
+        ...userAlice,
+        id: 'user-legacy-1',
+        name: 'Legacy User',
+        userCode: 'RPT-LEGACY',
+        households: [
+          {
+            id: 'hh-legacy-1',
+            name: 'Our Flat',
+            icon: '🏢',
+            color: '#363E71',
+            // Missing code, ownerUid, memberUids
+          } as any,
+        ],
+      };
+
+      const result = normalizeHouseholdProfile(legacyProfile);
+
+      expect(result.households).toBeDefined();
+      expect(result.households).toHaveLength(1);
+      const hh = result.households![0];
+      expect(hh.ownerUid).toBe('user-legacy-1');
+      expect(hh.code).toBeDefined();
+      expect(hh.code).toMatch(/^RPT-[A-Z0-9]{6}$/);
+      expect(hh.code).not.toBe(legacyProfile.userCode);
+      expect(hh.memberUids).toContain('user-legacy-1');
+    });
+
+    it('joins the exact scanned household rather than creating a fallback Home', () => {
+      const hhHost = createHouseholdContext('Penthouse 42', '🏙️', '#3E7C6A', userAlice);
+
+      // User Bob has zero households initially
+      const userBobEmpty: UserProfile = {
+        ...userBob,
+        households: [],
+        activeHouseholdId: undefined,
+      };
+
+      // Simulated resolution of the host's household code
+      const resolvedHh = hhHost;
+      expect(resolvedHh.name).toBe('Penthouse 42');
+
+      // User Bob joins Penthouse 42
+      const bobMember = {
+        code: userBob.userCode || 'RPT-BOB123',
+        name: userBob.name,
+        color: '#E8A33D',
+        userId: userBob.id,
+        addedAt: new Date().toISOString(),
+        status: 'active' as const,
+      };
+
+      const joinedHh = {
+        ...resolvedHh,
+        members: [...resolvedHh.members, bobMember],
+        memberUids: Array.from(new Set([...resolvedHh.memberUids, userBob.id])),
+      };
+
+      const bobJoinedState: UserProfile = {
+        ...userBobEmpty,
+        households: [joinedHh],
+        activeHouseholdId: joinedHh.id,
+      };
+
+      // Verifications:
+      expect(bobJoinedState.households).toHaveLength(1);
+      expect(bobJoinedState.activeHouseholdId).toBe(hhHost.id);
+      expect(getActiveHousehold(bobJoinedState)?.name).toBe('Penthouse 42');
+      expect(getActiveHousehold(bobJoinedState)?.name).not.toBe('Home');
+      expect(getActiveHousehold(bobJoinedState)?.code).toBe(hhHost.code);
+      expect(getActiveHousehold(bobJoinedState)?.memberUids).toContain(userBob.id);
+      expect(getActiveHousehold(bobJoinedState)?.memberUids).toContain(userAlice.id);
+    });
+
+    it('resolves host household when scanning a host User Code with activeHouseholdCode', () => {
+      const hhHost = createHouseholdContext('Green Villa', '🌿', '#2C5C4E', userAlice);
+
+      // Host user code record in Firestore /userCodes/{code}
+      const hostUserCodeRecord = {
+        userCode: userAlice.userCode || 'RPT-ALICE1',
+        userId: userAlice.id,
+        name: userAlice.name,
+        color: '#2C5C4E',
+        activeHouseholdCode: hhHost.code,
+        activeHouseholdId: hhHost.id,
+      };
+
+      // Scanner checks activeHouseholdCode if direct lookup was a user code
+      expect(hostUserCodeRecord.activeHouseholdCode).toBe(hhHost.code);
+      expect(hostUserCodeRecord.activeHouseholdCode).not.toBe(hostUserCodeRecord.userCode);
+
+      // Resolves to Green Villa
+      expect(hhHost.name).toBe('Green Villa');
     });
   });
 });

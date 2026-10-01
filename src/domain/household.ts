@@ -25,8 +25,8 @@ export function generateUserCode(seed: string): string {
   return `RPT-${n.toString(36).toUpperCase().padStart(6, '0').slice(0, 6)}`;
 }
 
-export function generateHouseholdCode(seed: string): string {
-  const n = hashString(seed || `${Date.now()}`);
+export function generateHouseholdCode(seed?: string): string {
+  const n = hashString(seed || `${Date.now()}-${Math.random()}`);
   return `RPT-${n.toString(36).toUpperCase().padStart(6, '0').slice(0, 6)}`;
 }
 
@@ -43,12 +43,32 @@ export function normalizeHouseholdProfile(
   const householdMemberUids = householdMembers
     .map((m) => m.userId)
     .filter((id): id is string => !!id);
+
+  const households = user.households
+    ? user.households.map((hh) => {
+        const ownerUid = hh.ownerUid || user.id;
+        const code = hh.code && hh.code !== userCode
+          ? hh.code
+          : generateHouseholdCode(`${hh.id}-${user.id || user.email}`);
+        const memberUids = hh.memberUids && hh.memberUids.length > 0
+          ? Array.from(new Set([ownerUid, ...hh.memberUids]))
+          : [ownerUid];
+        return {
+          ...hh,
+          ownerUid,
+          code,
+          memberUids,
+        };
+      })
+    : undefined;
+
   return {
     ...user,
     userCode,
     householdCode,
     householdMembers,
     householdMemberUids,
+    ...(households ? { households } : {}),
   };
 }
 
@@ -87,8 +107,11 @@ export function pendingMemberFromCode(code: string): HouseholdMemberProfile {
 }
 
 export function normalizeInviteCode(code: string): string {
+  if (!code) return '';
   const cleaned = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (cleaned.startsWith('RPT')) return `RPT-${cleaned.slice(3, 9)}`;
+  if (cleaned.startsWith('RPT')) {
+    return `RPT-${cleaned.slice(3, 9)}`;
+  }
   return cleaned.length > 3 ? `RPT-${cleaned.slice(0, 6)}` : cleaned;
 }
 
@@ -166,6 +189,7 @@ export function createHouseholdContext(
   user: UserProfile
 ): HouseholdContext {
   const id = generateId();
+  const householdCode = generateHouseholdCode(`${id}-${user.id || user.email}-${Date.now()}`);
   const userCode = user.userCode || generateUserCode(user.id || user.email);
   const ownerMember: HouseholdMemberProfile = {
     code: userCode,
@@ -182,7 +206,7 @@ export function createHouseholdContext(
     name: name.trim(),
     icon,
     ownerUid: user.id,
-    code: userCode,
+    code: householdCode,
     members: [ownerMember],
     memberUids: [user.id],
     createdAt: new Date().toISOString(),

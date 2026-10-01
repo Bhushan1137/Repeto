@@ -1,18 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { HouseholdContext, Language, UserProfile } from '@/types';
+import type { HouseholdContext, HouseholdMemberProfile, Language, UserProfile } from '@/types';
 import { userRepository } from '@/data/repositories/userRepository';
 import { signInWithGoogle as authSignIn, signInWithEmail as authSignInWithEmail, signUpWithEmail as authSignUpWithEmail, profileFromFirebaseUser, profileFromSignedInUser, deleteAccountSoft } from '@/services/authService';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
-import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain, normalizeInviteCode } from '@/domain/household';
+import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain, normalizeInviteCode, generateUserCode, memberColor } from '@/domain/household';
 import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
 import { restoreUserRemote, purgeUserDataRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
 import { cancelAllNotifications, registerForPushNotificationsAsync } from '@/services/notifications';
-import { notifyOwnerMemberLeftHousehold } from '@/services/householdBroadcastService';
+import { notifyOwnerMemberLeftHousehold, broadcastMemberJoinedHousehold } from '@/services/householdBroadcastService';
 
 interface AuthContextValue {
   ready: boolean;
@@ -33,6 +33,8 @@ interface AuthContextValue {
   switchHousehold: (id: string) => Promise<void>;
   /** Creates a new household context and switches to it */
   createHousehold: (name: string, icon: string, color: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Join an existing household by its unique code */
+  joinHouseholdByCode: (code: string) => Promise<{ ok: boolean; household?: HouseholdContext; alreadyMember?: boolean; error?: string }>;
   /** Owner deletes the household — removes it from all members and Firestore */
   deleteHousehold: (householdId: string) => Promise<{ ok: boolean; error?: string }>;
   /** Member leaves a household they belong to */
@@ -296,11 +298,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await userRepository.saveLocal(profile);
               }
 
-              // Ensure user-owned household contexts exist in remote /households collection
+              // Ensure user-owned household contexts exist in remote /households and /householdCodes collections
               if (profile.households && profile.households.length > 0) {
                 for (const hh of profile.households) {
-                  if (hh.ownerUid === profile.id) {
+                  if (hh.ownerUid === profile.id || !hh.ownerUid) {
                     userRepository.saveHousehold(hh).catch(() => {});
+                    if (hh.code) {
+                      userRepository.saveHouseholdCode(hh).catch(() => {});
+                    }
                   }
                 }
               }
@@ -623,8 +628,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    // 2. Delete Firestore /households/{id}
-    await userRepository.deleteHousehold(householdId);
+    // 2. Delete Firestore /households/{id} and /householdCodes/{code}
+    await userRepository.deleteHousehold(householdId, hh.code);
 
     // 3. Remove household from own profile
     const remainingHouseholds = (user.households ?? []).filter(h => h.id !== householdId);
@@ -638,6 +643,121 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return { ok: true };
   }, [user, persistUser]);
+
+  // ── Join Household by Unique Code ─────────────────────────────────────────
+  const joinHouseholdByCode = useCallback(async (rawCode: string): Promise<{ ok: boolean; household?: HouseholdContext; alreadyMember?: boolean; error?: string }> => {
+    if (!user) return { ok: false, error: 'not_signed_in' };
+    if (!isOnline) return { ok: false, error: 'offline' };
+    const code = normalizeInviteCode(rawCode);
+    if (!code) return { ok: false, error: 'invalid_code' };
+
+    const currentHouseholds = user.households ?? [];
+
+    // 1. Check if already belonging to a household with this code
+    const existing = currentHouseholds.find(h => normalizeInviteCode(h.code || '') === code);
+    if (existing) {
+      if (user.activeHouseholdId !== existing.id) {
+        await persistUser({ ...user, activeHouseholdId: existing.id });
+      }
+      return { ok: true, household: existing, alreadyMember: true };
+    }
+
+    // 2. Check maximum household limit
+    if (currentHouseholds.length >= MAX_HOUSEHOLDS) {
+      return { ok: false, error: 'limit_reached' };
+    }
+
+    // 3. Resolve the household code from Firestore:
+    // 3a. Direct household code lookup
+    let hhRecord = await userRepository.resolveHouseholdCode(code);
+
+    // 3b. If not found directly, check if the scanned code is a user's code
+    if (!hhRecord) {
+      const userCodeMatch = await userRepository.resolveUserCode(code);
+      if (userCodeMatch) {
+        if ((userCodeMatch as any).activeHouseholdCode) {
+          hhRecord = await userRepository.resolveHouseholdCode((userCodeMatch as any).activeHouseholdCode);
+        }
+        if (!hhRecord && userCodeMatch.userId) {
+          hhRecord = await userRepository.findHouseholdCodeByOwner(userCodeMatch.userId);
+        }
+      }
+    }
+
+    // 3c. If still not found, check legacy household invites
+    if (!hhRecord) {
+      const invite = await userRepository.resolveHouseholdInvite(code);
+      if (invite && invite.userId) {
+        hhRecord = await userRepository.findHouseholdCodeByOwner(invite.userId);
+      }
+    }
+
+    if (!hhRecord) {
+      return { ok: false, error: 'household_not_found' };
+    }
+
+    // 4. Check if already in user's households by ID
+    const existingById = currentHouseholds.find(h => h.id === hhRecord.householdId);
+    if (existingById) {
+      if (user.activeHouseholdId !== existingById.id) {
+        await persistUser({ ...user, activeHouseholdId: existingById.id });
+      }
+      return { ok: true, household: existingById, alreadyMember: true };
+    }
+
+    // 5. Construct membership for current user
+    const userCode = user.userCode || generateUserCode(user.id || user.email);
+    const myMember: HouseholdMemberProfile = {
+      code: userCode,
+      name: user.name || 'Member',
+      color: memberColor(user.id || userCode),
+      userId: user.id,
+      phone: user.phone,
+      addedAt: new Date().toISOString(),
+      status: 'active',
+    };
+
+    // Load fresh household if possible, or fallback to record
+    let remoteHh = await userRepository.loadHousehold(hhRecord.householdId).catch(() => null);
+    const baseMembers = remoteHh?.members ?? hhRecord.members ?? [];
+    const alreadyMemberInRemote = baseMembers.some(m => m.userId === user.id || normalizeInviteCode(m.code) === normalizeInviteCode(userCode));
+    const finalMembers = alreadyMemberInRemote ? baseMembers : [...baseMembers, myMember];
+    const finalMemberUids = Array.from(new Set([...(remoteHh?.memberUids ?? hhRecord.memberUids ?? []), user.id]));
+
+    const joinedHh: HouseholdContext = {
+      id: hhRecord.householdId,
+      name: remoteHh?.name || hhRecord.name,
+      icon: remoteHh?.icon || hhRecord.icon || '🏠',
+      color: remoteHh?.color || hhRecord.color || '#363E71',
+      ownerUid: remoteHh?.ownerUid || hhRecord.ownerUid,
+      code: hhRecord.code,
+      members: finalMembers,
+      memberUids: finalMemberUids,
+      createdAt: remoteHh?.createdAt || new Date().toISOString(),
+    };
+
+    // 6. Save joined household to Firestore (triggers self-join rule)
+    await userRepository.saveHousehold(joinedHh);
+
+    // 7. Update own profile with new household and set active
+    const nextHouseholds = [...currentHouseholds, joinedHh];
+    await persistUser({
+      ...user,
+      households: nextHouseholds,
+      activeHouseholdId: joinedHh.id,
+    });
+
+    // 8. Notify household members
+    broadcastMemberJoinedHousehold({
+      householdId: joinedHh.id,
+      householdName: joinedHh.name,
+      newMember: { id: user.id, name: user.name || 'Member', code: userCode },
+      actorUser: user,
+      allMembers: finalMembers,
+    }).catch(() => {});
+
+    return { ok: true, household: joinedHh };
+  }, [user, isOnline, persistUser]);
 
   // ── Member: Leave Household ──────────────────────────────────────────────
   const leaveHousehold = useCallback(async (householdId: string): Promise<{ ok: boolean; error?: string }> => {
@@ -961,6 +1081,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       switchHousehold,
       createHousehold,
+      joinHouseholdByCode,
       deleteHousehold,
       leaveHousehold,
       removeMemberFromHousehold,
@@ -969,7 +1090,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       restoreAccount,
       freshStartAccount,
     }),
-    [ready, user, setUser, language, languageSelected, firebaseReady, activeHousehold, signInWithGoogle, signInWithEmail, signUpWithEmail, updateUser, setLanguage, signOut, switchHousehold, createHousehold, deleteHousehold, leaveHousehold, removeMemberFromHousehold, deleteAccount, deletedAccountInfo, restoreAccount, freshStartAccount]
+    [ready, user, setUser, language, languageSelected, firebaseReady, activeHousehold, signInWithGoogle, signInWithEmail, signUpWithEmail, updateUser, setLanguage, signOut, switchHousehold, createHousehold, joinHouseholdByCode, deleteHousehold, leaveHousehold, removeMemberFromHousehold, deleteAccount, deletedAccountInfo, restoreAccount, freshStartAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

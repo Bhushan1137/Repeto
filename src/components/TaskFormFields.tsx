@@ -2,12 +2,11 @@ import { AppIcon } from '@/components/AppIcon';
 import { DateField } from '@/components/DateField';
 import { FormField } from '@/components/FormField';
 import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
+import { AlarmToggleRow } from '@/components/taskForm/AlarmToggleRow';
 import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
 import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
 import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
-import { AlarmToggleRow } from '@/components/taskForm/AlarmToggleRow';
 import { TimeField } from '@/components/TimeField';
-import { formatTime12 } from '@/utils/timeFormat';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
@@ -25,6 +24,7 @@ import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import type { CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
+import { formatTime12 } from '@/utils/timeFormat';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Card, Text, TouchableRipple } from 'react-native-paper';
@@ -1414,8 +1414,8 @@ const styles = StyleSheet.create({
 
   // Inspiration Pills
   inspirationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 6,
     marginTop: 6,
     marginBottom: 10,

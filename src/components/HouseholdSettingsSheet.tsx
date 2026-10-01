@@ -1,11 +1,37 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Modal, Pressable, Alert, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  Modal,
+  Pressable,
+  Alert,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 import { AppIcon } from '@/components/AppIcon';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import type { HouseholdContext, HouseholdMemberProfile } from '@/types';
+import { initials } from '@/domain/insights';
+import { generateHouseholdCode } from '@/domain/household';
 
-interface HouseholdSettingsSheetProps {
+export interface MemberWithStats {
+  code?: string;
+  userId?: string;
+  name: string;
+  short: string;
+  color: string;
+  taskCount: number;
+  onTimePercent: number;
+  isYou?: boolean;
+  status?: string;
+}
+
+export interface HouseholdSettingsSheetProps {
   visible: boolean;
   onClose: () => void;
   activeHousehold: HouseholdContext;
@@ -16,6 +42,8 @@ interface HouseholdSettingsSheetProps {
   onLeaveHousehold: (householdId: string) => Promise<{ ok: boolean; error?: string }>;
   onRemoveMember: (householdId: string, memberCode: string, memberUserId?: string) => Promise<{ ok: boolean; error?: string }>;
   showToast: (msg: string) => void;
+  membersWithStats?: MemberWithStats[];
+  onAddMemberPress?: () => void;
 }
 
 export function HouseholdSettingsSheet({
@@ -29,11 +57,30 @@ export function HouseholdSettingsSheet({
   onLeaveHousehold,
   onRemoveMember,
   showToast,
+  membersWithStats = [],
+  onAddMemberPress,
 }: HouseholdSettingsSheetProps) {
   const [loading, setLoading] = useState(false);
   const [removingCode, setRemovingCode] = useState<string | null>(null);
-  const isOwner = activeHousehold.ownerUid === currentUserId;
+  const [showQrCode, setShowQrCode] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const isOwner = activeHousehold?.ownerUid === currentUserId;
   const hi = language === 'hi';
+
+  const householdCode = activeHousehold?.code || (activeHousehold?.id ? generateHouseholdCode(activeHousehold.id) : '');
+
+  const handleCopyCode = async () => {
+    if (!householdCode) return;
+    await Clipboard.setStringAsync(householdCode);
+    setCopiedCode(true);
+    showToast(hi ? 'घर का कोड कॉपी हो गया!' : 'Household invite code copied!');
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const sortedStats = useMemo(() => {
+    return [...membersWithStats].sort((a, b) => b.onTimePercent - a.onTimePercent);
+  }, [membersWithStats]);
 
   const handleDeleteHousehold = () => {
     const doDelete = () => {
@@ -41,18 +88,30 @@ export function HouseholdSettingsSheet({
       onDeleteHousehold(activeHousehold.id)
         .then((res) => {
           setLoading(false);
-          if (res.ok) { showToast(hi ? 'घर हटा दिया गया' : 'Household deleted'); onClose(); }
-          else showToast(hi ? 'घर हटाने में विफल' : 'Failed to delete household');
+          if (res.ok) {
+            showToast(hi ? 'घर हटा दिया गया' : 'Household deleted');
+            onClose();
+          } else {
+            showToast(hi ? 'घर हटाने में विफल' : 'Failed to delete household');
+          }
         })
         .catch(() => setLoading(false));
     };
+
+    const confirmMsg = hi
+      ? `"${activeHousehold.name}" हटाएं? सभी सदस्यों की पहुंच समाप्त होगी। यह क्रिया पूर्ववत नहीं की जा सकती।`
+      : `Delete "${activeHousehold.name}"? All ${activeHousehold.members?.length ?? 1} member(s) will lose access. This cannot be undone.`;
+
     if (Platform.OS === 'web') {
-      if (window.confirm(hi ? `"${activeHousehold.name}" हटाएं? सभी सदस्यों की पहुंच समाप्त होगी।` : `Delete "${activeHousehold.name}"? All members will lose access.`)) doDelete();
+      if (window.confirm(confirmMsg)) doDelete();
     } else {
       Alert.alert(
         hi ? 'घर हटाएं?' : 'Delete Household?',
-        hi ? `"${activeHousehold.name}" हटाने पर सभी सदस्यों की पहुंच समाप्त हो जाएगी। यह क्रिया पूर्ववत नहीं की जा सकती।` : `Deleting "${activeHousehold.name}" will remove access for all ${activeHousehold.members.length} member(s). This cannot be undone.`,
-        [{ text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' }, { text: hi ? 'हटाएं' : 'Delete', style: 'destructive', onPress: doDelete }]
+        confirmMsg,
+        [
+          { text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+          { text: hi ? 'हटाएं' : 'Delete', style: 'destructive', onPress: doDelete },
+        ]
       );
     }
   };
@@ -63,18 +122,30 @@ export function HouseholdSettingsSheet({
       onLeaveHousehold(activeHousehold.id)
         .then((res) => {
           setLoading(false);
-          if (res.ok) { showToast(hi ? 'घर छोड़ दिया' : 'Left household'); onClose(); }
-          else showToast(hi ? 'घर छोड़ने में विफल' : 'Failed to leave household');
+          if (res.ok) {
+            showToast(hi ? 'घर छोड़ दिया' : 'Left household');
+            onClose();
+          } else {
+            showToast(hi ? 'घर छोड़ने में विफल' : 'Failed to leave household');
+          }
         })
         .catch(() => setLoading(false));
     };
+
+    const confirmMsg = hi
+      ? `"${activeHousehold.name}" छोड़ें? आप साझा कार्यों तक पहुंच खो देंगे।`
+      : `Leave "${activeHousehold.name}"? You will lose access to shared tasks.`;
+
     if (Platform.OS === 'web') {
-      if (window.confirm(hi ? `"${activeHousehold.name}" छोड़ें?` : `Leave "${activeHousehold.name}"?`)) doLeave();
+      if (window.confirm(confirmMsg)) doLeave();
     } else {
       Alert.alert(
         hi ? 'घर छोड़ें?' : 'Leave Household?',
-        hi ? `"${activeHousehold.name}" छोड़ने पर साझा कार्यों तक पहुंच समाप्त होगी।` : `You will lose access to shared tasks in "${activeHousehold.name}".`,
-        [{ text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' }, { text: hi ? 'छोड़ें' : 'Leave', style: 'destructive', onPress: doLeave }]
+        confirmMsg,
+        [
+          { text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+          { text: hi ? 'छोड़ें' : 'Leave', style: 'destructive', onPress: doLeave },
+        ]
       );
     }
   };
@@ -88,23 +159,35 @@ export function HouseholdSettingsSheet({
           if (res.ok) {
             showToast(hi ? `${member.name} को हटाया गया` : `${member.name} removed`);
           } else if (res.error === 'offline') {
-            showToast(hi ? 'आप ऑफ़लाइन हैं। सदस्य हटाने के लिए इंटरनेट आवश्यक है।' : 'You are offline. Member removal requires an internet connection.');
+            showToast(hi ? 'आप ऑफ़लाइन हैं। इंटरनेट आवश्यक है।' : 'You are offline. Connection required.');
           } else {
             showToast(hi ? 'सदस्य हटाने में विफल' : 'Failed to remove member');
           }
         })
         .catch(() => setRemovingCode(null));
     };
+
+    const confirmMsg = hi
+      ? `"${member.name}" को "${activeHousehold.name}" से हटाएं?`
+      : `Remove ${member.name} from "${activeHousehold.name}"?`;
+
     if (Platform.OS === 'web') {
-      if (window.confirm(hi ? `"${member.name}" को हटाएं?` : `Remove ${member.name}?`)) doRemove();
+      if (window.confirm(confirmMsg)) doRemove();
     } else {
       Alert.alert(
         hi ? 'सदस्य हटाएं?' : 'Remove Member?',
-        hi ? `"${member.name}" को हटाने पर उनके साझा कार्य अनशेयर होंगे।` : `Remove ${member.name} from "${activeHousehold.name}"? Their shared tasks will be unshared.`,
-        [{ text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' }, { text: hi ? 'हटाएं' : 'Remove', style: 'destructive', onPress: doRemove }]
+        confirmMsg,
+        [
+          { text: hi ? 'रद्द करें' : 'Cancel', style: 'cancel' },
+          { text: hi ? 'हटाएं' : 'Remove', style: 'destructive', onPress: doRemove },
+        ]
       );
     }
   };
+
+  if (!activeHousehold) return null;
+
+  const membersList = activeHousehold.members || [];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -113,12 +196,16 @@ export function HouseholdSettingsSheet({
         {/* ── Header ── */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.hhIcon}>{activeHousehold.icon || '🏠'}</Text>
+            <View style={styles.hhIconWrap}>
+              <Text style={styles.hhIcon}>{activeHousehold.icon || '🏠'}</Text>
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.hhName}>{activeHousehold.name}</Text>
+              <Text style={styles.hhName} numberOfLines={1}>
+                {activeHousehold.name}
+              </Text>
               <Text style={styles.hhMeta}>
-                {isOwner ? (hi ? 'आप स्वामी हैं' : 'You are the owner') : (hi ? 'आप सदस्य हैं' : 'You are a member')}
-                {' · '}{activeHousehold.members.length} {hi ? 'सदस्य' : 'members'}
+                {isOwner ? (hi ? '👑 आप स्वामी हैं' : '👑 You are the owner') : (hi ? 'सदस्य' : 'Member')}
+                {' · '}{membersList.length} {hi ? 'सदस्य' : 'members'}
               </Text>
             </View>
           </View>
@@ -128,35 +215,170 @@ export function HouseholdSettingsSheet({
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          {/* ── Members List ── */}
-          <Text style={styles.sectionLabel}>{hi ? 'सदस्य' : 'Members'}</Text>
+          {/* ── Invite & Share Card ── */}
+          {householdCode ? (
+            <View style={styles.inviteCard}>
+              <View style={styles.inviteHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <AppIcon name="share-social-outline" size={16} color={Colors.marigoldDeep} />
+                  <Text style={styles.inviteLabel}>
+                    {hi ? 'घर का आमंत्रण कोड' : 'Household Invite Code'}
+                  </Text>
+                </View>
+                {onAddMemberPress && (
+                  <TouchableOpacity
+                    onPress={onAddMemberPress}
+                    style={styles.addMemberInlineBtn}
+                    activeOpacity={0.7}
+                  >
+                    <AppIcon name="person-outline" size={14} color={Colors.tealDeep} />
+                    <Text style={styles.addMemberInlineText}>
+                      {hi ? '+ जोड़ें' : '+ Add'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.codeRow}>
+                <Text style={styles.codeText}>{householdCode}</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={handleCopyCode}
+                    style={styles.actionPillBtn}
+                    activeOpacity={0.7}
+                  >
+                    <AppIcon name={copiedCode ? 'checkmark' : 'copy-outline'} size={13} color={Colors.tealDeep} />
+                    <Text style={styles.actionPillText}>
+                      {copiedCode ? (hi ? 'कॉपी!' : 'Copied!') : (hi ? 'कॉपी' : 'Copy')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowQrCode(!showQrCode)}
+                    style={[styles.actionPillBtn, showQrCode && styles.actionPillBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <AppIcon name="qr-code-outline" size={13} color={showQrCode ? Colors.white : Colors.marigoldDeep} />
+                    <Text style={[styles.actionPillText, showQrCode && { color: Colors.white }]}>
+                      {showQrCode ? (hi ? 'छिपाएं' : 'Hide QR') : 'QR'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {showQrCode && (
+                <View style={styles.qrWrapper}>
+                  <View style={styles.qrInner}>
+                    <QRCode value={householdCode} size={140} />
+                  </View>
+                  <Text style={styles.qrInstruction}>
+                    {hi
+                      ? 'रूममेट अपने Repeto स्कैनर से इस कोड को स्कैन करके सीधे इस घर में शामिल हो सकते हैं'
+                      : 'Roommates can scan this with Repeto scanner to join this household directly'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {/* ── Members & Progress Section ── */}
+          <View style={styles.membersSectionHeader}>
+            <Text style={styles.sectionLabel}>
+              {hi ? 'घर के सदस्य' : 'Household Members'} ({membersList.length})
+            </Text>
+            <Text style={styles.sectionSubLabel}>
+              {hi ? 'कार्य पूरा करने की प्रगति' : 'Task completion on-time'}
+            </Text>
+          </View>
+
           <Card style={styles.membersCard} mode="elevated">
             <Card.Content style={{ padding: 0 }}>
-              {activeHousehold.members.map((m, idx) => {
+              {membersList.map((m, idx) => {
                 const isYou = m.userId === currentUserId;
                 const isBeingRemoved = removingCode === m.code;
-                const isLast = idx === activeHousehold.members.length - 1;
+                const isLast = idx === membersList.length - 1;
+
+                // Match with stats if available
+                const stat = membersWithStats.find(
+                  (s) => (s.isYou && isYou) || (m.userId && s.userId === m.userId) || (m.code && s.code === m.code)
+                );
+
+                const taskCount = stat?.taskCount ?? 0;
+                const onTimePercent = stat?.onTimePercent ?? 100;
+
+                const rank = sortedStats.findIndex(
+                  (sm) => (sm.isYou && isYou) || (sm.code && sm.code === m.code) || (m.userId && sm.userId === m.userId)
+                ) + 1;
+                const rankBadge = rank === 1 ? '👑 #1' : rank > 1 ? `#${rank}` : null;
+
+                const isHouseholdOwner = m.userId === activeHousehold.ownerUid;
+
                 return (
                   <View key={m.code || m.userId || m.name} style={[styles.memberRow, !isLast && styles.memberRowBorder]}>
                     <View style={[styles.memberAvatar, { backgroundColor: m.color || '#363E71' }]}>
-                      <Text style={styles.memberAvatarText}>{(m.name || '?').slice(0, 1).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>{isYou ? `${hi ? 'आप' : 'You'} (${m.name})` : m.name}</Text>
-                      <Text style={styles.memberRole}>
-                        {m.userId === activeHousehold.ownerUid
-                          ? (hi ? '👑 स्वामी' : '👑 Owner')
-                          : m.status === 'pending'
-                            ? (hi ? '⏳ अनुलंबित' : '⏳ Pending')
-                            : (hi ? 'सदस्य' : 'Member')}
+                      <Text style={styles.memberAvatarText}>
+                        {initials(m.name || '?')}
                       </Text>
                     </View>
-                    {/* Only owner can remove non-owner, non-self members */}
-                    {isOwner && !isYou && m.userId !== activeHousehold.ownerUid && (
-                      <TouchableRipple onPress={() => handleRemoveMember(m)} style={styles.removeBtn} borderless disabled={isBeingRemoved}>
-                        {isBeingRemoved
-                          ? <ActivityIndicator size={16} color={Colors.inkSoft} />
-                          : <AppIcon name="person-remove-outline" size={18} color="#C1502E" />}
+
+                    <View style={styles.memberInfo}>
+                      <View style={styles.memberNameRow}>
+                        <Text style={styles.memberName} numberOfLines={1}>
+                          {isYou ? `${hi ? 'आप' : 'You'} (${m.name})` : m.name}
+                        </Text>
+                        {rankBadge && taskCount > 0 && (
+                          <View style={styles.rankBadge}>
+                            <Text style={styles.rankBadgeText}>{rankBadge}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.memberRoleTag}>
+                          {isHouseholdOwner ? (hi ? '👑 स्वामी' : '👑 Owner') : m.status === 'pending' ? (hi ? '⏳ अनुलंबित' : '⏳ Pending') : ''}
+                        </Text>
+                      </View>
+
+                      {/* Performance stats & progress */}
+                      <View style={styles.memberMetaRow}>
+                        <Text style={styles.memberStat}>
+                          {m.status === 'pending'
+                            ? (hi ? 'आमंत्रण लंबित' : 'Invite pending')
+                            : `${taskCount} ${hi ? 'कार्य' : 'tasks'}`}
+                        </Text>
+                        {m.status !== 'pending' && (
+                          <>
+                            <Text style={styles.memberBullet}>·</Text>
+                            <Text style={styles.memberOnTimeText}>{onTimePercent}% {hi ? 'समय पर' : 'on-time'}</Text>
+                          </>
+                        )}
+                      </View>
+
+                      {m.status !== 'pending' && (
+                        <View style={styles.progressBarBg}>
+                          <View
+                            style={[
+                              styles.progressBarFill,
+                              {
+                                width: `${Math.min(100, Math.max(0, onTimePercent))}%`,
+                                backgroundColor: onTimePercent >= 80 ? '#10B981' : onTimePercent >= 50 ? Colors.marigoldDeep : '#EF4444',
+                              },
+                            ]}
+                          />
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Owner can remove members (except themselves and household owner) */}
+                    {isOwner && !isYou && !isHouseholdOwner && (
+                      <TouchableRipple
+                        onPress={() => handleRemoveMember(m)}
+                        style={styles.removeBtn}
+                        borderless
+                        disabled={isBeingRemoved}
+                        hitSlop={8}
+                      >
+                        {isBeingRemoved ? (
+                          <ActivityIndicator size={16} color={Colors.inkSoft} />
+                        ) : (
+                          <AppIcon name="trash-outline" size={17} color="#C1502E" />
+                        )}
                       </TouchableRipple>
                     )}
                   </View>
@@ -167,7 +389,7 @@ export function HouseholdSettingsSheet({
 
           <View style={styles.divider} />
 
-          {/* ── Action Button ── */}
+          {/* ── Household Danger Actions ── */}
           {loading ? (
             <ActivityIndicator color={Colors.marigoldDeep} style={{ marginVertical: 16 }} />
           ) : isOwner ? (
@@ -188,29 +410,336 @@ export function HouseholdSettingsSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(23,27,54,0.45)' },
-  sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', paddingBottom: 32 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.ivoryLine },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  hhIcon: { fontSize: 28 },
-  hhName: { fontFamily: 'Fraunces_700Bold', fontSize: 17, color: Colors.ink },
-  hhMeta: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: Colors.inkSoft, marginTop: 1 },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.ivoryDim, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  sectionLabel: { fontFamily: 'Manrope_600SemiBold', fontSize: 11, letterSpacing: 0.5, color: Colors.inkFaint, marginBottom: 8, textTransform: 'uppercase' },
-  membersCard: { backgroundColor: Colors.white, borderRadius: Radius.md, elevation: 1, overflow: 'hidden' },
-  memberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
-  memberRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.ivoryLine },
-  memberAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  memberAvatarText: { color: Colors.white, fontFamily: 'Manrope_700Bold', fontSize: 14 },
-  memberInfo: { flex: 1, gap: 2 },
-  memberName: { fontFamily: 'Manrope_600SemiBold', fontSize: 14, color: Colors.ink },
-  memberRole: { fontFamily: 'Manrope_400Regular', fontSize: 12, color: Colors.inkSoft },
-  removeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  divider: { height: 1, backgroundColor: Colors.ivoryLine, marginVertical: 16 },
-  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FEF2F2', borderRadius: Radius.md, paddingVertical: 14, borderWidth: 1, borderColor: '#FECACA' },
-  dangerBtnText: { fontFamily: 'Manrope_700Bold', fontSize: 15, color: '#C1502E' },
-  warnBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFBEB', borderRadius: Radius.md, paddingVertical: 14, borderWidth: 1, borderColor: '#FDE68A' },
-  warnBtnText: { fontFamily: 'Manrope_700Bold', fontSize: 15, color: '#D97706' },
-});
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(23,27,54,0.48)',
+  },
+  sheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    paddingBottom: 32,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.ivoryLine,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  hhIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  hhIcon: { fontSize: 24 },
+  hhName: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 18,
+    color: Colors.ink,
+  },
+  hhMeta: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 12.5,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.ivoryDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
 
+  // Invite Card
+  inviteCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: Radius.lg,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232, 163, 61, 0.3)',
+  },
+  inviteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  inviteLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.ink,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  addMemberInlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(62, 124, 106, 0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: Radius.full,
+  },
+  addMemberInlineText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
+    color: Colors.tealDeep,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  codeText: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 18,
+    color: Colors.indigo950,
+    letterSpacing: 1.2,
+  },
+  actionPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  actionPillBtnActive: {
+    backgroundColor: Colors.marigoldDeep,
+    borderColor: Colors.marigoldDeep,
+  },
+  actionPillText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.ink,
+  },
+  qrWrapper: {
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
+  },
+  qrInner: {
+    backgroundColor: Colors.white,
+    padding: 12,
+    borderRadius: Radius.md,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    marginBottom: 8,
+  },
+  qrInstruction: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    maxWidth: 260,
+    lineHeight: 16,
+  },
+
+  // Members Section
+  membersSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  sectionLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    letterSpacing: 0.6,
+    color: Colors.ink,
+    textTransform: 'uppercase',
+  },
+  sectionSubLabel: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.inkSoft,
+  },
+  membersCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    elevation: 1.5,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  memberRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.ivoryLine,
+  },
+  memberAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    color: Colors.white,
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 13,
+  },
+  memberInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  memberName: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 14,
+    color: Colors.ink,
+    maxWidth: 160,
+  },
+  rankBadge: {
+    backgroundColor: 'rgba(232, 163, 61, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: Radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.4)',
+  },
+  rankBadgeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 10,
+    color: Colors.marigoldDeep,
+  },
+  memberRoleTag: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.inkSoft,
+  },
+  memberMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
+  },
+  memberStat: {
+    ...Typography.caption,
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    fontFamily: 'Manrope_600SemiBold',
+  },
+  memberBullet: {
+    color: Colors.inkFaint,
+    fontSize: 12,
+  },
+  memberOnTimeText: {
+    ...Typography.caption,
+    fontSize: 11.5,
+    color: Colors.tealDeep,
+    fontFamily: 'Manrope_700Bold',
+  },
+  progressBarBg: {
+    height: 4,
+    backgroundColor: Colors.ivoryLine,
+    borderRadius: 2,
+    marginTop: 5,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  removeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: Colors.ivoryLine,
+    marginVertical: 18,
+  },
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: Radius.md,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  dangerBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 15,
+    color: '#C1502E',
+  },
+  warnBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    borderRadius: Radius.md,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  warnBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 15,
+    color: '#D97706',
+  },
+});

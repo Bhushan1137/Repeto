@@ -109,7 +109,7 @@ export default function AddTaskScreen() {
           alarmEnabled: values.alarmEnabled,
           note: values.note,
         },
-        { finance: values.finance, shared }
+        { finance: values.finance, shared, householdId: values.householdId }
       );
       if (ok) {
         showToast(translate('taskCreated'));
