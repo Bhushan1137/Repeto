@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from "react-native";
 import { Text, Card, TouchableRipple } from "react-native-paper";
 import type { SpendForecast } from "@/domain/insights";
 import { Colors, Radius, Typography } from "@/constants/theme";
-import { CATEGORY_MAP } from "@/constants/categories";
+import { getCategoryDef } from "@/constants/categoryHelpers";
 
 interface SpendForecastCardProps {
   forecast: SpendForecast;
@@ -152,7 +152,7 @@ export function SpendForecastCard({ forecast, language, onPress }: SpendForecast
 
             <View style={styles.highImpactList}>
               {forecast.highImpactDueSoon.map((item) => {
-                const catInfo = CATEGORY_MAP[item.category] ?? CATEGORY_MAP['home'];
+                const catInfo = getCategoryDef(item.category);
                 const formattedDate = new Date(item.dueDate).toLocaleDateString(
                   language === 'hi' ? 'hi-IN' : 'en-US',
                   { month: 'short', day: 'numeric' }

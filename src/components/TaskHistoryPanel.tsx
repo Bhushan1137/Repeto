@@ -9,9 +9,8 @@ import {
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { CompletionStatus, RepeatingTask } from '@/types';
-import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Radius } from '@/constants/theme';
-import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryAccent, getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
 import { daysUntilDue } from '@/domain/recurrence';
 import { AppIcon } from '@/components/AppIcon';
 import { computeTaskStats } from '@/domain/taskReport';
@@ -66,7 +65,7 @@ export function TaskHistoryPanel({ task, language, onBack }: TaskHistoryPanelPro
   const [showAll, setShowAll] = useState(false);
   const isHi = language === 'hi';
 
-  const cat = CATEGORY_MAP[task.category] ?? CATEGORY_MAP['home'];
+  const cat = getCategoryDef(task.category);
   const accent = AccentHex[getCategoryAccent(task.category)];
   const catLabel = getCategoryLabel(task.category, language);
   const stats = computeTaskStats(task);

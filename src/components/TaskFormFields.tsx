@@ -9,7 +9,7 @@ import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerMod
 import { TimeField } from '@/components/TimeField';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryIcon, getCategoryLabel } from '@/constants/categoryHelpers';
 import { Colors, Radius } from '@/constants/theme';
 import { parseTaskInput } from '@/domain/parser';
 import { computeInitialDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
@@ -23,7 +23,7 @@ import {
 import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
-import type { CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
+import type { AnyCategoryKey, CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
 import { formatTime12 } from '@/utils/timeFormat';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
@@ -34,7 +34,7 @@ interface TaskFormFieldsProps {
   translate: (key: TranslationKey, params?: Record<string, string | number>) => string;
   state: TaskFormState;
   onChange: (patch: Partial<TaskFormState>) => void;
-  onCategoryChange: (category: CategoryKey) => void;
+  onCategoryChange: (category: AnyCategoryKey) => void;
   errors?: TaskFormErrors;
   editingTaskId?: string;
   onTriggerCalendarPicker?: () => void;
@@ -173,9 +173,9 @@ export function TaskFormFields({
   const previewRule = buildRecurrenceRule(state);
   const previewLabel = frequencyLabelFromRule(previewRule, language);
 
-  const defaultIcon = CATEGORY_MAP[state.category].icon;
+  const defaultIcon = getCategoryIcon(state.category);
   const emojiOptions = useMemo(() => {
-    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '🚗', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'];
+    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '🚗', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴', '🥛', '🔧', '🪪', '🚰', '👔', '🌱'];
     return [defaultIcon, ...baseEmojis.filter((e) => e !== defaultIcon)];
   }, [defaultIcon]);
 
@@ -429,13 +429,15 @@ export function TaskFormFields({
             <View style={styles.dropdownRow}>
               <View style={styles.dropdownLeft}>
                 <View style={styles.categoryEmojiBadge}>
-                  <Text style={styles.dropdownEmoji}>{CATEGORY_MAP[state.category]?.icon || '📋'}</Text>
+                  <Text style={styles.dropdownEmoji}>{getCategoryIcon(state.category)}</Text>
                 </View>
                 <View style={styles.categoryTextCol}>
                   <Text style={styles.dropdownText}>{getCategoryLabel(state.category, language)}</Text>
-                  <Text style={styles.catHintInCard} numberOfLines={1}>
-                    {CATEGORY_MAP[state.category]?.[language === 'hi' ? 'hintHi' : 'hintEn']}
-                  </Text>
+                  {Boolean(CATEGORY_MAP[state.category as CategoryKey]?.[language === 'hi' ? 'hintHi' : 'hintEn']) && (
+                    <Text style={styles.catHintInCard} numberOfLines={1}>
+                      {CATEGORY_MAP[state.category as CategoryKey]?.[language === 'hi' ? 'hintHi' : 'hintEn']}
+                    </Text>
+                  )}
                 </View>
               </View>
               <View style={styles.chevronWrap}>

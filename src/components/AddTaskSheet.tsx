@@ -16,7 +16,7 @@ import { TaskScopeSection } from '@/components/taskForm/TaskScopeSection';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
 import { toSharedMember } from '@/domain/household';
 import { Button } from '@/components/Button';
@@ -40,11 +40,11 @@ export interface AddTaskSheetProps {
 
 export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSheetProps) {
   const pathname = usePathname();
+  const { user, activeHousehold } = useAuth();
   const shouldDefaultHousehold = defaultToHousehold !== undefined
     ? defaultToHousehold
-    : !!(pathname && pathname.includes('household'));
+    : (activeHousehold ? true : !!(pathname && pathname.includes('household')));
 
-  const { user, activeHousehold } = useAuth();
   const { addTask } = useTasks();
   const { showToast, message } = useToast();
   const { translate, language } = useTranslation();
@@ -71,6 +71,28 @@ export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSh
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
+  };
+
+  const handleScopeChange = (targetHhId: string | null) => {
+    if (!targetHhId) {
+      setShared([]);
+      patchForm({
+        householdId: null,
+        assignedTo: null,
+        isRotating: false,
+        rotationMembers: [],
+      });
+    } else {
+      const targetHh = (user?.households ?? []).find((h) => h.id === targetHhId) || activeHousehold;
+      const nextShared = (targetHh?.members ?? []).map(toSharedMember);
+      setShared(nextShared);
+      patchForm({
+        householdId: targetHhId,
+        assignedTo: null,
+        isRotating: false,
+        rotationMembers: [],
+      });
+    }
   };
 
   const handleCategoryChange = (category: TaskFormState['category']) => {
@@ -160,6 +182,42 @@ export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSh
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
+            {/* Top Destination / Scope Selector Bar if user belongs to households */}
+            {user?.households && user.households.length > 0 && (
+              <View style={styles.topScopeBar}>
+                <Text style={styles.topScopeLabel}>
+                  {language === 'hi' ? 'स्थान:' : 'Destination:'}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topScopeChips}>
+                  {user.households.map((hh) => {
+                    const isSelected = formState.householdId === hh.id;
+                    return (
+                      <TouchableOpacity
+                        key={hh.id}
+                        onPress={() => handleScopeChange(hh.id)}
+                        style={[styles.topScopeChip, isSelected && styles.topScopeChipActive]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.topScopeChipIcon}>{hh.icon || '🏠'}</Text>
+                        <Text style={[styles.topScopeChipText, isSelected && styles.topScopeChipTextActive]}>
+                          {hh.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    onPress={() => handleScopeChange(null)}
+                    style={[styles.topScopeChip, !formState.householdId && styles.topScopeChipActive]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.topScopeChipIcon}>👤</Text>
+                    <Text style={[styles.topScopeChipText, !formState.householdId && styles.topScopeChipTextActive]}>
+                      {translate('scopePersonal')}
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            )}
             <TaskFormFields
               language={language}
               translate={translate}
@@ -728,5 +786,53 @@ const styles = StyleSheet.create({
     color: Colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  topScopeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: 'rgba(235, 237, 243, 0.45)',
+    borderRadius: Radius.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 8,
+  },
+  topScopeLabel: {
+    ...Typography.caption,
+    color: Colors.inkSoft,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  topScopeChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topScopeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(228, 219, 199, 0.7)',
+  },
+  topScopeChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#363E71',
+  },
+  topScopeChipIcon: {
+    fontSize: 13,
+  },
+  topScopeChipText: {
+    fontSize: 12,
+    color: Colors.inkSoft,
+    fontWeight: '600',
+  },
+  topScopeChipTextActive: {
+    color: '#363E71',
+    fontWeight: '700',
   },
 });

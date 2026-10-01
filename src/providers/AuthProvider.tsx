@@ -7,12 +7,13 @@ import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
 import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain, normalizeInviteCode, generateUserCode, memberColor } from '@/domain/household';
-import { onSnapshot, doc, collection, query, where } from 'firebase/firestore';
-import { restoreUserRemote, purgeUserDataRemote } from '@/services/firebase/firestore';
+import { onSnapshot, doc, collection, query, where, or } from 'firebase/firestore';
+import { restoreUserRemote, purgeUserDataRemote, loadHouseholdTasksRemote, saveHouseholdTaskRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
 import { cancelAllNotifications, registerForPushNotificationsAsync } from '@/services/notifications';
-import { notifyOwnerMemberLeftHousehold, broadcastMemberJoinedHousehold } from '@/services/householdBroadcastService';
+import { notifyOwnerMemberLeftHousehold, broadcastMemberJoinedHousehold, broadcastMemberLeftHousehold, broadcastHouseholdDisbanded } from '@/services/householdBroadcastService';
+import { recordHouseholdActivity } from '@/services/householdActivityService';
 
 interface AuthContextValue {
   ready: boolean;
@@ -83,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAccountActionInProgressRef = useRef(false);
   const unsubscribeProfileRef = useRef<(() => void) | null>(null);
   const unsubscribeHouseholdsRef = useRef<(() => void) | null>(null);
+  const joiningCodesInFlightRef = useRef<Map<string, Promise<{ ok: boolean; household?: HouseholdContext; alreadyMember?: boolean; error?: string }>>>(new Map());
 
   const language: Language = user?.language ?? savedLanguage;
 
@@ -298,19 +300,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await userRepository.saveLocal(profile);
               }
 
-              // Ensure user-owned household contexts exist in remote /households and /householdCodes collections
-              if (profile.households && profile.households.length > 0) {
-                for (const hh of profile.households) {
-                  if (hh.ownerUid === profile.id || !hh.ownerUid) {
-                    userRepository.saveHousehold(hh).catch(() => {});
-                    if (hh.code) {
-                      userRepository.saveHouseholdCode(hh).catch(() => {});
-                    }
-                  }
-                }
-              }
+              setUser((prevUser) => {
+                const liveHhs = prevUser?.households !== undefined
+                  ? prevUser.households
+                  : profile.households;
+                const activeId = liveHhs?.some((h) => h.id === prevUser?.activeHouseholdId)
+                  ? prevUser?.activeHouseholdId
+                  : profile.activeHouseholdId || liveHhs?.[0]?.id;
+                const activeHh = liveHhs?.find((h) => h.id === activeId) || liveHhs?.[0];
 
-              setUser(profile);
+                return {
+                  ...profile,
+                  households: liveHhs,
+                  activeHouseholdId: activeId,
+                  householdMembers: activeHh?.members ?? profile.householdMembers ?? [],
+                  householdMemberUids: activeHh?.memberUids ?? profile.householdMemberUids ?? [],
+                };
+              });
             } catch (err) {
               console.warn('[Repeato] Error loading snapshot profile data', err);
               if (localUser) {
@@ -340,8 +346,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
           unsubscribeProfileRef.current = unsubscribeProfile;
 
-          // Subscribe to top-level /households where user is a member for instant real-time sync across devices
-          const hhQuery = query(collection(db, 'households'), where('memberUids', 'array-contains', firebaseUser.uid));
+          // Subscribe to top-level /households where user is a member OR owner for instant real-time sync across devices
+          const hhQuery = query(
+            collection(db, 'households'),
+            or(
+              where('memberUids', 'array-contains', firebaseUser.uid),
+              where('ownerUid', '==', firebaseUser.uid)
+            )
+          );
           unsubscribeHouseholds = onSnapshot(hhQuery, (snap) => {
             if (cancelled || isDeletingAccountRef.current) return;
             const remoteHhs = snap.docs.map((d) => d.data() as HouseholdContext);
@@ -353,12 +365,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Add remote authoritative households first
               remoteHhs.forEach((h) => hhMap.set(h.id, h));
 
-              // Check existing local households: ONLY preserve local households owned by this user (e.g. pending offline sync)
+              // Check existing local households: ONLY preserve local households owned by this user.
+              // If a household is owned by someone else and the remote query didn't return it,
+              // it means this user is no longer a member (they left or were removed).
+              // We must NEVER resurrect or re-upload a household owned by someone else!
               existingHhs.forEach((localHh) => {
                 if (hhMap.has(localHh.id)) return;
 
-                // If not owned by this user, the user left or was removed from this household — discard it!
-                if (localHh.ownerUid !== prevUser.id) return;
+                if (localHh.ownerUid !== prevUser.id) {
+                  return;
+                }
 
                 // Detect starter collision: empty local household with same name as a remote one
                 const isDuplicateStarter =
@@ -372,14 +388,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
 
               const mergedHhs = Array.from(hhMap.values());
+              const nextActiveId = mergedHhs.some((h) => h.id === prevUser.activeHouseholdId)
+                ? prevUser.activeHouseholdId
+                : mergedHhs[0]?.id;
+
+              const activeHh = mergedHhs.find((h) => h.id === nextActiveId) || mergedHhs[0];
               const updated = {
                 ...prevUser,
                 households: mergedHhs,
-                activeHouseholdId: mergedHhs.some((h) => h.id === prevUser.activeHouseholdId)
-                  ? prevUser.activeHouseholdId
-                  : mergedHhs[0]?.id,
+                activeHouseholdId: nextActiveId,
+                householdMembers: activeHh?.members ?? prevUser.householdMembers ?? [],
+                householdMemberUids: activeHh?.memberUids ?? prevUser.householdMemberUids ?? [],
               };
-              userRepository.saveLocal(updated).catch(() => {});
+              userRepository.save(updated).catch(() => {});
               return updated;
             });
           }, (err) => {
@@ -606,29 +627,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!hh) return { ok: false, error: 'not_found' };
     if (hh.ownerUid !== user.id) return { ok: false, error: 'not_owner' };
 
-    // 1. Remove household from ALL members' profiles in Firestore
-    const otherMemberUids = (hh.memberUids ?? []).filter(uid => uid !== user.id);
-    await Promise.allSettled(
-      otherMemberUids.map(async (uid) => {
-        try {
-          const remote = await userRepository.loadRemote(uid);
-          if (remote) {
-            const updatedHouseholds = (remote.households ?? []).filter(h => h.id !== householdId);
-            const nextActiveId = updatedHouseholds[0]?.id ?? undefined;
-            await userRepository.saveOther(uid, {
-              ...remote,
-              households: updatedHouseholds,
-              activeHouseholdId: nextActiveId,
-              removedBy: user.name || 'Owner',
-            });
-          }
-        } catch (err) {
-          console.warn('[Repeato] Failed to update member on household delete:', err);
-        }
-      })
-    );
+    // 1. Notify all members that the household was disbanded
+    let membersToNotify = hh.members ?? [];
+    try {
+      const remoteHh = await userRepository.loadHousehold(householdId);
+      if (remoteHh?.members) {
+        membersToNotify = remoteHh.members;
+      }
+    } catch (err) {
+      console.warn('[Repeato] Failed to load remote household members before disband:', err);
+    }
 
-    // 2. Delete Firestore /households/{id} and /householdCodes/{code}
+    broadcastHouseholdDisbanded({
+      householdId,
+      householdName: hh.name || 'Home',
+      ownerName: user.name || 'The owner',
+      ownerUid: user.id,
+      members: membersToNotify,
+    }).catch((err) => {
+      console.warn('[Repeato] Failed to broadcast household disbanded:', err);
+    });
+
+    // 2. Delete Firestore /households/{id}/tasks, /households/{id}, and /householdCodes/{code}
     await userRepository.deleteHousehold(householdId, hh.code);
 
     // 3. Remove household from own profile
@@ -651,112 +671,134 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const code = normalizeInviteCode(rawCode);
     if (!code) return { ok: false, error: 'invalid_code' };
 
-    const currentHouseholds = user.households ?? [];
-
-    // 1. Check if already belonging to a household with this code
-    const existing = currentHouseholds.find(h => normalizeInviteCode(h.code || '') === code);
-    if (existing) {
-      if (user.activeHouseholdId !== existing.id) {
-        await persistUser({ ...user, activeHouseholdId: existing.id });
-      }
-      return { ok: true, household: existing, alreadyMember: true };
+    // Deduplicate in-flight joins for the exact same code
+    const existingPromise = joiningCodesInFlightRef.current.get(code);
+    if (existingPromise) {
+      return existingPromise;
     }
 
-    // 2. Check maximum household limit
-    if (currentHouseholds.length >= MAX_HOUSEHOLDS) {
-      return { ok: false, error: 'limit_reached' };
-    }
+    const joinPromise = (async () => {
+      try {
+        const currentHouseholds = user.households ?? [];
 
-    // 3. Resolve the household code from Firestore:
-    // 3a. Direct household code lookup
-    let hhRecord = await userRepository.resolveHouseholdCode(code);
-
-    // 3b. If not found directly, check if the scanned code is a user's code
-    if (!hhRecord) {
-      const userCodeMatch = await userRepository.resolveUserCode(code);
-      if (userCodeMatch) {
-        if ((userCodeMatch as any).activeHouseholdCode) {
-          hhRecord = await userRepository.resolveHouseholdCode((userCodeMatch as any).activeHouseholdCode);
+        // 1. Check if already belonging to a household with this code
+        const existing = currentHouseholds.find(h => normalizeInviteCode(h.code || '') === code);
+        if (existing) {
+          if (user.activeHouseholdId !== existing.id) {
+            await persistUser({ ...user, activeHouseholdId: existing.id });
+          }
+          return { ok: true, household: existing, alreadyMember: true };
         }
-        if (!hhRecord && userCodeMatch.userId) {
-          hhRecord = await userRepository.findHouseholdCodeByOwner(userCodeMatch.userId);
+
+        // 2. Check maximum household limit
+        if (currentHouseholds.length >= MAX_HOUSEHOLDS) {
+          return { ok: false, error: 'limit_reached' };
         }
+
+        // 3. Resolve the household code from Firestore:
+        // 3a. Direct household code lookup
+        let hhRecord = await userRepository.resolveHouseholdCode(code);
+
+        // 3b. If not found directly, check if the scanned code is a user's code
+        if (!hhRecord) {
+          const userCodeMatch = await userRepository.resolveUserCode(code);
+          if (userCodeMatch) {
+            if ((userCodeMatch as any).activeHouseholdCode) {
+              hhRecord = await userRepository.resolveHouseholdCode((userCodeMatch as any).activeHouseholdCode);
+            }
+            if (!hhRecord && userCodeMatch.userId) {
+              hhRecord = await userRepository.findHouseholdCodeByOwner(userCodeMatch.userId);
+            }
+          }
+        }
+
+        // 3c. If still not found, check legacy household invites
+        if (!hhRecord) {
+          const invite = await userRepository.resolveHouseholdInvite(code);
+          if (invite && invite.userId) {
+            hhRecord = await userRepository.findHouseholdCodeByOwner(invite.userId);
+          }
+        }
+
+        if (!hhRecord) {
+          return { ok: false, error: 'household_not_found' };
+        }
+
+        // 4. Check if already in user's households by ID
+        const existingById = currentHouseholds.find(h => h.id === hhRecord.householdId);
+        if (existingById) {
+          if (user.activeHouseholdId !== existingById.id) {
+            await persistUser({ ...user, activeHouseholdId: existingById.id });
+          }
+          return { ok: true, household: existingById, alreadyMember: true };
+        }
+
+        // 5. Construct membership for current user
+        const userCode = user.userCode || generateUserCode(user.id || user.email);
+        const myMember: HouseholdMemberProfile = {
+          code: userCode,
+          name: user.name || 'Member',
+          color: memberColor(user.id || userCode),
+          userId: user.id,
+          addedAt: new Date().toISOString(),
+          status: 'active',
+          ...(user.phone ? { phone: user.phone } : {}),
+        };
+
+        // Load fresh household if possible, or fallback to record
+        let remoteHh = await userRepository.loadHousehold(hhRecord.householdId).catch(() => null);
+        const baseMembers = remoteHh?.members ?? hhRecord.members ?? [];
+        const alreadyMemberInRemote = baseMembers.some(m => m.userId === user.id || normalizeInviteCode(m.code) === normalizeInviteCode(userCode));
+        const finalMembers = alreadyMemberInRemote ? baseMembers : [...baseMembers, myMember];
+        const finalMemberUids = Array.from(new Set([...(remoteHh?.memberUids ?? hhRecord.memberUids ?? []), user.id]));
+
+        const joinedHh: HouseholdContext = {
+          id: hhRecord.householdId,
+          name: remoteHh?.name || hhRecord.name,
+          icon: remoteHh?.icon || hhRecord.icon || '🏠',
+          color: remoteHh?.color || hhRecord.color || '#363E71',
+          ownerUid: remoteHh?.ownerUid || hhRecord.ownerUid,
+          code: hhRecord.code,
+          members: finalMembers,
+          memberUids: finalMemberUids,
+          createdAt: remoteHh?.createdAt || new Date().toISOString(),
+        };
+
+        // 6. Save joined household to Firestore (triggers self-join rule)
+        await userRepository.saveHousehold(joinedHh);
+
+        // 7. Update own profile with new household and set active
+        const nextHouseholds = [...currentHouseholds, joinedHh];
+        await persistUser({
+          ...user,
+          households: nextHouseholds,
+          activeHouseholdId: joinedHh.id,
+        });
+
+        // 8. Notify household members
+        broadcastMemberJoinedHousehold({
+          householdId: joinedHh.id,
+          householdName: joinedHh.name,
+          newMember: { id: user.id, name: user.name || 'Member', code: userCode },
+          actorUser: user,
+          allMembers: finalMembers,
+        }).catch(() => {});
+
+        recordHouseholdActivity({
+          householdId: joinedHh.id,
+          action: 'member_joined',
+          userId: user.id,
+          userName: user.name || 'Member',
+        }).catch(() => {});
+
+        return { ok: true, household: joinedHh };
+      } finally {
+        joiningCodesInFlightRef.current.delete(code);
       }
-    }
+    })();
 
-    // 3c. If still not found, check legacy household invites
-    if (!hhRecord) {
-      const invite = await userRepository.resolveHouseholdInvite(code);
-      if (invite && invite.userId) {
-        hhRecord = await userRepository.findHouseholdCodeByOwner(invite.userId);
-      }
-    }
-
-    if (!hhRecord) {
-      return { ok: false, error: 'household_not_found' };
-    }
-
-    // 4. Check if already in user's households by ID
-    const existingById = currentHouseholds.find(h => h.id === hhRecord.householdId);
-    if (existingById) {
-      if (user.activeHouseholdId !== existingById.id) {
-        await persistUser({ ...user, activeHouseholdId: existingById.id });
-      }
-      return { ok: true, household: existingById, alreadyMember: true };
-    }
-
-    // 5. Construct membership for current user
-    const userCode = user.userCode || generateUserCode(user.id || user.email);
-    const myMember: HouseholdMemberProfile = {
-      code: userCode,
-      name: user.name || 'Member',
-      color: memberColor(user.id || userCode),
-      userId: user.id,
-      phone: user.phone,
-      addedAt: new Date().toISOString(),
-      status: 'active',
-    };
-
-    // Load fresh household if possible, or fallback to record
-    let remoteHh = await userRepository.loadHousehold(hhRecord.householdId).catch(() => null);
-    const baseMembers = remoteHh?.members ?? hhRecord.members ?? [];
-    const alreadyMemberInRemote = baseMembers.some(m => m.userId === user.id || normalizeInviteCode(m.code) === normalizeInviteCode(userCode));
-    const finalMembers = alreadyMemberInRemote ? baseMembers : [...baseMembers, myMember];
-    const finalMemberUids = Array.from(new Set([...(remoteHh?.memberUids ?? hhRecord.memberUids ?? []), user.id]));
-
-    const joinedHh: HouseholdContext = {
-      id: hhRecord.householdId,
-      name: remoteHh?.name || hhRecord.name,
-      icon: remoteHh?.icon || hhRecord.icon || '🏠',
-      color: remoteHh?.color || hhRecord.color || '#363E71',
-      ownerUid: remoteHh?.ownerUid || hhRecord.ownerUid,
-      code: hhRecord.code,
-      members: finalMembers,
-      memberUids: finalMemberUids,
-      createdAt: remoteHh?.createdAt || new Date().toISOString(),
-    };
-
-    // 6. Save joined household to Firestore (triggers self-join rule)
-    await userRepository.saveHousehold(joinedHh);
-
-    // 7. Update own profile with new household and set active
-    const nextHouseholds = [...currentHouseholds, joinedHh];
-    await persistUser({
-      ...user,
-      households: nextHouseholds,
-      activeHouseholdId: joinedHh.id,
-    });
-
-    // 8. Notify household members
-    broadcastMemberJoinedHousehold({
-      householdId: joinedHh.id,
-      householdName: joinedHh.name,
-      newMember: { id: user.id, name: user.name || 'Member', code: userCode },
-      actorUser: user,
-      allMembers: finalMembers,
-    }).catch(() => {});
-
-    return { ok: true, household: joinedHh };
+    joiningCodesInFlightRef.current.set(code, joinPromise);
+    return joinPromise;
   }, [user, isOnline, persistUser]);
 
   // ── Member: Leave Household ──────────────────────────────────────────────
@@ -768,47 +810,120 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: 'owner_cannot_leave' };
     }
 
-    // 1. Remove self from /households/{id} in Firestore
+    const leavingUser = { ...user };
+    const authUid = getFirebaseAuth()?.currentUser?.uid;
+    const userCodes = [
+      user.userCode ? normalizeInviteCode(user.userCode) : undefined,
+      user.householdCode ? normalizeInviteCode(user.householdCode) : undefined,
+    ].filter(Boolean) as string[];
+
+    // 1. Unassign leaving user from household tasks in Firestore BEFORE removing membership
+    // (Caller is still a verified member at this stage, preventing permission-denied errors)
+    try {
+      const hhTasks = await loadHouseholdTasksRemote(householdId);
+      for (const t of hhTasks) {
+        let changed = false;
+        let updatedTask = { ...t };
+        if (
+          updatedTask.assignedTo === user.id ||
+          (authUid && updatedTask.assignedTo === authUid) ||
+          (user.userCode && updatedTask.assignedTo === user.userCode) ||
+          (updatedTask.assignedTo && userCodes.includes(normalizeInviteCode(updatedTask.assignedTo)))
+        ) {
+          updatedTask.assignedTo = undefined;
+          changed = true;
+        }
+        if (updatedTask.sharedWith && updatedTask.sharedWith.length > 0) {
+          const filtered = updatedTask.sharedWith.filter((c) => {
+            if (c.userId && (c.userId === user.id || (authUid && c.userId === authUid))) return false;
+            if (c.code && userCodes.includes(normalizeInviteCode(c.code))) return false;
+            return true;
+          });
+          if (filtered.length !== updatedTask.sharedWith.length) {
+            updatedTask.sharedWith = filtered;
+            changed = true;
+          }
+        }
+        if (updatedTask.rotationMembers && updatedTask.rotationMembers.length > 0) {
+          const filtered = updatedTask.rotationMembers.filter((m) => {
+            if (m === user.id || (authUid && m === authUid)) return false;
+            if (userCodes.includes(normalizeInviteCode(m))) return false;
+            return true;
+          });
+          if (filtered.length !== updatedTask.rotationMembers.length) {
+            updatedTask.rotationMembers = filtered;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await saveHouseholdTaskRemote(householdId, updatedTask).catch(() => {});
+        }
+      }
+    } catch (taskErr) {
+      console.warn('[Repeato] Failed to unassign leaving user from tasks:', taskErr);
+    }
+
+    // 2. Log activity while still a valid member of the household
+    recordHouseholdActivity({
+      householdId: hh.id,
+      action: 'member_left',
+      userId: user.id,
+      userName: user.name || 'Member',
+    }).catch(() => {});
+
+    // 3. Remove self from /households/{id} in Firestore and sync code index
+    let allMembersForBroadcast: HouseholdMemberProfile[] = hh.members ?? [];
     try {
       const remoteHh = await userRepository.loadHousehold(householdId);
-      if (remoteHh) {
-        const userHouseholdCode = user.householdCode ? normalizeInviteCode(user.householdCode) : undefined;
+      const targetBase = remoteHh || hh;
+      if (targetBase) {
+        allMembersForBroadcast = targetBase.members ?? [];
+        const updatedMembers = (targetBase.members ?? []).filter((m) => {
+          if (m.userId && (m.userId === user.id || (authUid && m.userId === authUid))) return false;
+          if (m.code && userCodes.includes(normalizeInviteCode(m.code))) return false;
+          return true;
+        });
+        const updatedMemberUids = (targetBase.memberUids ?? []).filter(
+          (uid) => uid !== user.id && (!authUid || uid !== authUid)
+        );
         const updatedHh: HouseholdContext = {
-          ...remoteHh,
-          members: remoteHh.members.filter(m => {
-            if (m.userId && m.userId === user.id) return false;
-            if (userHouseholdCode && normalizeInviteCode(m.code) === userHouseholdCode) return false;
-            return true;
-          }),
-          memberUids: (remoteHh.memberUids ?? []).filter(uid => uid !== user.id),
+          ...targetBase,
+          members: updatedMembers,
+          memberUids: updatedMemberUids,
         };
         await userRepository.saveHousehold(updatedHh);
+
+        if (targetBase.code) {
+          await userRepository.saveHouseholdCode(updatedHh).catch(() => {});
+        }
       }
     } catch (err) {
       console.warn('[Repeato] Failed to update household on leave:', err);
     }
 
-    // 2. Notify owner with in-app notification + remote push notification
-    if (hh.ownerUid && hh.ownerUid !== user.id) {
-      notifyOwnerMemberLeftHousehold({
-        householdId: hh.id,
-        householdName: hh.name || 'Home',
-        leavingUser: user,
-        ownerUid: hh.ownerUid,
-      }).catch((err) => {
-        console.warn('[Repeato] Failed to notify owner on leave:', err);
-      });
-    }
+    // 4. Notify owner AND all remaining household members
+    broadcastMemberLeftHousehold({
+      householdId: hh.id,
+      householdName: hh.name || 'Home',
+      leavingUser,
+      allMembers: allMembersForBroadcast,
+      ownerUid: hh.ownerUid,
+    }).catch((err) => {
+      console.warn('[Repeato] Failed to broadcast member left:', err);
+    });
 
-    // 3. Remove household from own profile
-    const remainingHouseholds = (user.households ?? []).filter(h => h.id !== householdId);
+    // 5. Remove household from own profile
+    const remainingHouseholds = (user.households ?? []).filter((h) => h.id !== householdId);
     const nextActiveId = remainingHouseholds.length > 0
       ? (user.activeHouseholdId !== householdId ? user.activeHouseholdId : remainingHouseholds[0].id)
       : undefined;
+    const nextActiveHh = remainingHouseholds.find((h) => h.id === nextActiveId) || remainingHouseholds[0];
     await persistUser({
       ...user,
       households: remainingHouseholds,
       activeHouseholdId: nextActiveId,
+      householdMembers: nextActiveHh?.members ?? [],
+      householdMemberUids: nextActiveHh?.memberUids ?? [],
     });
     return { ok: true };
   }, [user, persistUser]);
@@ -865,6 +980,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn('[Repeato] Failed to notify removed member:', err);
         }
       }
+
+      const targetMember = hh.members?.find(
+        (m) => normalizeInviteCode(m.code) === normalizeInviteCode(memberCode) || (memberUserId && m.userId === memberUserId)
+      );
+      recordHouseholdActivity({
+        householdId: hh.id,
+        action: 'member_removed',
+        userId: user.id,
+        userName: user.name || 'Owner',
+        targetUserName: targetMember?.name || memberCode,
+      }).catch(() => {});
+
       return { ok: true };
     },
     [user, persistUser, isOnline]
@@ -892,41 +1019,115 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unsubscribeHouseholdsRef.current = null;
         }
 
-        // 2. Leave all households using the stable snapshot — avoids race with setUser(null)
+        // 2. Leave / delete all households using the stable snapshot — avoids race with setUser(null)
         // Directly cleans up Firestore without calling persistUser (which depends on live `user`)
         const userHouseholds = userSnapshot.households ?? [];
+        const userCodes = [
+          userSnapshot.userCode ? normalizeInviteCode(userSnapshot.userCode) : undefined,
+          userSnapshot.householdCode ? normalizeInviteCode(userSnapshot.householdCode) : undefined,
+        ].filter(Boolean) as string[];
+
         await Promise.allSettled(
           userHouseholds.map(async (hh) => {
             try {
-              const remoteHh = await userRepository.loadHousehold(hh.id);
-              if (remoteHh) {
-                const userHouseholdCode = userSnapshot.householdCode
-                  ? normalizeInviteCode(userSnapshot.householdCode)
-                  : undefined;
-                const updatedHh = {
-                  ...remoteHh,
-                  members: remoteHh.members.filter((m) => {
+              if (hh.ownerUid === userSnapshot.id) {
+                // Owned household: disband, notify members, delete doc, tasks, and code
+                let membersToNotify = hh.members ?? [];
+                try {
+                  const remoteHh = await userRepository.loadHousehold(hh.id);
+                  if (remoteHh?.members) {
+                    membersToNotify = remoteHh.members;
+                  }
+                } catch {}
+
+                broadcastHouseholdDisbanded({
+                  householdId: hh.id,
+                  householdName: hh.name || 'Home',
+                  ownerName: userSnapshot.name || 'The owner',
+                  ownerUid: userSnapshot.id,
+                  members: membersToNotify,
+                }).catch((err) => {
+                  console.warn('[Repeato] deleteAccount: failed to broadcast disbanded:', err);
+                });
+
+                await userRepository.deleteHousehold(hh.id, hh.code);
+              } else {
+                // Joined household: remove user from members & memberUids
+                let allMembersForBroadcast = hh.members ?? [];
+                const remoteHh = await userRepository.loadHousehold(hh.id);
+                if (remoteHh) {
+                  allMembersForBroadcast = remoteHh.members ?? [];
+                  const updatedMembers = remoteHh.members.filter((m) => {
                     if (m.userId && m.userId === userSnapshot.id) return false;
-                    if (userHouseholdCode && normalizeInviteCode(m.code) === userHouseholdCode) return false;
+                    if (m.code && userCodes.includes(normalizeInviteCode(m.code))) return false;
                     return true;
-                  }),
-                  memberUids: (remoteHh.memberUids ?? []).filter((uid) => uid !== userSnapshot.id),
-                };
-                await userRepository.saveHousehold(updatedHh);
-              }
-              // Notify owner that this member left (only if not the owner themselves)
-              if (hh.ownerUid && hh.ownerUid !== userSnapshot.id) {
-                notifyOwnerMemberLeftHousehold({
+                  });
+                  const updatedMemberUids = (remoteHh.memberUids ?? []).filter((uid) => uid !== userSnapshot.id);
+                  const updatedHh = {
+                    ...remoteHh,
+                    members: updatedMembers,
+                    memberUids: updatedMemberUids,
+                  };
+                  await userRepository.saveHousehold(updatedHh);
+
+                  if (remoteHh.code) {
+                    await userRepository.saveHouseholdCode(updatedHh).catch(() => {});
+                  }
+                }
+
+                // Clean up tasks in this household assigned to leaving user
+                try {
+                  const hhTasks = await loadHouseholdTasksRemote(hh.id);
+                  for (const t of hhTasks) {
+                    let changed = false;
+                    let updatedTask = { ...t };
+                    if (updatedTask.assignedTo === userSnapshot.id || (updatedTask.assignedTo && userCodes.includes(normalizeInviteCode(updatedTask.assignedTo)))) {
+                      updatedTask.assignedTo = undefined;
+                      changed = true;
+                    }
+                    if (updatedTask.sharedWith && updatedTask.sharedWith.length > 0) {
+                      const filtered = updatedTask.sharedWith.filter((c) => {
+                        if (c.userId && c.userId === userSnapshot.id) return false;
+                        if (c.code && userCodes.includes(normalizeInviteCode(c.code))) return false;
+                        return true;
+                      });
+                      if (filtered.length !== updatedTask.sharedWith.length) {
+                        updatedTask.sharedWith = filtered;
+                        changed = true;
+                      }
+                    }
+                    if (updatedTask.rotationMembers && updatedTask.rotationMembers.length > 0) {
+                      const filtered = updatedTask.rotationMembers.filter((m) => {
+                        if (m === userSnapshot.id) return false;
+                        if (userCodes.includes(normalizeInviteCode(m))) return false;
+                        return true;
+                      });
+                      if (filtered.length !== updatedTask.rotationMembers.length) {
+                        updatedTask.rotationMembers = filtered;
+                        changed = true;
+                      }
+                    }
+                    if (changed) {
+                      await saveHouseholdTaskRemote(hh.id, updatedTask).catch(() => {});
+                    }
+                  }
+                } catch (taskErr) {
+                  console.warn('[Repeato] deleteAccount: failed to unassign from tasks:', taskErr);
+                }
+
+                // Notify owner and remaining members
+                broadcastMemberLeftHousehold({
                   householdId: hh.id,
                   householdName: hh.name || 'Home',
                   leavingUser: userSnapshot,
+                  allMembers: allMembersForBroadcast,
                   ownerUid: hh.ownerUid,
                 }).catch((err) => {
-                  console.warn('[Repeato] deleteAccount: failed to notify owner on leave:', err);
+                  console.warn('[Repeato] deleteAccount: failed to notify members on leave:', err);
                 });
               }
             } catch (err) {
-              console.warn('[Repeato] deleteAccount: failed to leave household', hh.id, err);
+              console.warn('[Repeato] deleteAccount: failed to clean up household', hh.id, err);
             }
           })
         );

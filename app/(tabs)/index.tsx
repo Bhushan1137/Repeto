@@ -24,7 +24,8 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
-import type { CategoryKey, TaskGroup } from '@/types';
+import { useCategories } from '@/hooks/useCategories';
+import type { AnyCategoryKey, CategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -74,6 +75,7 @@ export default function HomeScreen() {
     setFocusTaskId,
   } = useTasks();
   const { language, translate } = useTranslation();
+  const { allCategories } = useCategories();
 
   const { findMatch, logImpression, logClick } = useRecommendations();
   const [completedRecommendation, setCompletedRecommendation] = useState<Recommendation | null>(null);
@@ -281,10 +283,10 @@ export default function HomeScreen() {
   }, [tasks]);
 
   const categoryCounts = useMemo(() => {
-    const counts: Partial<Record<CategoryKey, number>> = {};
+    const counts: Partial<Record<string, number>> = {};
     for (const t of tasks) {
       if (t.category) {
-        counts[t.category as CategoryKey] = (counts[t.category as CategoryKey] || 0) + 1;
+        counts[t.category] = (counts[t.category] || 0) + 1;
       }
     }
     return counts;
@@ -579,7 +581,7 @@ export default function HomeScreen() {
             )}
 
             {/* Other categories with tasks */}
-            {CATEGORIES.filter(c => !['bills', 'health', 'finance', 'home'].includes(c.key) && (categoryCounts[c.key as CategoryKey] || 0) > 0).map(cat => (
+            {allCategories.filter(c => !['bills', 'health', 'finance', 'home'].includes(c.key) && (categoryCounts[c.key] || 0) > 0).map(cat => (
               <Pressable
                 key={cat.key}
                 style={[
@@ -588,7 +590,7 @@ export default function HomeScreen() {
                 ]}
                 onPress={() => setFilter(prev => ({
                   ...prev,
-                  category: prev.category === cat.key ? 'all' : (cat.key as CategoryKey),
+                  category: prev.category === cat.key ? 'all' : (cat.key as AnyCategoryKey),
                   group: 'all',
                 }))}
               >
@@ -600,7 +602,7 @@ export default function HomeScreen() {
                       filter.category === cat.key && styles.chipTextActive,
                     ]}
                   >
-                    {(language === 'hi' ? cat.labelHi : cat.labelEn) + ` (${categoryCounts[cat.key as CategoryKey]})`}
+                    {(language === 'hi' ? cat.labelHi : cat.labelEn) + ` (${categoryCounts[cat.key]})`}
                   </Text>
                 </View>
               </Pressable>

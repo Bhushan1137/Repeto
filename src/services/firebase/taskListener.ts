@@ -13,6 +13,7 @@ export function subscribeToUserTasksAndHouseholds(
 
   const userTasksMap = new Map<string, RepeatingTask>();
   const householdTasksMap = new Map<string, Map<string, RepeatingTask>>();
+  const loadedHouseholds = new Set<string>();
   const unsubs: (() => void)[] = [];
 
   const notify = () => {
@@ -25,6 +26,13 @@ export function subscribeToUserTasksAndHouseholds(
     });
     // Merge user's master tasks, keeping whichever is newer
     userTasksMap.forEach((userTask, id) => {
+      // If task belongs to a subscribed household whose snapshot has loaded,
+      // the household collection is authoritative. If missing there, it was deleted!
+      if (userTask.householdId && loadedHouseholds.has(userTask.householdId)) {
+        if (!combined.has(id)) {
+          return;
+        }
+      }
       const hhTask = combined.get(id);
       if (!hhTask) {
         combined.set(id, userTask);
@@ -67,6 +75,7 @@ export function subscribeToUserTasksAndHouseholds(
       onSnapshot(
         hhColRef,
         (snapshot) => {
+          loadedHouseholds.add(hhId);
           let hhMap = householdTasksMap.get(hhId);
           if (!hhMap) {
             hhMap = new Map<string, RepeatingTask>();

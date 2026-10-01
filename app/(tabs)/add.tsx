@@ -25,7 +25,7 @@ import type { SharedMember } from '@/types';
 export default function AddTaskScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ household?: string }>();
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
   const { addTask } = useTasks();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
@@ -36,13 +36,21 @@ export default function AddTaskScreen() {
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
 
   useEffect(() => {
-    if (params.household === 'true' && user?.householdMembers) {
+    if (activeHousehold) {
+      setFormState((prev) => ({
+        ...prev,
+        householdId: activeHousehold.id,
+      }));
+      if (activeHousehold.members && activeHousehold.members.length > 0) {
+        setShared(activeHousehold.members.map(toSharedMember));
+      }
+    } else if (params.household === 'true' && user?.householdMembers) {
       const activeMembers = user.householdMembers
         .filter((m) => m.status === 'active')
         .map(toSharedMember);
       setShared(activeMembers);
     }
-  }, [params.household, user?.householdMembers]);
+  }, [params.household, activeHousehold, user?.householdMembers]);
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));

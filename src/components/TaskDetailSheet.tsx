@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import type { CompletionStatus, Language, RepeatingTask } from '@/types';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, daysPercent } from '@/domain/recurrence';
@@ -187,7 +187,7 @@ function TaskDetailSheetComponent({
 
   if (!task || !visible) return null;
 
-  const cat = CATEGORY_MAP[task.category];
+  const cat = getCategoryDef(task.category);
   const hex = AccentHex[cat.accent];
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;

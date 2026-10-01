@@ -44,10 +44,13 @@ function AddTabButton({ onOpen, ..._props }: PressableProps & { onOpen: () => vo
   );
 }
 
+import { useAuth } from '@/providers/AppProviders';
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { translate } = useTranslation();
   const { message } = useToast();
+  const { activeHousehold } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const bottomPad = Math.max(insets.bottom, 12);
 
@@ -122,7 +125,7 @@ export default function TabLayout() {
       <AddTaskSheet
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        defaultToHousehold={isHouseholdTab}
+        defaultToHousehold={isHouseholdTab || Boolean(activeHousehold)}
       />
 
       <Toast message={message} />

@@ -6,12 +6,15 @@ import { frequencyLabelFromRule } from '@/domain/recurrence';
 
 export function guessCategory(text: string): CategoryKey {
   const lower = text.toLowerCase();
-  if (/plant|पौधे|गमले|garden|gardening|flower/i.test(lower)) return 'home';
+  if (/plant|पौधे|गमले|garden|gardening|flower|khad|fertilizer|vermicompost|neem\s*oil|pruning|gudai|गुड़ाई/i.test(lower)) return 'gardening';
+  if (/milk|दूध|water\s*(?:can|jar|bottle)|पानी\s*जार|lpg|gas\s*cylinder|गैस\s*सिलेंडर|सिलिंडर|dhobi|धोबी|ironing|istri|newspaper\s*bill/i.test(lower)) return 'supplies';
+  if (/ac\s*(?:service|servicing|filter)|ro\s*(?:service|filter|purifier|membrane)|chimney|water\s*tank|टंकी|inverter|geyser|गीजर|appliance|deep\s*clean|pest\s*control/i.test(lower)) return 'maintenance';
+  if (/fastag|फास्टैग|metro\s*(?:card|pass)|puc|pollution|property\s*tax|house\s*tax|driving\s*licen[sc]e|passport/i.test(lower)) return 'documents';
   if (/rent|bill|card|emi|किराया|बिल|बिजली|water\s*bill|पानी\s*का\s*बिल|electricity|recharge|maintenance|phone|wifi|broadband|dth/i.test(lower)) return 'bills';
   if (/sip|itr|tax|fd|invest|mutual|share|stock|टैक्स|निवेश|loan|interest/i.test(lower)) return 'finance';
-  if (/bike|car|puc|insurance|petrol|diesel|fuel|service|बाइक|वाहन|गाड़ी|स्कूटर/i.test(lower)) return 'vehicle';
-  if (/gas|cylinder|filter|ro|clean|home|house|गैस|घर|plumber|ac service|grocery|ration|राशन|सब्जी|milk|दूध/i.test(lower)) return 'home';
-  if (/maid|cook|driver|salary|help|नौकरानी|वेतन|कामवाली|धोबी|sweeper|gardener/i.test(lower)) return 'help';
+  if (/bike|car|insurance|petrol|diesel|fuel|service|बाइक|वाहन|गाड़ी|स्कूटर/i.test(lower)) return 'vehicle';
+  if (/filter|clean|home|house|घर|plumber|grocery|ration|राशन|सब्जी/i.test(lower)) return 'home';
+  if (/maid|cook|driver|salary|help|नौकरानी|वेतन|कामवाली|sweeper|gardener/i.test(lower)) return 'help';
   if (/medicine|vitamin|doctor|gym|workout|walk|yoga|health|tablet|syrup|bp|sugar|thyroid|दवा|स्वास्थ्य|कसरत|टहल/i.test(lower)) return 'health';
   if (/ott|netflix|prime|hotstar|spotify|youtube|subscription|membership|सब्सक्रिप्शन/i.test(lower)) return 'subs';
   if (/school|tuition|fee|exam|college|course|class|बुक|किताब|स्कूल|ट्यूशन|फीस/i.test(lower)) return 'education';
@@ -25,10 +28,15 @@ export function guessCategory(text: string): CategoryKey {
 export function guessIcon(text: string): string | undefined {
   const lower = text.toLowerCase();
   if (/plant|पौधे|गमले|garden/i.test(lower)) return '🪴';
+  if (/milk|दूध/i.test(lower)) return '🥛';
+  if (/fastag|फास्टैग|metro|puc|licen[sc]e|passport|दस्तावेज़/i.test(lower)) return '🪪';
+  if (/ac|chimney|geyser|appliance|inverter|maintenance|गीजर/i.test(lower)) return '🔧';
+  if (/water\s*(?:can|jar)|tank|टंकी/i.test(lower)) return '🚰';
+  if (/dhobi|ironing|istri|धोबी/i.test(lower)) return '👔';
   if (/rent|किराया/i.test(lower)) return '🏠';
   if (/credit|card|कार्ड|emi/i.test(lower)) return '💳';
   if (/insurance|बीमा/i.test(lower)) return '🏍️';
-  if (/puc|certificate|प्रमाणपत्र/i.test(lower)) return '📄';
+  if (/certificate|प्रमाणपत्र/i.test(lower)) return '📄';
   if (/gas|सिलिंडर|सिलेंडर/i.test(lower)) return '🔥';
   if (/ro|filter|फ़िल्टर|पानी/i.test(lower)) return '💧';
   if (/maid|कामवाली|झाडू|sweeper/i.test(lower)) return '🧹';
@@ -38,7 +46,6 @@ export function guessIcon(text: string): string | undefined {
   if (/gym|workout|कसरत/i.test(lower)) return '💪';
   if (/walk|टहल/i.test(lower)) return '🚶';
   if (/yoga|योग/i.test(lower)) return '🧘';
-  if (/milk|दूध/i.test(lower)) return '🥛';
   if (/grocery|ration|राशन|सब्जी/i.test(lower)) return '🛒';
   if (/wifi|broadband|recharge/i.test(lower)) return '📶';
   if (/ott|netflix|prime|hotstar|टीवी|सब्सक्रिप्शन/i.test(lower)) return '📺';

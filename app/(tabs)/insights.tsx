@@ -33,6 +33,7 @@ import { AppIcon } from '@/components/AppIcon';
 import { Colors, Radius } from '@/constants/theme';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
 import { CATEGORY_MAP } from '@/constants/categories';
+import { getCategoryDef } from '@/constants/categoryHelpers';
 
 const EMPTY_TASKS: RepeatingTask[] = [];
 
@@ -577,7 +578,7 @@ export default function InsightsScreen() {
                         </View>
                         <View style={styles.highImpactList}>
                           {forecast.highImpactDueSoon.map((item) => {
-                            const catInfo = CATEGORY_MAP[item.category] ?? CATEGORY_MAP['home'];
+                            const catInfo = getCategoryDef(item.category);
                             const formattedDate = new Date(item.dueDate).toLocaleDateString(
                               isHi ? 'hi-IN' : 'en-US',
                               { month: 'short', day: 'numeric' }

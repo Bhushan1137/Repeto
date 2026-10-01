@@ -97,4 +97,30 @@ describe('preset domain module', () => {
     expect(preset.title).toBe('Cook Salary');
     expect(preset.category).toBe('help');
   });
+
+  it('contains curated presets for all new Indian categories', () => {
+    const allPresets = getAllPresets();
+    const categories = ['supplies', 'maintenance', 'documents', 'gardening'] as const;
+
+    for (const cat of categories) {
+      const catPresets = allPresets.filter((p) => p.category === cat);
+      expect(catPresets.length).toBeGreaterThanOrEqual(4);
+      for (const p of catPresets) {
+        expect(p.title).toBeTruthy();
+        expect(p.titleHi).toBeTruthy();
+        expect(p.freq).toBeTruthy();
+        expect(p.freqHi).toBeTruthy();
+        expect(p.icon).toBeTruthy();
+
+        // Ensure converting to form values doesn't throw
+        const valsEn = presetToFormValues(p, 'en');
+        expect(valsEn.title).toBe(p.title);
+        expect(valsEn.category).toBe(cat);
+
+        const valsHi = presetToFormValues(p, 'hi');
+        expect(valsHi.title).toBe(p.titleHi);
+        expect(valsHi.category).toBe(cat);
+      }
+    }
+  });
 });

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { CategoryKey, RepeatingTask, TaskGroup } from '@/types';
+import type { AnyCategoryKey, RepeatingTask, TaskGroup } from '@/types';
 import { daysUntilDue } from '@/domain/recurrence';
 
 export type FilterGroup = TaskGroup | 'upcoming' | 'all';
@@ -7,7 +7,7 @@ export type FilterGroup = TaskGroup | 'upcoming' | 'all';
 export interface FilterState {
   query: string;
   group: FilterGroup;
-  category: CategoryKey | 'all';
+  category: AnyCategoryKey | 'all';
   householdId?: string | 'all' | 'personal';
 }
 

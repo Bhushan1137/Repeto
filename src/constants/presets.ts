@@ -147,6 +147,39 @@ export const PRESETS: Record<CategoryKey, TaskPreset[]> = {
     { titleEn: 'Cycling', titleHi: 'साइकिल चलाना', freqEn: 'Every week', freqHi: 'हर सप्ताह', icon: '🚴' },
     { titleEn: 'Stretching', titleHi: 'स्ट्रेचिंग', freqEn: 'Every day', freqHi: 'हर दिन', icon: '🙆' },
   ],
+  supplies: [
+    { titleEn: 'Daily Milk Delivery', titleHi: 'दूध का बिल', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 1800, finance: true, icon: '🥛' },
+    { titleEn: '20L Drinking Water Can', titleHi: '20L पीने का पानी जार', freqEn: 'Every 3 days', freqHi: 'हर 3 दिन', amount: 90, finance: true, icon: '🚰' },
+    { titleEn: 'LPG Gas Cylinder Refill', titleHi: 'एलपीजी गैस सिलेंडर रिफिल', freqEn: 'Every 45 days', freqHi: 'हर 45 दिन', amount: 950, finance: true, icon: '🔥' },
+    { titleEn: 'Dhobi / Ironing Bill', titleHi: 'धोबी / कपड़े प्रेस बिल', freqEn: 'Every week', freqHi: 'हर सप्ताह', amount: 350, finance: true, icon: '👔' },
+    { titleEn: 'Daily Newspaper Bill', titleHi: 'अखबार का बिल', freqEn: 'Every 1st of month', freqHi: 'हर महीने की 1 तारीख', amount: 200, finance: true, icon: '📰' },
+    { titleEn: 'Cooking Oil & Atta Restock', titleHi: 'आटा और तेल रीस्टॉक', freqEn: 'Every month', freqHi: 'हर महीने', amount: 2500, finance: true, icon: '🌾' },
+  ],
+  maintenance: [
+    { titleEn: 'AC Servicing & Filter Cleaning', titleHi: 'एसी सर्विसिंग और फिल्टर सफाई', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '❄️' },
+    { titleEn: 'RO Water Purifier Service', titleHi: 'आरओ वाटर प्यूरिफायर सर्विस', freqEn: 'Every 3 months', freqHi: 'हर 3 महीने', icon: '💧' },
+    { titleEn: 'Kitchen Chimney Deep Clean', titleHi: 'किचन चिमनी की सफाई', freqEn: 'Every 2 months', freqHi: 'हर 2 महीने', icon: '🍳' },
+    { titleEn: 'Water Tank Cleaning', titleHi: 'पानी की टंकी सफाई', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '🚰' },
+    { titleEn: 'Inverter Battery Water Check', titleHi: 'इन्वर्टर बैटरी वॉटर चेक', freqEn: 'Every 3 months', freqHi: 'हर 3 महीने', icon: '🔋' },
+    { titleEn: 'Geyser Descaling & Inspection', titleHi: 'गीजर डीस्केलिंग व जांच', freqEn: 'Every year', freqHi: 'हर साल', icon: '⚡' },
+    { titleEn: 'Pest Control Treatment', titleHi: 'पेस्ट कंट्रोल ट्रीटमेंट', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '🐜' },
+  ],
+  documents: [
+    { titleEn: 'FASTag Balance Recharge', titleHi: 'फास्टैग बैलेंस रिचार्ज', freqEn: 'Every month', freqHi: 'हर महीने', amount: 1000, finance: true, icon: '🚗' },
+    { titleEn: 'Metro Smart Card Recharge', titleHi: 'मेट्रो स्मार्ट कार्ड रिचार्ज', freqEn: 'Every month', freqHi: 'हर महीने', amount: 500, finance: true, icon: '🚇' },
+    { titleEn: 'Vehicle PUC Certificate', titleHi: 'वाहन पीयूसी प्रमाणपत्र', freqEn: 'Every 6 months', freqHi: 'हर 6 महीने', icon: '📄' },
+    { titleEn: 'Property Tax / House Tax', titleHi: 'हाउस टैक्स / संपत्ति कर', freqEn: 'Every year', freqHi: 'हर साल', finance: true, icon: '🏛️' },
+    { titleEn: 'Term Insurance Premium', titleHi: 'टर्म इंश्योरेंस प्रीमियम', freqEn: 'Every year', freqHi: 'हर साल', finance: true, icon: '🛡️' },
+    { titleEn: 'Driving Licence Renewal', titleHi: 'ड्राइविंग लाइसेंस नवीनीकरण', freqEn: 'Every 10 years', freqHi: 'हर 10 साल', icon: '🪪' },
+    { titleEn: 'Passport Renewal Check', titleHi: 'पासपोर्ट समाप्ति जांच', freqEn: 'Every 5 years', freqHi: 'हर 5 साल', icon: '🛂' },
+  ],
+  gardening: [
+    { titleEn: 'Water Balcony Plants', titleHi: 'बालकनी पौधों को पानी दें', freqEn: 'Every day', freqHi: 'हर दिन', icon: '🪴' },
+    { titleEn: 'Add Vermicompost / Fertilizer', titleHi: 'वर्मीकम्पोस्ट / खाद डालें', freqEn: 'Every 15 days', freqHi: 'हर 15 दिन', icon: '🌱' },
+    { titleEn: 'Neem Oil Pest Spray', titleHi: 'नीम ऑयल कीटनाशक स्प्रे', freqEn: 'Every 15 days', freqHi: 'हर 15 दिन', icon: '🌿' },
+    { titleEn: 'Trim Dry Leaves & Pruning', titleHi: 'सूखे पत्तों की छंटाई', freqEn: 'Every week', freqHi: 'हर सप्ताह', icon: '✂️' },
+    { titleEn: 'Soil Aeration & Weeding (Gudai)', titleHi: 'गमलों की मिट्टी की गुड़ाई', freqEn: 'Every month', freqHi: 'हर महीने', icon: '🪴' },
+  ],
 };
 
 export const SAMPLE_CONTACTS = [

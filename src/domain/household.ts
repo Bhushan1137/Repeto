@@ -156,13 +156,16 @@ export function removeHouseholdMember(
 }
 
 export function toSharedMember(member: HouseholdMemberProfile): SharedMember {
-  return {
+  const shared: SharedMember = {
     name: member.name,
     phone: member.phone ?? member.code,
     color: member.color,
     code: member.code,
-    userId: member.userId,
   };
+  if (member.userId) {
+    shared.userId = member.userId;
+  }
+  return shared;
 }
 
 export function inviteMessage(user: UserProfile): string {

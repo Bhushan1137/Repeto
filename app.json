@@ -75,7 +75,8 @@
         }
       ],
       "expo-audio",
-      "./plugins/withAlarm.js"
+      "./plugins/withAlarm.js",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

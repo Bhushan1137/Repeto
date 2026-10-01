@@ -1,11 +1,11 @@
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { computeNextDueDate, frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
 import type { TranslationKey } from '@/i18n';
-import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
+import type { AnyCategoryKey, CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 
 export interface TaskFormValues {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrence: RecurrenceRule;
   freq: string;
   amount?: number;
@@ -26,7 +26,7 @@ export interface TaskFormValues {
 
 export interface TaskFormState {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrenceType: RecurrenceType;
   dayOfMonth: number;
   weekday: number;
@@ -152,7 +152,7 @@ export function normalizeReminderTimes(timesPerDay?: number, reminderTimes?: str
   return result;
 }
 
-export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState {
+export function defaultFormState(category: AnyCategoryKey = 'bills'): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
   const now = new Date();
@@ -274,7 +274,7 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
   };
 }
 
-export function applyCategoryChange(state: TaskFormState, category: CategoryKey): TaskFormState {
+export function applyCategoryChange(state: TaskFormState, category: AnyCategoryKey): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
   const allowed = config.allowedRecurrenceTypes;
@@ -339,7 +339,7 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
 export function formStateFromLegacyFreq(
   title: string,
   freq: string,
-  category: CategoryKey,
+  category: AnyCategoryKey,
   amount?: number,
   finance?: boolean,
   _lang: Language = 'en',
@@ -518,7 +518,11 @@ export function dayOfMonthOptions(): { value: number; labelEn: string; labelHi: 
 export function intervalPresets(category: CategoryKey): number[] {
   switch (category) {
     case 'vehicle':
+    case 'maintenance':
+    case 'documents':
       return [3, 6, 12];
+    case 'supplies':
+    case 'gardening':
     case 'home':
     case 'pets':
     case 'health':

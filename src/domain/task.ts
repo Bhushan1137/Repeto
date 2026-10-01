@@ -1,7 +1,9 @@
 import type {
+  AnyCategoryKey,
   CategoryKey,
   CompletionStatus,
   ParsedTaskInput,
+  RecurrenceRule,
   RepeatingTask,
   SharedMember,
   UserProfile,
@@ -84,19 +86,38 @@ export function createTaskFromFormValues(
   };
 }
 
+export interface PresetTaskConfig {
+  title: string;
+  category: AnyCategoryKey;
+  freq: string;
+  amount?: number;
+  finance?: boolean;
+  icon?: string;
+  recurrence?: RecurrenceRule;
+  reminderTime?: string;
+  reminderTimes?: string[];
+  timesPerDay?: number;
+  startDate?: string;
+  assignedTo?: string | null;
+  householdId?: string | null;
+  note?: string;
+  alarmEnabled?: boolean;
+}
+
 export function createTaskFromPreset(
   title: string,
-  category: CategoryKey,
+  category: AnyCategoryKey,
   freq: string,
   amount?: number,
   finance?: boolean,
   icon?: string,
-  creatorName?: string
+  creatorName?: string,
+  householdId?: string | null
 ): RepeatingTask {
   const recurrence = parseFrequencyLabel(freq);
   return {
     id: createTaskId(),
-    householdId: null,
+    householdId: householdId ?? null,
     title,
     icon,
     category,
@@ -112,6 +133,46 @@ export function createTaskFromPreset(
     escalationCount: 0,
     alarmEnabled: category === 'medicines',
     creatorName,
+  };
+}
+
+export function createTaskFromPresetConfig(
+  config: PresetTaskConfig,
+  creatorName?: string,
+  fallbackHouseholdId?: string | null
+): RepeatingTask {
+  const recurrence = config.recurrence ?? parseFrequencyLabel(config.freq);
+  const nextDueDate = computeInitialDueDate(
+    recurrence,
+    config.startDate,
+    config.reminderTime,
+    new Date(),
+    config.reminderTimes
+  );
+  return {
+    id: createTaskId(),
+    householdId: config.householdId !== undefined ? config.householdId : (fallbackHouseholdId ?? null),
+    title: config.title,
+    icon: config.icon,
+    category: config.category,
+    recurrence,
+    frequencyLabel: config.freq,
+    nextDueDate,
+    amount: config.amount,
+    finance: config.finance ?? !!config.amount,
+    reminderTime: config.reminderTime,
+    timesPerDay: config.timesPerDay,
+    reminderTimes: config.reminderTimes,
+    startDate: config.startDate,
+    sharedWith: [],
+    assignedTo: config.assignedTo ?? undefined,
+    history: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    escalationCount: 0,
+    alarmEnabled: config.alarmEnabled !== undefined ? config.alarmEnabled : (config.category === 'medicines'),
+    creatorName,
+    note: config.note,
   };
 }
 
@@ -743,7 +804,8 @@ export interface TaskMergeResult {
  */
 export function mergeTasksLocalAndRemote(
   localTasks: RepeatingTask[] = [],
-  remoteTasks: RepeatingTask[] = []
+  remoteTasks: RepeatingTask[] = [],
+  subscribedHouseholdIds?: Set<string>
 ): TaskMergeResult {
   const localMap = new Map<string, RepeatingTask>();
   for (const t of localTasks) {
@@ -764,6 +826,11 @@ export function mergeTasksLocalAndRemote(
     const remote = remoteMap.get(local.id);
 
     if (!remote) {
+      // If this is a household task belonging to an actively subscribed household,
+      // its absence from remote means it was deleted remotely by another member.
+      if (local.householdId && subscribedHouseholdIds?.has(local.householdId)) {
+        continue;
+      }
       // Local only — keep local and tag for remote sync
       mergedMap.set(local.id, local);
       newerLocalTasks.push(local);

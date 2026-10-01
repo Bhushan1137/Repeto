@@ -4,6 +4,8 @@ import { Button } from '@/components/Button';
 import { FormField } from '@/components/FormField';
 import { GroupedSettingCard, SettingItem } from '@/components/profile/GroupedSettingCard';
 import { MemberPassModal } from '@/components/profile/MemberPassModal';
+import { PresetLibrarySheet } from '@/components/profile/PresetLibrarySheet';
+import { ManageCategoriesSheet } from '@/components/category/ManageCategoriesSheet';
 import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
 import { Toggle } from '@/components/Toggle';
 import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
@@ -42,6 +44,8 @@ export default function ProfileScreen() {
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
   const [showArchivedSheet, setShowArchivedSheet] = useState(false);
+  const [showPresetLibrary, setShowPresetLibrary] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
@@ -386,6 +390,28 @@ export default function ProfileScreen() {
       {/* ── 4. Section: Data & Organization ── */}
       <SectionHeader label={translate('dataAndArchive')} />
       <GroupedSettingCard>
+        {/* Add from Preset */}
+        <SettingItem
+          icon="sparkles"
+          iconColor={Colors.tealDeep}
+          iconBg="rgba(62, 124, 106, 0.12)"
+          title={translate('addFromPreset')}
+          subtitle={translate('browsePresetsSub')}
+          onPress={() => setShowPresetLibrary(true)}
+          testID="settings-preset-library-link"
+        />
+
+        {/* My Custom Categories */}
+        <SettingItem
+          icon="grid-outline"
+          iconColor={Colors.marigoldDeep}
+          iconBg="rgba(232, 163, 61, 0.12)"
+          title={translate('myCategories')}
+          subtitle={translate('myCategoriesSub')}
+          onPress={() => setShowCategoryManager(true)}
+          testID="settings-categories-link"
+        />
+
         {/* Archived Tasks */}
         <SettingItem
           icon="archive-outline"
@@ -543,6 +569,20 @@ export default function ProfileScreen() {
       <ArchivedTasksSheet
         visible={showArchivedSheet}
         onClose={() => setShowArchivedSheet(false)}
+        language={userLang}
+      />
+
+      {/* Preset Library Sheet */}
+      <PresetLibrarySheet
+        visible={showPresetLibrary}
+        onClose={() => setShowPresetLibrary(false)}
+        language={userLang}
+      />
+
+      {/* Custom Categories Manager Sheet */}
+      <ManageCategoriesSheet
+        visible={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
         language={userLang}
       />
 

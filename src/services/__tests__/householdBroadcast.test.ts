@@ -236,6 +236,81 @@ describe('services/householdBroadcastService', () => {
         expect.anything()
       );
     });
+
+    it('deduplicates rapid repeated calls to broadcastMemberJoinedHousehold', async () => {
+      vi.mocked(userRepository.loadRemote).mockImplementation(async (uid: string) => {
+        if (uid === 'user-charlie') {
+          return {
+            id: 'user-charlie',
+            name: 'Charlie',
+            expoPushToken: 'ExponentPushToken[charlie-phone]',
+            pushOptIn: true,
+          } as any;
+        }
+        return null;
+      });
+
+      const { broadcastMemberJoinedHousehold } = await import('../householdBroadcastService');
+
+      const params = {
+        householdId: 'hh-rapid-test',
+        householdName: 'Rapid Home',
+        newMember: { id: 'user-dave', name: 'Dave', code: 'RPT-DAVE' },
+        actorUser: { id: 'user-dave', name: 'Dave', userCode: 'RPT-DAVE' },
+        allMembers: [
+          { code: 'RPT-CHARLIE', userId: 'user-charlie', name: 'Charlie', color: '#10B981', addedAt: '', status: 'active' as const },
+          { code: 'RPT-DAVE', userId: 'user-dave', name: 'Dave', color: '#EC4899', addedAt: '', status: 'active' as const },
+        ],
+      };
+
+      // Call twice concurrently / rapidly
+      await Promise.all([
+        broadcastMemberJoinedHousehold(params),
+        broadcastMemberJoinedHousehold(params),
+      ]);
+
+      // Charlie should only receive ONE notification doc and ONE push
+      const charlieCalls = vi.mocked(userRepository.saveNotification).mock.calls.filter(
+        ([uid]) => uid === 'user-charlie'
+      );
+      expect(charlieCalls.length).toBe(1);
+    });
+
+    it('deduplicates member records when a member appears with both code and userId across members list', async () => {
+      vi.mocked(userRepository.loadRemote).mockImplementation(async (uid: string) => {
+        if (uid === 'user-bob') {
+          return {
+            id: 'user-bob',
+            name: 'Bob',
+            expoPushToken: 'ExponentPushToken[bob-phone]',
+            pushOptIn: true,
+          } as any;
+        }
+        return null;
+      });
+
+      const { broadcastMemberJoinedHousehold } = await import('../householdBroadcastService');
+
+      await broadcastMemberJoinedHousehold({
+        householdId: 'hh-dedupe-members',
+        householdName: 'Dedupe Home',
+        newMember: { id: 'user-eve', name: 'Eve', code: 'RPT-EVE' },
+        actorUser: { id: 'user-eve', name: 'Eve', userCode: 'RPT-EVE' },
+        allMembers: [
+          // Bob has an active entry with userId
+          { code: 'RPT-BOB', userId: 'user-bob', name: 'Bob', color: '#10B981', addedAt: '', status: 'active' },
+          // Bob also has a legacy or pending entry with only code
+          { code: 'RPT-BOB', name: 'Bob', color: '#10B981', addedAt: '', status: 'pending' },
+          { code: 'RPT-EVE', userId: 'user-eve', name: 'Eve', color: '#EC4899', addedAt: '', status: 'active' },
+        ],
+      });
+
+      const bobCalls = vi.mocked(userRepository.saveNotification).mock.calls.filter(
+        ([id]) => id === 'user-bob' || id === 'RPT-BOB'
+      );
+      expect(bobCalls.length).toBe(1);
+      expect(bobCalls[0][0]).toBe('user-bob');
+    });
   });
 
   describe('notifyOwnerMemberLeftHousehold', () => {
@@ -285,6 +360,81 @@ describe('services/householdBroadcastService', () => {
 
       expect(userRepository.saveNotification).not.toHaveBeenCalled();
       expect(notificationServices.sendRemotePushNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('broadcastMemberLeftHousehold', () => {
+    it('notifies both owner and remaining peers when a member leaves', async () => {
+      const { broadcastMemberLeftHousehold } = await import('../householdBroadcastService');
+
+      vi.mocked(userRepository.loadRemote).mockResolvedValue({
+        id: 'user-owner',
+        expoPushToken: 'ExponentPushToken[owner]',
+        pushOptIn: true,
+      } as any);
+
+      await broadcastMemberLeftHousehold({
+        householdId: 'hh-1',
+        householdName: 'Family Villa',
+        leavingUser: { id: 'user-charlie', name: 'Charlie', userCode: 'RPT-CHARLIE' },
+        ownerUid: 'user-owner',
+        allMembers: [
+          { code: 'OWNER', userId: 'user-owner', name: 'Owner', color: '#111', addedAt: '', status: 'active' },
+          { code: 'DAVE', userId: 'user-dave', name: 'Dave', color: '#222', addedAt: '', status: 'active' },
+          { code: 'RPT-CHARLIE', userId: 'user-charlie', name: 'Charlie', color: '#333', addedAt: '', status: 'active' },
+        ],
+      });
+
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-owner',
+        expect.objectContaining({
+          type: 'household',
+          title: '🚪 Member Left Household',
+          body: 'Charlie left "Family Villa".',
+        })
+      );
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-dave',
+        expect.objectContaining({
+          type: 'household',
+          title: '🚪 Member Left Household',
+          body: 'Charlie left "Family Villa".',
+        })
+      );
+      expect(userRepository.saveNotification).not.toHaveBeenCalledWith(
+        'user-charlie',
+        expect.anything()
+      );
+    });
+  });
+
+  describe('broadcastHouseholdDisbanded', () => {
+    it('notifies all members except the owner when a household is disbanded', async () => {
+      const { broadcastHouseholdDisbanded } = await import('../householdBroadcastService');
+
+      await broadcastHouseholdDisbanded({
+        householdId: 'hh-1',
+        householdName: 'Shared Flat',
+        ownerName: 'Alice',
+        ownerUid: 'user-alice',
+        members: [
+          { code: 'ALICE', userId: 'user-alice', name: 'Alice', color: '#111', addedAt: '', status: 'active' },
+          { code: 'BOB', userId: 'user-bob', name: 'Bob', color: '#222', addedAt: '', status: 'active' },
+        ],
+      });
+
+      expect(userRepository.saveNotification).toHaveBeenCalledWith(
+        'user-bob',
+        expect.objectContaining({
+          type: 'household',
+          title: '🏠 Household Disbanded',
+          body: '"Shared Flat" was deleted by Alice.',
+        })
+      );
+      expect(userRepository.saveNotification).not.toHaveBeenCalledWith(
+        'user-alice',
+        expect.anything()
+      );
     });
   });
 });

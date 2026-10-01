@@ -6,9 +6,26 @@ import { inviteProfileFromUser, type HouseholdInviteProfile } from '@/domain/hou
 import type { AppNotification } from '@/types/notification';
 import type { Recommendation } from '@/types/recommendation';
 
-/** Firestore rejects undefined field values */
-function forFirestore<T extends Record<string, unknown>>(data: T): T {
-  return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) as T;
+/** Firestore rejects undefined field values anywhere in the document tree */
+export function forFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => forFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const res: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (value !== undefined) {
+        res[key] = forFirestore(value);
+      }
+    }
+    return res as T;
+  }
+  return data;
 }
 
 /** Wait until Firebase Auth has a signed-in user (needed before Firestore writes). */
@@ -225,10 +242,23 @@ export async function saveHouseholdRemote(household: import('@/types').Household
   }
 }
 
+export async function deleteAllHouseholdTasksRemote(householdId: string): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) return;
+  try {
+    await waitForAuthUid();
+    const snap = await getDocs(collection(db, 'households', householdId, 'tasks'));
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.warn('[Repeato] deleteAllHouseholdTasksRemote error:', err);
+  }
+}
+
 export async function deleteHouseholdRemote(householdId: string, code?: string): Promise<void> {
   const db = getFirestoreDb();
   if (!db) return;
   await waitForAuthUid();
+  await deleteAllHouseholdTasksRemote(householdId).catch(() => {});
   await deleteDoc(doc(db, 'households', householdId));
   if (code) {
     await deleteHouseholdCodeRemote(code).catch(() => {});
@@ -489,11 +519,23 @@ export async function purgeUserDataRemote(userId: string, email?: string, initia
       hhSnap.docs.map(async (d) => {
         const hhData = d.data();
         if (hhData.ownerUid === userId) {
+          if (hhData.code) {
+            await deleteHouseholdCodeRemote(hhData.code).catch(() => {});
+          }
+          await deleteAllHouseholdTasksRemote(d.id).catch(() => {});
           await deleteDoc(d.ref);
         } else {
           const updatedMemberUids = (hhData.memberUids || []).filter((id: string) => id !== userId);
           const updatedMembers = (hhData.members || []).filter((m: any) => m.userId !== userId);
           await updateDoc(d.ref, { memberUids: updatedMemberUids, members: updatedMembers });
+          if (hhData.code) {
+            await saveHouseholdCodeRemote({
+              ...hhData,
+              id: d.id,
+              memberUids: updatedMemberUids,
+              members: updatedMembers,
+            } as any).catch(() => {});
+          }
         }
       })
     );

@@ -28,6 +28,10 @@ export const CATEGORIES: CategoryDef[] = [
   { key: 'fitness', labelEn: 'Fitness', labelHi: 'फिटनेस', icon: '💪', accent: 'teal', group: 'life', hintEn: 'Gym, Yoga, Walk, Workout', hintHi: 'जिम, योग, चलना, कसरत' },
   { key: 'medicines', labelEn: 'Medicines', labelHi: 'दवाइयाँ', icon: '💊', accent: 'teal', group: 'life', hintEn: 'Daily Medicines, Supplements', hintHi: 'दैनिक दवाएं, पूरक' },
   { key: 'work', labelEn: 'Work', labelHi: 'काम', icon: '💼', accent: 'clay', group: 'money', hintEn: 'Meetings, Reports, Salary', hintHi: 'बैठकें, रिपोर्ट, वेतन' },
+  { key: 'supplies', labelEn: 'Daily Supplies & Vendors', labelHi: 'दैनिक आपूर्ति व वेंडर', icon: '🥛', accent: 'marigold', group: 'home', hintEn: 'Milk, Water Jar, Gas Cylinder, Dhobi', hintHi: 'दूध, पानी जार, गैस सिलेंडर, धोबी' },
+  { key: 'maintenance', labelEn: 'Home Maintenance & Appliances', labelHi: 'घर रखरखाव व उपकरण', icon: '🔧', accent: 'teal', group: 'home', hintEn: 'AC Service, RO Filter, Chimney, Tank', hintHi: 'एसी सर्विस, आरओ फिल्टर, चिमनी, टंकी' },
+  { key: 'documents', labelEn: 'Essential Documents & Mobility', labelHi: 'आवश्यक दस्तावेज़ व गतिशीलता', icon: '🪪', accent: 'clay', group: 'money', hintEn: 'FASTag, Metro Card, PUC, Property Tax', hintHi: 'फास्टैग, मेट्रो कार्ड, पीयूसी, संपत्ति कर' },
+  { key: 'gardening', labelEn: 'Plants & Balcony Garden', labelHi: 'पौधे व बालकनी गार्डन', icon: '🪴', accent: 'teal', group: 'life', hintEn: 'Watering, Fertilizer, Trimming, Pest Spray', hintHi: 'पानी देना, खाद, कटाई-छंटाई, कीटनाशक' },
 ];
 
 export const CATEGORY_MAP = Object.fromEntries(

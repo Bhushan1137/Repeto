@@ -102,7 +102,8 @@ export const taskRepository = {
     if (remoteEnabled()) {
       try {
         await saveHouseholdTaskRemote(householdId, task);
-      } catch {
+      } catch (err) {
+        console.warn('[Repeato] saveHouseholdTaskRemote failed:', err);
         await enqueueSync(userId, { type: op, task, householdId });
       }
     } else {

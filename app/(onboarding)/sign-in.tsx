@@ -2,11 +2,11 @@ import { AppIcon } from '@/components/AppIcon';
 import { OtpInput } from '@/components/OtpInput';
 import { Colors, Radius, Shadows } from '@/constants/theme';
 import { useOnboarding } from '@/context/OnboardingProvider';
+import { validateEmail, validateName } from '@/domain/validation';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { sendPasswordResetEmail } from '@/services/firebase/auth';
 import { requestSignupOtp, verifySignupOtp } from '@/services/otpService';
-import { validateEmail, validateName } from '@/domain/validation';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
@@ -366,7 +366,7 @@ export default function SignInScreen() {
             />
             <Text style={[styles.brandTitle, keyboardOpen && !isLargeScreen && styles.brandTitleCompact]}>Repeto</Text>
             {(!keyboardOpen || isLargeScreen) && (
-              <Text style={styles.sub}>Never forget what repeats</Text>
+              <Text style={styles.sub}>Repeat Together Effortlessly</Text>
             )}
           </View>
 

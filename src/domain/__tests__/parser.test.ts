@@ -125,7 +125,7 @@ describe('parseTaskInput natural language engine', () => {
       expect(result.title).toBe('दूध का बिल');
       expect(result.amount).toBe(1200);
       expect(result.reminderTime).toBe('19:30');
-      expect(result.category).toBe('bills');
+      expect(result.category).toBe('supplies');
     });
 
     it('parses Hindi date and amount: "किराया 15000 हर महीने 5 तारीख"', () => {
@@ -149,10 +149,10 @@ describe('parseTaskInput natural language engine', () => {
   });
 
   describe('Intelligent habit defaults & Hinglish conversational parsing', () => {
-    it('intelligently defaults "Water plants" to home category, 🪴 icon, and daily recurrence', () => {
+    it('intelligently defaults "Water plants" to gardening category, 🪴 icon, and daily recurrence', () => {
       const result = parseTaskInput('Water plants');
       expect(result.title).toBe('Water plants');
-      expect(result.category).toBe('home');
+      expect(result.category).toBe('gardening');
       expect(result.icon).toBe('🪴');
       expect(result.recurrence).toEqual({ type: 'daily' });
     });
@@ -258,6 +258,65 @@ describe('parseTaskInput natural language engine', () => {
       const res3 = parseTaskInput('Smoke alarm test monthly at 10am with alarm');
       expect(res3.alarmEnabled).toBe(true);
       expect(res3.title).toBe('Smoke alarm test');
+    });
+  });
+
+  describe('Indian household categories parsing', () => {
+    it('parses Daily Supplies & Vendors inputs', () => {
+      const r1 = parseTaskInput('20L water can every 3 days ₹90');
+      expect(r1.category).toBe('supplies');
+      expect(r1.amount).toBe(90);
+      expect(r1.recurrence).toEqual({ type: 'interval', interval: 3, intervalUnit: 'days' });
+
+      const r2 = parseTaskInput('LPG gas cylinder refill every 45 days');
+      expect(r2.category).toBe('supplies');
+      expect(r2.icon).toBe('🔥');
+
+      const r3 = parseTaskInput('Dhobi clothes iron every week ₹350');
+      expect(r3.category).toBe('supplies');
+      expect(r3.amount).toBe(350);
+      expect(r3.icon).toBe('👔');
+    });
+
+    it('parses Home Maintenance & Appliances inputs', () => {
+      const r1 = parseTaskInput('AC service every 6 months');
+      expect(r1.category).toBe('maintenance');
+      expect(r1.icon).toBe('🔧');
+
+      const r2 = parseTaskInput('RO filter change every 3 months');
+      expect(r2.category).toBe('maintenance');
+
+      const r3 = parseTaskInput('Clean kitchen chimney every 2 months');
+      expect(r3.category).toBe('maintenance');
+      expect(r3.icon).toBe('🔧');
+    });
+
+    it('parses Essential Documents & Mobility inputs', () => {
+      const r1 = parseTaskInput('FASTag recharge ₹1000 monthly');
+      expect(r1.category).toBe('documents');
+      expect(r1.amount).toBe(1000);
+      expect(r1.icon).toBe('🪪');
+
+      const r2 = parseTaskInput('Vehicle PUC renewal every 6 months');
+      expect(r2.category).toBe('documents');
+      expect(r2.icon).toBe('🪪');
+
+      const r3 = parseTaskInput('Property tax payment yearly');
+      expect(r3.category).toBe('documents');
+    });
+
+    it('parses Plants & Balcony Garden inputs', () => {
+      const r1 = parseTaskInput('Water balcony plants daily 8am');
+      expect(r1.category).toBe('gardening');
+      expect(r1.icon).toBe('🪴');
+      expect(r1.reminderTime).toBe('08:00');
+
+      const r2 = parseTaskInput('Add vermicompost to plants every 15 days');
+      expect(r2.category).toBe('gardening');
+      expect(r2.recurrence).toEqual({ type: 'interval', interval: 15, intervalUnit: 'days' });
+
+      const r3 = parseTaskInput('Neem oil pest spray every 15 days');
+      expect(r3.category).toBe('gardening');
     });
   });
 });

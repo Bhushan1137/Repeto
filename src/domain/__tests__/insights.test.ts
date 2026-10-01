@@ -206,4 +206,30 @@ describe('insights domain module', () => {
     const stats = getHouseholdStats([mockTask]);
     expect(stats.shared).toHaveLength(1);
   });
+
+  it('does not resurrect departed members from task.sharedWith when householdMembers is provided', () => {
+    // Task historically has Alice in sharedWith
+    const taskWithAlice: RepeatingTask = {
+      ...mockTask,
+      sharedWith: [{ code: 'ALICE_CODE', name: 'Alice', phone: '123', color: '#123456', userId: 'user-alice' }],
+    };
+
+    // Alice has left the household! Authoritative householdMembers only has Bob
+    const authoritativeMembers = [
+      { code: 'BOB_CODE', name: 'Bob', color: '#654321', status: 'active' as const, addedAt: '2026-01-01', userId: 'user-bob' },
+    ];
+
+    const derived = deriveHouseholdMembers(
+      [taskWithAlice],
+      'Owner',
+      authoritativeMembers,
+      'user-owner',
+      'OWNER_CODE'
+    );
+
+    // Should contain: Owner (isYou) and Bob. Alice must NOT be resurrected!
+    expect(derived).toHaveLength(2);
+    expect(derived.map((m) => m.name)).toEqual(['Owner', 'Bob']);
+    expect(derived.some((m) => m.name === 'Alice')).toBe(false);
+  });
 });
