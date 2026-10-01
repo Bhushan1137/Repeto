@@ -100,7 +100,12 @@ export async function drainSyncQueueSqlite(userId: string): Promise<SyncOperatio
 export async function clearAllSqliteData(userId?: string): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const storageKeys = keys.filter((k) => k.startsWith('@repeato/') || k.startsWith('@repeto/'));
+    const storageKeys = keys.filter((k) =>
+      k === KEYS.user ||
+      (userId
+        ? k === tasksKey(userId) || k === syncKey(userId)
+        : k.startsWith(KEYS.tasksPrefix) || k.startsWith(KEYS.syncPrefix))
+    );
     if (storageKeys.length > 0) {
       await Promise.all(storageKeys.map((k) => AsyncStorage.removeItem(k)));
     }

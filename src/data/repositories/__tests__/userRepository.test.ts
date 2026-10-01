@@ -39,9 +39,11 @@ describe('data/repositories/userRepository', () => {
     expect(localSource.saveUser).toHaveBeenCalled();
   });
 
-  it('clear delegates to clearUserData', async () => {
+  it('clear delegates to clearUserData without signing out Firebase Auth', async () => {
+    const authModule = await import('@/services/firebase/auth');
     await userRepository.clear('u1');
     expect(localSource.clearUserData).toHaveBeenCalledWith('u1');
+    expect(authModule.signOutFirebase).not.toHaveBeenCalled();
   });
 
   it('listenNotifications returns noop cleanup when remote disabled', () => {

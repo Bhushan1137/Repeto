@@ -21,15 +21,19 @@ export function initFirebase(): boolean {
     }
   }
   if (!auth && app) {
-    try {
-      auth = getAuth(app);
-    } catch {
-      if (Platform.OS === 'web') {
+    if (Platform.OS === 'web') {
+      try {
         auth = getAuth(app);
-      } else {
+      } catch {
+        auth = initializeAuth(app);
+      }
+    } else {
+      try {
         auth = initializeAuth(app, {
           persistence: getReactNativePersistence(AsyncStorage),
         });
+      } catch {
+        auth = getAuth(app);
       }
     }
   }

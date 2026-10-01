@@ -46,7 +46,10 @@ async function buildProfile(fbUser: User, language: Language): Promise<UserProfi
     });
   }
 
-  return normalizeHouseholdProfile(base);
+  return normalizeHouseholdProfile({
+    ...base,
+    languageSelected: true,
+  });
 }
 
 export async function signInWithGoogle(language: Language): Promise<SignInResult> {
@@ -149,6 +152,7 @@ export async function signUpWithEmail(
       name: name?.trim() || base.name || normalizedEmail.split('@')[0],
       email: normalizedEmail,
       profileComplete: Boolean(name && name.trim().length >= 2),
+      languageSelected: true,
     };
     try {
       await saveUserRemote(user);

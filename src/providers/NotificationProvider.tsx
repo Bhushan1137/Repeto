@@ -27,7 +27,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [notifications]);
 
   useEffect(() => {
-    if (!user?.id || !isOnline) {
+    if (!user?.id || user.isDeleted || !isOnline) {
       return;
     }
 

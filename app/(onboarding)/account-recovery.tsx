@@ -59,14 +59,31 @@ export default function AccountRecoveryScreen() {
       setLoading('restore');
       const res = await restoreAccount();
       if (!res.ok) {
-        setError(res.error || translate('recoveryError'));
+        if (res.error === 'not_authenticated') {
+          setError(
+            language === 'hi'
+              ? 'सत्र समाप्त हो गया है। कृपया पुनः साइन इन करें।'
+              : 'Your session has expired. Please sign in again to recover your account.'
+          );
+        } else {
+          setError(res.error || translate('recoveryError'));
+        }
       } else {
         showToast(translate('recoveryRestoreSuccess'));
       }
       // NavigationGuard watches user + deletedAccountInfo and routes automatically
       // once restoreAccount() commits the new state — no manual router.replace() needed
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : translate('recoveryError'));
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'not_authenticated') {
+        setError(
+          language === 'hi'
+            ? 'सत्र समाप्त हो गया है। कृपया पुनः साइन इन करें।'
+            : 'Your session has expired. Please sign in again to recover your account.'
+        );
+      } else {
+        setError(msg || translate('recoveryError'));
+      }
     } finally {
       setLoading(null);
     }
@@ -101,14 +118,31 @@ export default function AccountRecoveryScreen() {
       setLoading('fresh');
       const res = await freshStartAccount();
       if (!res.ok) {
-        setError(res.error || translate('recoveryError'));
+        if (res.error === 'not_authenticated') {
+          setError(
+            language === 'hi'
+              ? 'सत्र समाप्त हो गया है। कृपया पुनः साइन इन करें।'
+              : 'Your session has expired. Please sign in again to start fresh.'
+          );
+        } else {
+          setError(res.error || translate('recoveryError'));
+        }
       } else {
         showToast(translate('recoveryFreshSuccess'));
       }
       // NavigationGuard reads the fresh user's languageSelected/profileComplete flags
       // and routes to the correct onboarding step automatically — no manual router.replace() needed
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : translate('recoveryError'));
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'not_authenticated') {
+        setError(
+          language === 'hi'
+            ? 'सत्र समाप्त हो गया है। कृपया पुनः साइन इन करें।'
+            : 'Your session has expired. Please sign in again to start fresh.'
+        );
+      } else {
+        setError(msg || translate('recoveryError'));
+      }
     } finally {
       isExecutingRef.current = false;
       setLoading(null);

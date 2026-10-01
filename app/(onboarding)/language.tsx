@@ -65,8 +65,10 @@ export default function LanguageScreen() {
           await setAuthLanguage(language);
           if (!user) {
             router.replace('/(onboarding)/sign-in');
-          } else {
+          } else if (!user.profileComplete) {
             router.replace('/(onboarding)/profile');
+          } else {
+            router.replace('/(onboarding)/categories');
           }
         }}
         testID="language-continue-btn"

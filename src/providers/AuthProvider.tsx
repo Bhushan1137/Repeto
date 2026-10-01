@@ -59,6 +59,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [deletedAccountInfo, setDeletedAccountInfo] = useState<{ deletedAt: string; purgeAfter: string | null; userId: string; email?: string } | null>(null);
+
+  const setDeletedAccountInfoPersisted = useCallback(
+    (info: { deletedAt: string; purgeAfter: string | null; userId: string; email?: string } | null) => {
+      setDeletedAccountInfo(info);
+      if (info) {
+        AsyncStorage.setItem('@repeato/deleted_account_info', JSON.stringify(info)).catch(() => {});
+      } else {
+        AsyncStorage.removeItem('@repeato/deleted_account_info').catch(() => {});
+      }
+    },
+    []
+  );
+
   const [savedLanguage, setSavedLanguage] = useState<Language>('en');
   const [languageSelected, setLanguageSelected] = useState(false);
   const { isOnline } = useNetworkStatus();
@@ -75,6 +88,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function init() {
+      let initialAuthSettled = false;
+      const settleReady = () => {
+        if (!initialAuthSettled && !cancelled) {
+          initialAuthSettled = true;
+          setReady(true);
+        }
+      };
+
+      // 0. Load saved deleted account info (if returning to recovery screen)
+      try {
+        const val = await AsyncStorage.getItem('@repeato/deleted_account_info');
+        if (!cancelled && val) {
+          setDeletedAccountInfo(JSON.parse(val));
+        }
+      } catch (err) {
+        console.warn('[Repeato] Failed to load saved deleted account info', err);
+      }
+
       // 1. Load saved language
       try {
         const val = await AsyncStorage.getItem('@repeato/selected_language');
@@ -95,19 +126,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (err) {
         console.warn('[Repeato] Failed to load local user', err);
-      } finally {
-        if (!cancelled) {
-          setReady(true);
-        }
       }
 
       if (!firebaseReady) {
+        settleReady();
         return;
       }
 
+      // Safety timeout: if network or auth hangs on cold start, reveal app after 2.5s
+      const authTimeout = setTimeout(settleReady, 2500);
+
       configureGoogleSignIn();
       const redirectUser = await completeGoogleRedirectSignIn();
-      if (cancelled) return;
+      if (cancelled) {
+        clearTimeout(authTimeout);
+        return;
+      }
       if (redirectUser) {
         try {
           const profile = await profileFromSignedInUser(redirectUser, language);
@@ -122,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let unsubscribeHouseholds: (() => void) | null = null;
 
       const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
+        clearTimeout(authTimeout);
         if (cancelled) return;
         if (isDeletingAccountRef.current || isAccountActionInProgressRef.current) return;
 
@@ -140,15 +175,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // If offline and we have an existing local user session, retain it
           if (!isOnline && localUser) {
             setUser(localUser);
-            setReady(true);
+            settleReady();
             return;
           }
-          if (localUser) {
-            localUser = null;
-            userRepository.clear().catch(() => {});
-          }
+          // Do NOT wipe the local SQLite database here!
+          // userRepository.clear() should only be called on explicit signOut() or deleteAccount().
+          localUser = null;
           setUser(null);
-          setReady(true);
+          // If there is no authenticated Firebase user, we cannot be in recovery mode.
+          // Clear any stale deletedAccountInfo so user can authenticate cleanly.
+          setDeletedAccountInfoPersisted(null);
+          settleReady();
           return;
         }
 
@@ -157,6 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const staleId = localUser.id;
           localUser = null;
           userRepository.clear(staleId).catch(() => {});
+        } else if (localUser && localUser.id === firebaseUser.uid) {
+          // Local cached user matches! Settle ready immediately so dashboard loads with 0ms delay.
+          setUser(localUser);
+          settleReady();
         }
 
         if (!isOnline) {
@@ -165,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
           }
-          setReady(true);
+          settleReady();
           return;
         }
 
@@ -181,25 +222,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (remote?.isDeleted === true) {
                 if (isDeletingAccountRef.current) return;
                 console.warn('[Repeato] Soft-deleted account detected — showing recovery screen.');
-                setDeletedAccountInfo({
+
+                // Clean up listeners immediately to avoid unauthorized listener errors
+                if (unsubscribeHouseholds) {
+                  unsubscribeHouseholds();
+                  unsubscribeHouseholds = null;
+                }
+                if (unsubscribeProfile) {
+                  unsubscribeProfile();
+                  unsubscribeProfile = null;
+                }
+                unsubscribeHouseholdsRef.current = null;
+                unsubscribeProfileRef.current = null;
+
+                // Clear cached user so child providers unmount and don't render stale data
+                setUser(null);
+                userRepository.saveLocal(null).catch(() => {});
+
+                setDeletedAccountInfoPersisted({
                   deletedAt: remote.deletedAt ?? new Date().toISOString(),
                   purgeAfter: remote.purgeAfter ?? null,
                   userId: firebaseUser.uid,
                   email: firebaseUser.email ?? remote.email ?? '',
                 });
-                setUser(null);
-                setReady(true);
+                settleReady();
                 return;
               }
 
               const matchingLocal = localUser && localUser.id === firebaseUser.uid ? localUser : null;
+              const fallback = matchingLocal ?? profileFromFirebaseUser(firebaseUser, language);
               const base = remote
                 ? {
                     ...(matchingLocal ?? {}),
                     ...remote,
                     email: remote.email || firebaseUser.email || matchingLocal?.email || '',
+                    languageSelected: remote.languageSelected ?? matchingLocal?.languageSelected ?? true,
                   }
-                : (matchingLocal ?? profileFromFirebaseUser(firebaseUser, language));
+                : {
+                    ...fallback,
+                    languageSelected: fallback.languageSelected ?? languageSelected,
+                  };
               const normalized = normalizeHouseholdProfile({
                 ...base,
                 profileComplete: base.profileComplete ?? ((base.name || '').trim().length >= 2),
@@ -252,16 +314,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
               }
             } finally {
-              setReady(true);
+              settleReady();
             }
           }, (err) => {
             console.warn('[Repeato] Profile snapshot listener failed', err);
+            // Handle session expiry / disabled user gracefully (VAL-066)
+            if ((err as any)?.code === 'permission-denied') {
+              console.warn('[Repeato] Permission denied or session expired. Resetting user session.');
+              userRepository.clear(firebaseUser.uid).catch(() => {});
+              setUser(null);
+              settleReady();
+              return;
+            }
             if (localUser) {
               setUser(localUser);
             } else {
               setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
             }
-            setReady(true);
+            settleReady();
           });
           unsubscribeProfileRef.current = unsubscribeProfile;
 
@@ -313,11 +383,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unsubscribeHouseholdsRef.current = unsubscribeHouseholds;
         } else {
           setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
-          setReady(true);
+          settleReady();
         }
       });
 
       return () => {
+        clearTimeout(authTimeout);
         if (unsubscribeAuth) unsubscribeAuth();
         if (unsubscribeProfile) unsubscribeProfile();
         if (unsubscribeHouseholds) unsubscribeHouseholds();
@@ -336,7 +407,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
     };
-  }, [firebaseReady, isOnline]);
+    // Initialize auth subscription once when Firebase is ready; internal listeners handle auth & firestore updates dynamically
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firebaseReady]);
 
   const persistUser = useCallback(async (next: UserProfile | null) => {
     const normalized = next ? normalizeHouseholdProfile(next) : null;
@@ -351,13 +424,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: result.error, message: result.message };
       }
       if (result.isDeleted && result.deletedAccountInfo) {
-        setDeletedAccountInfo(result.deletedAccountInfo);
+        setDeletedAccountInfoPersisted(result.deletedAccountInfo);
         setUser(null);
         return { ok: true, isDeleted: true };
       }
       if (!result.user) {
         return { ok: false, error: 'failed' };
       }
+      setDeletedAccountInfoPersisted(null);
       const finalUser: UserProfile = {
         ...result.user,
         termsAcceptedAt: result.user.termsAcceptedAt ?? new Date().toISOString(),
@@ -365,7 +439,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await persistUser(finalUser);
       return { ok: true, user: finalUser };
     },
-    [persistUser]
+    [persistUser, setDeletedAccountInfoPersisted]
   );
 
   const signInWithEmail = useCallback(
@@ -375,13 +449,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: result.error, message: result.message };
       }
       if (result.isDeleted && result.deletedAccountInfo) {
-        setDeletedAccountInfo(result.deletedAccountInfo);
+        setDeletedAccountInfoPersisted(result.deletedAccountInfo);
         setUser(null);
         return { ok: true, isDeleted: true };
       }
       if (!result.user) {
         return { ok: false, error: 'failed', message: result.message };
       }
+      setDeletedAccountInfoPersisted(null);
       const finalUser: UserProfile = {
         ...result.user,
         termsAcceptedAt: result.user.termsAcceptedAt ?? new Date().toISOString(),
@@ -389,7 +464,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await persistUser(finalUser);
       return { ok: true, user: finalUser };
     },
-    [language, persistUser]
+    [language, persistUser, setDeletedAccountInfoPersisted]
   );
 
   const signUpWithEmail = useCallback(
@@ -401,6 +476,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result.user) {
         return { ok: false, error: 'failed', message: result.message };
       }
+      setDeletedAccountInfoPersisted(null);
       const finalUser: UserProfile = {
         ...result.user,
         termsAcceptedAt: new Date().toISOString(),
@@ -408,7 +484,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await persistUser(finalUser);
       return { ok: true, user: finalUser };
     },
-    [language, persistUser]
+    [language, persistUser, setDeletedAccountInfoPersisted]
   );
 
   const updateUser = useCallback(
@@ -473,7 +549,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const userId = user?.id ?? deletedAccountInfo?.userId;
-    setDeletedAccountInfo(null);
+    setDeletedAccountInfoPersisted(null);
     setUser(null);
     // Guard against undefined userId if both user and deletedAccountInfo are null (edge case)
     if (userId) await userRepository.clear(userId);
@@ -483,7 +559,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('[Repeato] Firebase sign out error:', err);
     }
-  }, [user?.id, deletedAccountInfo?.userId]);
+  }, [user?.id, deletedAccountInfo?.userId, setDeletedAccountInfoPersisted]);
 
   const activeHousehold = useMemo(() => {
     if (!user) return null;
@@ -671,7 +747,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { ok: true };
     },
-    [user, persistUser]
+    [user, persistUser, isOnline]
   );
 
   // ── Delete Account (Soft Delete) ───────────────────────────────────────────
@@ -751,14 +827,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // 5. Sign out Firebase Auth now that user acknowledged the recovery popup
-        await signOutFirebase().catch(() => {});
-
-        // 6. Clear local data and session
+        // 5. Clear local data and session BEFORE signing out Firebase Auth
+        // Ensures child listeners unmount cleanly while auth credentials are still valid
         setUser(null);
-        setDeletedAccountInfo(null);
+        setDeletedAccountInfoPersisted(null);
         await userRepository.clear(userId).catch(() => {});
         await cancelAllNotifications().catch(() => {});
+
+        // 6. Sign out Firebase Auth now that user acknowledged the recovery popup
+        await signOutFirebase().catch(() => {});
 
         return { ok: true };
       } finally {
@@ -767,7 +844,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }, 1500);
       }
     },
-    [user]
+    [user, setDeletedAccountInfoPersisted]
   );
 
   // ── Restore Deleted Account ────────────────────────────────────────────────
@@ -791,7 +868,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await userRepository.save(profile);
         setUser(profile);
       }
-      setDeletedAccountInfo(null);
+      setDeletedAccountInfoPersisted(null);
       return { ok: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -802,7 +879,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAccountActionInProgressRef.current = false;
       }, 1000);
     }
-  }, [deletedAccountInfo]);
+  }, [deletedAccountInfo, setDeletedAccountInfoPersisted]);
 
   // ── Fresh Start (Permanent Purge) ─────────────────────────────────────────
   const freshStartAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
@@ -854,7 +931,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await userRepository.save(freshProfile);
       setUser(freshProfile);
-      setDeletedAccountInfo(null);
+      setDeletedAccountInfoPersisted(null);
       return { ok: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -865,7 +942,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAccountActionInProgressRef.current = false;
       }, 1000);
     }
-  }, [deletedAccountInfo, savedLanguage]);
+  }, [deletedAccountInfo, savedLanguage, setDeletedAccountInfoPersisted]);
 
   const value = useMemo(
     () => ({

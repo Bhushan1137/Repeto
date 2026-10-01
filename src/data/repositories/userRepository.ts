@@ -17,7 +17,6 @@ import {
 } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
-import { signOutFirebase } from '@/services/firebase/auth';
 import { normalizeHouseholdProfile } from '@/domain/household';
 import type { AppNotification } from '@/types/notification';
 
@@ -26,6 +25,7 @@ function remoteEnabled(): boolean {
 }
 
 async function syncRemote(user: UserProfile): Promise<void> {
+  if (user.isDeleted) return;
   try {
     const normalized = normalizeHouseholdProfile(user);
     await saveUserRemote(normalized);
@@ -57,7 +57,7 @@ export const userRepository = {
   async save(user: UserProfile | null): Promise<void> {
     const normalized = user ? normalizeHouseholdProfile(user) : null;
     await saveUser(normalized);
-    if (normalized && remoteEnabled()) {
+    if (normalized && !normalized.isDeleted && remoteEnabled()) {
       await syncRemote(normalized);
     }
   },
@@ -74,13 +74,6 @@ export const userRepository = {
   },
 
   async clear(userId?: string): Promise<void> {
-    if (remoteEnabled()) {
-      try {
-        await signOutFirebase();
-      } catch {
-        // Best-effort sign out
-      }
-    }
     await clearUserData(userId);
   },
 

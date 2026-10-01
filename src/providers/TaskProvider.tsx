@@ -141,7 +141,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
 
   useEffect(() => {
-    if (!user) {
+    if (!user || user.isDeleted) {
       setTasks([]);
       setHydrated(false);
       userIdRef.current = null;

@@ -61,7 +61,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
   // Heartbeat & presence tracking (once per day gate + version check, minimal Firestore writes)
   useEffect(() => {
-    if (!ready || !user?.id || deletedAccountInfo) return;
+    if (!ready || !user?.id || user.isDeleted || deletedAccountInfo) return;
 
     checkAndSendHeartbeat(userRef.current, (patch) => updateUserRef.current(patch));
 
@@ -74,7 +74,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.remove();
     };
-  }, [ready, user?.id, !!deletedAccountInfo]);
+  }, [ready, user?.id, user?.isDeleted, !!deletedAccountInfo]);
 
   const safeReplace = useCallback(
     (target: string) => {

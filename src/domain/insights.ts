@@ -309,9 +309,12 @@ export function getWeeklyActivity(tasks: RepeatingTask[], lang: 'en' | 'hi'): Da
   return result;
 }
 
-export function initials(name: string): string {
+export function initials(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
   return name
-    .split(' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
     .map((w) => w[0])
     .join('')
     .slice(0, 2)

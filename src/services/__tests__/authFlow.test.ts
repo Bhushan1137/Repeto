@@ -49,6 +49,7 @@ describe('End-to-End Auth Flow (Sign-Up, Sign-In, Sign-Out)', () => {
       expect(result.user?.email).toBe('tester@repeto.app');
       expect(result.user?.name).toBe('Test User');
       expect(result.user?.profileComplete).toBe(true);
+      expect(result.user?.languageSelected).toBe(true);
       expect(result.user?.language).toBe('en');
 
       // Verifies remote save is invoked for cloud backup

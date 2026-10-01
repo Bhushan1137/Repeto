@@ -64,7 +64,7 @@ export function RecommendationProvider({ children }: { children: React.ReactNode
   }, [user?.id]);
 
   useEffect(() => {
-    if (!firebaseReady || !user || !isOnline) {
+    if (!firebaseReady || !user || user.isDeleted || !isOnline) {
       return;
     }
 
