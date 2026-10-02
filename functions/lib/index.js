@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifySignupOtp = exports.sendSignupOtp = void 0;
-const https_1 = require("firebase-functions/v2/https");
-const v2_1 = require("firebase-functions/v2");
-const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+const admin = require("firebase-admin");
+const v2_1 = require("firebase-functions/v2");
+const https_1 = require("firebase-functions/v2/https");
+const nodemailer = require("nodemailer");
 // Lazy Firebase Admin Auth initialization (avoids network/credential discovery overhead during startup)
 let authInstance = null;
 function getAdminAuth() {
@@ -188,7 +188,7 @@ function buildOtpEmailHtml(otp) {
             <tr>
               <td style="padding: 32px 32px 16px 32px; text-align: center;">
                 <h1 style="margin: 0; color: #E8A33D; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">Repeto</h1>
-                <p style="margin: 6px 0 0 0; color: #9BA3C7; font-size: 13px; font-weight: 500;">Never forget what repeats</p>
+                <p style="margin: 6px 0 0 0; color: #9BA3C7; font-size: 13px; font-weight: 500;">Repeat Together Effortlessly</p>
               </td>
             </tr>
 
