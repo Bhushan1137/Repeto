@@ -29,10 +29,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   View,
 } from 'react-native';
 import { ActivityIndicator, Card, Text, TouchableRipple } from 'react-native-paper';
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.repeto.tasks';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -61,6 +64,22 @@ export default function ProfileScreen() {
     if (code === userLang) return;
     await setLanguage(code as Language);
     showToast(code === 'hi' ? translate('languageSwitchedHi') : translate('languageSwitched'));
+  };
+
+  const handleShareApp = async () => {
+    try {
+      const codeSnippet = user?.userCode ? `\n(My code: ${user.userCode})` : '';
+      const message = isHi
+        ? `हे! मैं आवर्ती कार्यों, आदतों और घर के कामों को ट्रैक करने के लिए Repeto का उपयोग कर रहा हूँ। इसे आज़माएं:\n👉 डाउनलोड करें: ${PLAY_STORE_URL}${user?.userCode ? `\n(मेरा कोड: ${user.userCode})` : ''}`
+        : `Hey! I'm using Repeto to track repeating chores, habits, and household tasks. It makes staying on track super easy!\n👉 Download Repeto: ${PLAY_STORE_URL}${codeSnippet}`;
+
+      await Share.share({
+        title: isHi ? 'Repeto ऐप शेयर करें' : 'Invite Friends to Repeto',
+        message,
+      });
+    } catch {
+      // Ignored
+    }
   };
 
   const handleOpenEdit = () => {
@@ -319,6 +338,30 @@ export default function ProfileScreen() {
         </View>
       </Card>
 
+      {/* ── Referral / Invite Friends Banner ── */}
+      <Card style={styles.referralCard} mode="elevated">
+        <View style={styles.referralInner}>
+          <View style={styles.referralIconCircle}>
+            <AppIcon name="gift" size={20} color={Colors.marigoldDeep} />
+          </View>
+          <View style={styles.referralTextCol}>
+            <Text style={styles.referralTitle}>{translate('inviteFriendsTitle')}</Text>
+            <Text style={styles.referralSubtitle}>{translate('inviteFriendsSub')}</Text>
+          </View>
+          <TouchableRipple
+            style={styles.referralBtn}
+            onPress={handleShareApp}
+            borderless
+            testID="profile-invite-friends-btn"
+          >
+            <View style={styles.referralBtnContent}>
+              <AppIcon name="share-social-outline" size={13} color={Colors.white} />
+              <Text style={styles.referralBtnText}>{translate('inviteFriendsBtn')}</Text>
+            </View>
+          </TouchableRipple>
+        </View>
+      </Card>
+
       {/* ── 3. Section: Preferences ── */}
       <SectionHeader label={translate('preferences')} />
       <GroupedSettingCard>
@@ -335,15 +378,24 @@ export default function ProfileScreen() {
               onValueChange={async (v) => {
                 if (v) {
                   const granted = await requestNotificationPermission();
-                  updateUser({ pushOptIn: true });
-                  if (granted) {
-                    for (const t of tasks) {
-                      if (!t.archived) scheduleTaskReminder(t).catch(() => { });
-                    }
+                  if (!granted) {
+                    showToast(
+                      isHi
+                        ? 'सूचनाएं फ़ोन सेटिंग्स में बंद हैं। कृपया अनुमति दें।'
+                        : 'Notifications are disabled in device settings. Please enable them.'
+                    );
+                    await updateUser({ pushOptIn: false });
+                    return;
                   }
+                  await updateUser({ pushOptIn: true });
+                  for (const t of tasks) {
+                    if (!t.archived) scheduleTaskReminder(t).catch(() => {});
+                  }
+                  showToast(isHi ? 'सूचनाएं चालू कर दी गई हैं' : 'Notifications enabled');
                 } else {
-                  updateUser({ pushOptIn: false });
+                  await updateUser({ pushOptIn: false });
                   await cancelAllNotifications();
+                  showToast(isHi ? 'सूचनाएं बंद कर दी गई हैं' : 'Notifications disabled');
                 }
               }}
               testID="settings-push-toggle"
@@ -573,11 +625,13 @@ export default function ProfileScreen() {
       />
 
       {/* Preset Library Sheet */}
-      <PresetLibrarySheet
-        visible={showPresetLibrary}
-        onClose={() => setShowPresetLibrary(false)}
-        language={userLang}
-      />
+      {showPresetLibrary && (
+        <PresetLibrarySheet
+          visible={showPresetLibrary}
+          onClose={() => setShowPresetLibrary(false)}
+          language={userLang}
+        />
+      )}
 
       {/* Custom Categories Manager Sheet */}
       <ManageCategoriesSheet
@@ -949,6 +1003,68 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.ivoryLine,
   },
 
+  // Referral / Invite Friends Banner
+  referralCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.28)',
+    elevation: 2,
+    shadowColor: Colors.marigoldDeep,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    overflow: 'hidden',
+  },
+  referralInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  referralIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(232, 163, 61, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralTextCol: {
+    flex: 1,
+  },
+  referralTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.indigo950,
+    marginBottom: 2,
+  },
+  referralSubtitle: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.inkSoft,
+    lineHeight: 15,
+  },
+  referralBtn: {
+    backgroundColor: Colors.marigoldDeep,
+    borderRadius: Radius.full,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    elevation: 1,
+  },
+  referralBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  referralBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.white,
+  },
+
   // Language Segment Switcher
   langSegment: {
     flexDirection: 'row',
@@ -983,8 +1099,8 @@ const styles = StyleSheet.create({
   // Footer
   footerContainer: {
     alignItems: 'center',
-    paddingVertical: 16,
-    marginBottom: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   footerVersionText: {
     fontSize: 12,

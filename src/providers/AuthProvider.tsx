@@ -11,9 +11,10 @@ import { onSnapshot, doc, collection, query, where, or } from 'firebase/firestor
 import { restoreUserRemote, purgeUserDataRemote, loadHouseholdTasksRemote, saveHouseholdTaskRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
-import { cancelAllNotifications, registerForPushNotificationsAsync } from '@/services/notifications';
-import { notifyOwnerMemberLeftHousehold, broadcastMemberJoinedHousehold, broadcastMemberLeftHousehold, broadcastHouseholdDisbanded } from '@/services/householdBroadcastService';
+import { cancelAllNotifications, registerForPushNotificationsAsync, sendRemotePushNotification } from '@/services/notifications';
+import { broadcastMemberJoinedHousehold, broadcastMemberLeftHousehold, broadcastHouseholdDisbanded } from '@/services/householdBroadcastService';
 import { recordHouseholdActivity } from '@/services/householdActivityService';
+import { cleanupHouseholdTasksForMember } from '@/domain/task';
 
 interface AuthContextValue {
   ready: boolean;
@@ -531,6 +532,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'householdMembers',
         'households',
         'householdCode',
+        'householdMemberUids',
         'lastActiveAt',
         'deviceInfo',
       ];
@@ -575,6 +577,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const userId = user?.id ?? deletedAccountInfo?.userId;
+    if (user?.id && user?.expoPushToken) {
+      try {
+        await updateUser({ expoPushToken: '' });
+      } catch (err) {
+        console.warn('[Repeato] Failed to clear push token on sign out:', err);
+      }
+    }
     setDeletedAccountInfoPersisted(null);
     setUser(null);
     // Guard against undefined userId if both user and deletedAccountInfo are null (edge case)
@@ -585,7 +594,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('[Repeato] Firebase sign out error:', err);
     }
-  }, [user?.id, deletedAccountInfo?.userId, setDeletedAccountInfoPersisted]);
+  }, [user?.id, user?.expoPushToken, updateUser, deletedAccountInfo?.userId, setDeletedAccountInfoPersisted]);
 
   const activeHousehold = useMemo(() => {
     if (!user) return null;
@@ -746,7 +755,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         // Load fresh household if possible, or fallback to record
-        let remoteHh = await userRepository.loadHousehold(hhRecord.householdId).catch(() => null);
+        const remoteHh = await userRepository.loadHousehold(hhRecord.householdId).catch(() => null);
         const baseMembers = remoteHh?.members ?? hhRecord.members ?? [];
         const alreadyMemberInRemote = baseMembers.some(m => m.userId === user.id || normalizeInviteCode(m.code) === normalizeInviteCode(userCode));
         const finalMembers = alreadyMemberInRemote ? baseMembers : [...baseMembers, myMember];
@@ -817,47 +826,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user.householdCode ? normalizeInviteCode(user.householdCode) : undefined,
     ].filter(Boolean) as string[];
 
-    // 1. Unassign leaving user from household tasks in Firestore BEFORE removing membership
+    // 1. Unassign leaving user from household tasks and reassign rotating chores in Firestore BEFORE removing membership
     // (Caller is still a verified member at this stage, preventing permission-denied errors)
     try {
       const hhTasks = await loadHouseholdTasksRemote(householdId);
-      for (const t of hhTasks) {
-        let changed = false;
-        let updatedTask = { ...t };
-        if (
-          updatedTask.assignedTo === user.id ||
-          (authUid && updatedTask.assignedTo === authUid) ||
-          (user.userCode && updatedTask.assignedTo === user.userCode) ||
-          (updatedTask.assignedTo && userCodes.includes(normalizeInviteCode(updatedTask.assignedTo)))
-        ) {
-          updatedTask.assignedTo = undefined;
-          changed = true;
-        }
-        if (updatedTask.sharedWith && updatedTask.sharedWith.length > 0) {
-          const filtered = updatedTask.sharedWith.filter((c) => {
-            if (c.userId && (c.userId === user.id || (authUid && c.userId === authUid))) return false;
-            if (c.code && userCodes.includes(normalizeInviteCode(c.code))) return false;
-            return true;
-          });
-          if (filtered.length !== updatedTask.sharedWith.length) {
-            updatedTask.sharedWith = filtered;
-            changed = true;
-          }
-        }
-        if (updatedTask.rotationMembers && updatedTask.rotationMembers.length > 0) {
-          const filtered = updatedTask.rotationMembers.filter((m) => {
-            if (m === user.id || (authUid && m === authUid)) return false;
-            if (userCodes.includes(normalizeInviteCode(m))) return false;
-            return true;
-          });
-          if (filtered.length !== updatedTask.rotationMembers.length) {
-            updatedTask.rotationMembers = filtered;
-            changed = true;
-          }
-        }
-        if (changed) {
-          await saveHouseholdTaskRemote(householdId, updatedTask).catch(() => {});
-        }
+      const { modifiedTasks } = cleanupHouseholdTasksForMember(hhTasks, householdId, {
+        userId: user.id,
+        memberCode: user.userCode,
+        userCodes,
+      });
+      for (const t of modifiedTasks) {
+        await saveHouseholdTaskRemote(householdId, t).catch(() => {});
       }
     } catch (taskErr) {
       console.warn('[Repeato] Failed to unassign leaving user from tasks:', taskErr);
@@ -965,17 +944,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Repeato] Failed to update household on member remove:', err);
       }
 
-      // 3. Notify the removed member via in-app notification
+      // 3. Clean up and reassign household tasks in Firestore
+      try {
+        const hhTasks = await loadHouseholdTasksRemote(householdId);
+        const targetCode = normalizeInviteCode(memberCode);
+        const { modifiedTasks } = cleanupHouseholdTasksForMember(hhTasks, householdId, {
+          userId: memberUserId,
+          memberCode,
+          userCodes: [targetCode],
+        });
+        for (const t of modifiedTasks) {
+          await saveHouseholdTaskRemote(householdId, t).catch(() => {});
+        }
+      } catch (taskErr) {
+        console.warn('[Repeato] Failed to clean up tasks for removed member:', taskErr);
+      }
+
+      // 3. Notify the removed member via in-app notification & push notification
       if (memberUserId) {
         try {
+          const removedTitle = '🚪 Removed from Household';
+          const removedBody = `${user.name || 'The owner'} removed you from "${hh.name}".`;
+
           await userRepository.saveNotification(memberUserId, {
             id: `${Date.now()}-removed`,
             type: 'household',
-            title: 'Removed from Household',
-            body: `${user.name || 'Owner'} removed you from "${hh.name}".`,
+            title: removedTitle,
+            body: removedBody,
             timestamp: new Date().toISOString(),
             read: false,
           });
+
+          const memberProfile = await userRepository.loadRemote(memberUserId);
+          if (memberProfile?.expoPushToken && memberProfile?.pushOptIn !== false) {
+            await sendRemotePushNotification(
+              memberProfile.expoPushToken,
+              removedTitle,
+              removedBody,
+              { householdId: hh.id, type: 'household' }
+            );
+          }
         } catch (err) {
           console.warn('[Repeato] Failed to notify removed member:', err);
         }
@@ -1038,7 +1046,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   if (remoteHh?.members) {
                     membersToNotify = remoteHh.members;
                   }
-                } catch {}
+                } catch {
+                  // ignore household load error
+                }
 
                 broadcastHouseholdDisbanded({
                   householdId: hh.id,
@@ -1078,38 +1088,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // Clean up tasks in this household assigned to leaving user
                 try {
                   const hhTasks = await loadHouseholdTasksRemote(hh.id);
-                  for (const t of hhTasks) {
-                    let changed = false;
-                    let updatedTask = { ...t };
-                    if (updatedTask.assignedTo === userSnapshot.id || (updatedTask.assignedTo && userCodes.includes(normalizeInviteCode(updatedTask.assignedTo)))) {
-                      updatedTask.assignedTo = undefined;
-                      changed = true;
-                    }
-                    if (updatedTask.sharedWith && updatedTask.sharedWith.length > 0) {
-                      const filtered = updatedTask.sharedWith.filter((c) => {
-                        if (c.userId && c.userId === userSnapshot.id) return false;
-                        if (c.code && userCodes.includes(normalizeInviteCode(c.code))) return false;
-                        return true;
-                      });
-                      if (filtered.length !== updatedTask.sharedWith.length) {
-                        updatedTask.sharedWith = filtered;
-                        changed = true;
-                      }
-                    }
-                    if (updatedTask.rotationMembers && updatedTask.rotationMembers.length > 0) {
-                      const filtered = updatedTask.rotationMembers.filter((m) => {
-                        if (m === userSnapshot.id) return false;
-                        if (userCodes.includes(normalizeInviteCode(m))) return false;
-                        return true;
-                      });
-                      if (filtered.length !== updatedTask.rotationMembers.length) {
-                        updatedTask.rotationMembers = filtered;
-                        changed = true;
-                      }
-                    }
-                    if (changed) {
-                      await saveHouseholdTaskRemote(hh.id, updatedTask).catch(() => {});
-                    }
+                  const { modifiedTasks } = cleanupHouseholdTasksForMember(hhTasks, hh.id, {
+                    userId: userSnapshot.id,
+                    memberCode: userSnapshot.userCode,
+                    userCodes,
+                  });
+                  for (const t of modifiedTasks) {
+                    await saveHouseholdTaskRemote(hh.id, t).catch(() => {});
                   }
                 } catch (taskErr) {
                   console.warn('[Repeato] deleteAccount: failed to unassign from tasks:', taskErr);

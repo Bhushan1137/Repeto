@@ -179,8 +179,8 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
       const doseMinute = Number.isNaN(m) ? 0 : m;
 
       const doseContent: Notifications.NotificationContentInput = {
-        title: 'Repeto Reminder',
-        body: `Reminder: ${task.title} (${i + 1}/${times.length})`,
+        title: '⏰ Task Reminder',
+        body: `"${task.title}" (${i + 1}/${times.length})`,
         data: { taskId: task.id, doseIndex: i, isAlarm: false },
         categoryIdentifier: 'task-actions',
         sound: true,
@@ -266,8 +266,8 @@ export async function scheduleTaskReminder(task: RepeatingTask): Promise<void> {
   }
 
   const content: Notifications.NotificationContentInput = {
-    title: 'Repeto Reminder',
-    body: `Reminder for "${task.title}"`,
+    title: '⏰ Task Reminder',
+    body: `Time for "${task.title}"`,
     data: { taskId: task.id, isAlarm: false },
     categoryIdentifier: 'task-actions',
     sound: true,

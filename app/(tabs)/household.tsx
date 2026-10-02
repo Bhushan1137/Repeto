@@ -4,8 +4,10 @@ import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Card, Text } from 'react-native-paper';
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.repeto.tasks';
 
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { AddTaskSheet } from '@/components/AddTaskSheet';
@@ -278,6 +280,8 @@ interface HouseholdViewProps {
   activityY: React.MutableRefObject<number>;
   onOpenSettings: () => void;
   onAddTask?: () => void;
+  inviteModalVisible: boolean;
+  setInviteModalVisible: (v: boolean) => void;
 }
 
 function HouseholdView({
@@ -304,6 +308,8 @@ function HouseholdView({
   activityY: _activityY,
   onOpenSettings,
   onAddTask,
+  inviteModalVisible,
+  setInviteModalVisible,
 }: HouseholdViewProps) {
   const { isOnline } = useNetworkStatus();
   const { claimTask } = useTasks();
@@ -316,7 +322,6 @@ function HouseholdView({
   const [codeInput, setCodeInput] = useState('');
   const [addingCode, setAddingCode] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
-  const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
@@ -349,6 +354,24 @@ function HouseholdView({
     setCopiedCode(true);
     showToast(language === 'hi' ? 'घर का कोड कॉपी हो गया!' : 'Household invite code copied!');
     setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleShareHouseholdInvite = async () => {
+    const code = activeHousehold.code || user?.userCode;
+    if (!code) return;
+    const householdName = activeHousehold.name || (language === 'hi' ? 'घर' : 'our household');
+    const message = language === 'hi'
+      ? `Repeto ऐप पर "${householdName}" में शामिल हों!\nघर के कार्यों और जिम्मेदारियों को एक साथ प्रबंधित करें:\n👉 ${PLAY_STORE_URL}\n\nशामिल होने के लिए मेरा इनवाइट कोड दर्ज करें: ${code}`
+      : `Join "${householdName}" on Repeto!\nDownload the app to manage shared chores and turns together:\n👉 ${PLAY_STORE_URL}\n\nEnter my invite code to join: ${code}`;
+
+    try {
+      await Share.share({
+        title: language === 'hi' ? 'घर का आमंत्रण' : `Join ${householdName} on Repeto`,
+        message,
+      });
+    } catch {
+      // Ignored
+    }
   };
 
   const handleJoinHousehold = async (customCode?: string) => {
@@ -1018,6 +1041,19 @@ function HouseholdView({
                       </View>
                     </View>
 
+                    {/* 1-Tap Share Invite Link Button */}
+                    <TouchableOpacity
+                      onPress={handleShareHouseholdInvite}
+                      style={styles.inviteShareFullBtn}
+                      activeOpacity={0.8}
+                      testID="household-share-invite-btn"
+                    >
+                      <AppIcon name="share-social-outline" size={15} color={Colors.white} />
+                      <Text style={styles.inviteShareFullBtnText}>
+                        {language === 'hi' ? 'आमंत्रण लिंक शेयर करें (WhatsApp / संदेश)' : 'Share Invite Link (WhatsApp / Messages)'}
+                      </Text>
+                    </TouchableOpacity>
+
                     {showQrCode && (
                       <View style={styles.qrCodeWrapper}>
                         <QRCode value={activeHousehold.code || user.userCode} size={140} />
@@ -1248,6 +1284,7 @@ export default function HouseholdScreen() {
   const [createSheetVisible, setCreateSheetVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [addTaskVisible, setAddTaskVisible] = useState(false);
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [householdActivities, setHouseholdActivities] = useState<HouseholdActivityItem[]>([]);
 
   useEffect(() => {
@@ -1364,6 +1401,8 @@ export default function HouseholdScreen() {
             activityY={activityY}
             onOpenSettings={() => setSettingsVisible(true)}
             onAddTask={() => setAddTaskVisible(true)}
+            inviteModalVisible={inviteModalVisible}
+            setInviteModalVisible={setInviteModalVisible}
           />
         )}
       </ScreenShell>
@@ -1397,6 +1436,10 @@ export default function HouseholdScreen() {
           currentUserName={user?.name ?? ''}
           language={language}
           membersWithStats={activeHouseholdMembers}
+          onAddMemberPress={() => {
+            setSettingsVisible(false);
+            setInviteModalVisible(true);
+          }}
           onDeleteHousehold={async (hhId) => {
             await purgeHouseholdTasks(hhId);
             return await deleteHousehold(hhId);
@@ -2135,7 +2178,7 @@ const styles = StyleSheet.create({
   },
   quickAccessHub: {
     marginTop: 18,
-    marginBottom: 28,
+    marginBottom: 10,
     gap: 10,
   },
   quickAccessCard: {
@@ -2283,6 +2326,27 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontFamily: 'Manrope_700Bold',
     color: '#B45309',
+  },
+  inviteShareFullBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.tealDeep,
+    borderRadius: Radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    elevation: 1,
+    shadowColor: Colors.tealDeep,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  inviteShareFullBtnText: {
+    fontSize: 12.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.white,
   },
   qrCodeWrapper: {
     alignItems: 'center',

@@ -4,7 +4,7 @@ import { Card, TouchableRipple } from 'react-native-paper';
 import type { AnyCategoryKey, Language } from '@/types';
 import { CATEGORIES, CATEGORY_GROUPS } from '@/constants/categories';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { useCategories } from '@/hooks/useCategories';
 import { CreateCategoryModal } from '@/components/category/CreateCategoryModal';
 import { AppIcon } from '@/components/AppIcon';

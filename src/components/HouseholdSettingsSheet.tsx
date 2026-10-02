@@ -11,13 +11,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
-import * as Clipboard from 'expo-clipboard';
-import QRCode from 'react-native-qrcode-svg';
 import { AppIcon } from '@/components/AppIcon';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import type { HouseholdContext, HouseholdMemberProfile } from '@/types';
 import { initials } from '@/domain/insights';
-import { generateHouseholdCode } from '@/domain/household';
 
 export interface MemberWithStats {
   code?: string;
@@ -62,21 +59,8 @@ export function HouseholdSettingsSheet({
 }: HouseholdSettingsSheetProps) {
   const [loading, setLoading] = useState(false);
   const [removingCode, setRemovingCode] = useState<string | null>(null);
-  const [showQrCode, setShowQrCode] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-
   const isOwner = activeHousehold?.ownerUid === currentUserId;
   const hi = language === 'hi';
-
-  const householdCode = activeHousehold?.code || (activeHousehold?.id ? generateHouseholdCode(activeHousehold.id) : '');
-
-  const handleCopyCode = async () => {
-    if (!householdCode) return;
-    await Clipboard.setStringAsync(householdCode);
-    setCopiedCode(true);
-    showToast(hi ? 'घर का कोड कॉपी हो गया!' : 'Household invite code copied!');
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
 
   const sortedStats = useMemo(() => {
     return [...membersWithStats].sort((a, b) => b.onTimePercent - a.onTimePercent);
@@ -215,79 +199,29 @@ export function HouseholdSettingsSheet({
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          {/* ── Invite & Share Card ── */}
-          {householdCode ? (
-            <View style={styles.inviteCard}>
-              <View style={styles.inviteHeaderRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <AppIcon name="share-social-outline" size={16} color={Colors.marigoldDeep} />
-                  <Text style={styles.inviteLabel}>
-                    {hi ? 'घर का आमंत्रण कोड' : 'Household Invite Code'}
-                  </Text>
-                </View>
-                {onAddMemberPress && (
-                  <TouchableOpacity
-                    onPress={onAddMemberPress}
-                    style={styles.addMemberInlineBtn}
-                    activeOpacity={0.7}
-                  >
-                    <AppIcon name="person-outline" size={14} color={Colors.tealDeep} />
-                    <Text style={styles.addMemberInlineText}>
-                      {hi ? '+ जोड़ें' : '+ Add'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <View style={styles.codeRow}>
-                <Text style={styles.codeText}>{householdCode}</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={handleCopyCode}
-                    style={styles.actionPillBtn}
-                    activeOpacity={0.7}
-                  >
-                    <AppIcon name={copiedCode ? 'checkmark' : 'copy-outline'} size={13} color={Colors.tealDeep} />
-                    <Text style={styles.actionPillText}>
-                      {copiedCode ? (hi ? 'कॉपी!' : 'Copied!') : (hi ? 'कॉपी' : 'Copy')}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setShowQrCode(!showQrCode)}
-                    style={[styles.actionPillBtn, showQrCode && styles.actionPillBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <AppIcon name="qr-code-outline" size={13} color={showQrCode ? Colors.white : Colors.marigoldDeep} />
-                    <Text style={[styles.actionPillText, showQrCode && { color: Colors.white }]}>
-                      {showQrCode ? (hi ? 'छिपाएं' : 'Hide QR') : 'QR'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {showQrCode && (
-                <View style={styles.qrWrapper}>
-                  <View style={styles.qrInner}>
-                    <QRCode value={householdCode} size={140} />
-                  </View>
-                  <Text style={styles.qrInstruction}>
-                    {hi
-                      ? 'रूममेट अपने Repeto स्कैनर से इस कोड को स्कैन करके सीधे इस घर में शामिल हो सकते हैं'
-                      : 'Roommates can scan this with Repeto scanner to join this household directly'}
-                  </Text>
-                </View>
-              )}
-            </View>
-          ) : null}
-
           {/* ── Members & Progress Section ── */}
           <View style={styles.membersSectionHeader}>
-            <Text style={styles.sectionLabel}>
-              {hi ? 'घर के सदस्य' : 'Household Members'} ({membersList.length})
-            </Text>
-            <Text style={styles.sectionSubLabel}>
-              {hi ? 'कार्य पूरा करने की प्रगति' : 'Task completion on-time'}
-            </Text>
+            <View>
+              <Text style={styles.sectionLabel}>
+                {hi ? 'घर के सदस्य' : 'Household Members'} ({membersList.length})
+              </Text>
+              <Text style={styles.sectionSubLabel}>
+                {hi ? 'कार्य पूरा करने की प्रगति' : 'Task completion on-time'}
+              </Text>
+            </View>
+            {onAddMemberPress && (
+              <TouchableOpacity
+                onPress={onAddMemberPress}
+                style={styles.addMemberHeaderBtn}
+                activeOpacity={0.7}
+                testID="settings-invite-member-btn"
+              >
+                <AppIcon name="add" size={13} color={Colors.marigoldDeep} />
+                <Text style={styles.addMemberHeaderText}>
+                  {hi ? 'आमंत्रित करें' : 'Invite'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <Card style={styles.membersCard} mode="elevated">
@@ -481,103 +415,21 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
 
-  // Invite Card
-  inviteCard: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: Radius.lg,
-    padding: 14,
-    marginBottom: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(232, 163, 61, 0.3)',
-  },
-  inviteHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  inviteLabel: {
-    fontFamily: 'Manrope_700Bold',
-    fontSize: 12,
-    color: Colors.ink,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  addMemberInlineBtn: {
+  addMemberHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(62, 124, 106, 0.1)',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: Radius.full,
-  },
-  addMemberInlineText: {
-    fontFamily: 'Manrope_700Bold',
-    fontSize: 11,
-    color: Colors.tealDeep,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: Radius.md,
+    backgroundColor: '#FFF8EC',
     borderWidth: 1,
-    borderColor: Colors.ivoryLine,
-  },
-  codeText: {
-    fontFamily: 'Fraunces_700Bold',
-    fontSize: 18,
-    color: Colors.indigo950,
-    letterSpacing: 1.2,
-  },
-  actionPillBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderColor: 'rgba(232, 163, 61, 0.35)',
     borderRadius: Radius.full,
-    backgroundColor: Colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: Colors.ivoryLine,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
   },
-  actionPillBtnActive: {
-    backgroundColor: Colors.marigoldDeep,
-    borderColor: Colors.marigoldDeep,
-  },
-  actionPillText: {
+  addMemberHeaderText: {
     fontFamily: 'Manrope_700Bold',
-    fontSize: 12,
-    color: Colors.ink,
-  },
-  qrWrapper: {
-    alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.ivoryLine,
-  },
-  qrInner: {
-    backgroundColor: Colors.white,
-    padding: 12,
-    borderRadius: Radius.md,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    marginBottom: 8,
-  },
-  qrInstruction: {
-    fontFamily: 'Manrope_500Medium',
     fontSize: 11.5,
-    color: Colors.inkSoft,
-    textAlign: 'center',
-    maxWidth: 260,
-    lineHeight: 16,
+    color: Colors.marigoldDeep,
   },
 
   // Members Section

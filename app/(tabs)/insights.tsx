@@ -442,7 +442,8 @@ export default function InsightsScreen() {
 
               {/* 14-Day Lookahead Upcoming Strip */}
               <SectionHeader
-                label={isHi ? 'आने वाले कार्य (14 दिन)' : 'Coming Up (14-Day Lookahead)'}
+                label={isHi ? 'आने वाले कार्य (14 दिन)' : 'Coming Up (14 Days)'}
+                count={upcomingSlots.reduce((sum, s) => sum + s.tasks.length, 0)}
               />
               <UpcomingStrip
                 slots={upcomingSlots}

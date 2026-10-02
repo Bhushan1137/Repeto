@@ -60,7 +60,7 @@ export function buildNudgeNotification(
     id: `nudge_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     type: 'nudge',
     title: `👉 Chore Nudge: ${taskTitle}`,
-    body: `${fromUser.name} poked you about "${taskTitle}".`,
+    body: `${fromUser.name} nudged you to complete "${taskTitle}".`,
     timestamp: new Date().toISOString(),
     read: false,
     metadata: {

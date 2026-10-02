@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -8,8 +8,9 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
+  FlatList,
 } from 'react-native';
-import { Text, Card, TouchableRipple, ActivityIndicator } from 'react-native-paper';
+import { Text, ActivityIndicator } from 'react-native-paper';
 import { CATEGORIES, CATEGORY_MAP } from '@/constants/categories';
 import { Colors, Radius, Typography, Shadows } from '@/constants/theme';
 import { AppIcon } from '@/components/AppIcon';
@@ -22,6 +23,96 @@ import { getAllPresets, presetToFormValues, type PresetListItem } from '@/domain
 import type { CategoryKey, Language, SharedMember } from '@/types';
 import type { PresetTaskConfig } from '@/domain/task';
 import type { TaskFormValues } from '@/domain/taskForm';
+
+// Cache all presets and category counts at module scope once to prevent expensive recalculation on open
+const ALL_PRESETS = getAllPresets();
+
+const CATEGORY_COUNTS: Record<string, number> = ALL_PRESETS.reduce((acc, p) => {
+  acc[p.category] = (acc[p.category] || 0) + 1;
+  return acc;
+}, {} as Record<string, number>);
+
+interface PresetItemRowProps {
+  preset: PresetListItem;
+  isSelected: boolean;
+  isCustomized: boolean;
+  title: string;
+  freq: string;
+  amount?: number;
+  icon: string;
+  onToggle: (id: string) => void;
+  onEdit: (preset: PresetListItem) => void;
+  editLabel: string;
+  customLabel: string;
+}
+
+const PresetItemRow = React.memo(function PresetItemRow({
+  preset,
+  isSelected,
+  isCustomized,
+  title,
+  freq,
+  amount,
+  icon,
+  onToggle,
+  onEdit,
+  editLabel,
+  customLabel,
+}: PresetItemRowProps) {
+  return (
+    <Pressable
+      style={[styles.presetCard, isSelected && styles.presetCardSelected]}
+      onPress={() => onToggle(preset.id)}
+      android_ripple={{ color: 'rgba(62, 124, 106, 0.12)' }}
+      testID={`preset-card-${preset.id}`}
+    >
+      <View style={styles.cardInner}>
+        {/* Checkbox circle */}
+        <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
+          {isSelected && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+
+        {/* Category Icon */}
+        <View style={styles.iconCircle}>
+          <Text style={styles.iconText}>{icon}</Text>
+        </View>
+
+        {/* Task Details */}
+        <View style={styles.infoCol}>
+          <View style={styles.titleRow}>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            {isCustomized && (
+              <View style={styles.customBadge}>
+                <Text style={styles.customBadgeText}>{customLabel}</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.cardFreq} numberOfLines={1}>
+            {freq}
+            {amount ? ` · ₹${amount.toLocaleString('en-IN')}` : ''}
+          </Text>
+        </View>
+
+        {/* Inline Customize Button */}
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onEdit(preset);
+          }}
+          style={styles.editBtn}
+          hitSlop={8}
+          testID={`preset-edit-btn-${preset.id}`}
+        >
+          <AppIcon name="create-outline" size={16} color={Colors.tealDeep} />
+          <Text style={styles.editBtnText}>{editLabel}</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+});
 
 interface PresetLibrarySheetProps {
   visible: boolean;
@@ -36,7 +127,6 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
   const { showToast } = useToast();
 
   const isHi = language === 'hi';
-  const allPresets = useMemo(() => getAllPresets(), []);
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey | 'all'>('all');
@@ -65,7 +155,7 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
   // Filtered items
   const filteredPresets = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return allPresets.filter((p) => {
+    return ALL_PRESETS.filter((p) => {
       if (selectedCategory !== 'all' && p.category !== selectedCategory) {
         return false;
       }
@@ -81,9 +171,9 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
         freqHi.includes(query)
       );
     });
-  }, [allPresets, selectedCategory, search]);
+  }, [selectedCategory, search]);
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -93,31 +183,31 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
       }
       return next;
     });
-  };
+  }, []);
 
-  const handleSelectAllVisible = () => {
+  const handleSelectAllVisible = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       filteredPresets.forEach((p) => next.add(p.id));
       return next;
     });
-  };
+  }, [filteredPresets]);
 
-  const handleDeselectAllVisible = () => {
+  const handleDeselectAllVisible = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       filteredPresets.forEach((p) => next.delete(p.id));
       return next;
     });
-  };
+  }, [filteredPresets]);
 
   const allVisibleSelected =
     filteredPresets.length > 0 && filteredPresets.every((p) => selectedIds.has(p.id));
 
   // Edit preset customization
-  const handleOpenEdit = (preset: PresetListItem) => {
+  const handleOpenEdit = useCallback((preset: PresetListItem) => {
     setEditingPreset(preset);
-  };
+  }, []);
 
   const handleSaveCustomization = (formVals: TaskFormValues, _shared?: SharedMember[]) => {
     if (!editingPreset) return;
@@ -160,7 +250,7 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
         if (customConfigs[id]) {
           configsToAdd.push(customConfigs[id]);
         } else {
-          const raw = allPresets.find((p) => p.id === id);
+          const raw = ALL_PRESETS.find((p) => p.id === id);
           if (raw) {
             configsToAdd.push({
               title: isHi ? raw.titleHi : raw.title,
@@ -211,6 +301,49 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
     return presetToFormValues(editingPreset, language);
   }, [editingPreset, customConfigs, language]);
 
+  const keyExtractor = useCallback((item: PresetListItem) => item.id, []);
+
+  const renderEmpty = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyIcon}>🔍</Text>
+        <Text style={styles.emptyTitle}>{translate('noPresetsFound')}</Text>
+      </View>
+    ),
+    [translate]
+  );
+
+  const renderPresetItem = useCallback(
+    ({ item: preset }: { item: PresetListItem }) => {
+      const isSelected = selectedIds.has(preset.id);
+      const isCustomized = !!customConfigs[preset.id];
+      const cat = CATEGORY_MAP[preset.category] || { icon: '📋' };
+
+      const activeConfig = customConfigs[preset.id];
+      const title = activeConfig ? activeConfig.title : (isHi ? preset.titleHi : preset.title);
+      const freq = activeConfig ? activeConfig.freq : (isHi ? preset.freqHi : preset.freq);
+      const amount = activeConfig ? activeConfig.amount : preset.amount;
+      const icon = activeConfig?.icon ?? preset.icon ?? cat.icon;
+
+      return (
+        <PresetItemRow
+          preset={preset}
+          isSelected={isSelected}
+          isCustomized={isCustomized}
+          title={title}
+          freq={freq}
+          amount={amount}
+          icon={icon}
+          onToggle={toggleSelect}
+          onEdit={handleOpenEdit}
+          editLabel={translate('editPreset')}
+          customLabel={isHi ? 'संपादित' : 'Custom'}
+        />
+      );
+    },
+    [selectedIds, customConfigs, isHi, toggleSelect, handleOpenEdit, translate]
+  );
+
   return (
     <Modal
       visible={visible}
@@ -238,7 +371,7 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
                   {translate('presetLibraryTitle')}
                 </Text>
                 <View style={styles.counterBadge}>
-                  <Text style={styles.counterBadgeText}>{allPresets.length}</Text>
+                  <Text style={styles.counterBadgeText}>{ALL_PRESETS.length}</Text>
                 </View>
               </View>
               <Text style={styles.headerSub}>
@@ -314,14 +447,14 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
                 testID="preset-cat-all"
               >
                 <Text style={[styles.catChipText, selectedCategory === 'all' && styles.catChipTextActive]}>
-                  {translate('allCategories')} ({allPresets.length})
+                  {translate('allCategories')} ({ALL_PRESETS.length})
                 </Text>
               </Pressable>
 
               {CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat.key;
                 const catName = isHi ? cat.labelHi : cat.labelEn;
-                const catCount = allPresets.filter((p) => p.category === cat.key).length;
+                const catCount = CATEGORY_COUNTS[cat.key] || 0;
                 return (
                   <Pressable
                     key={cat.key}
@@ -358,96 +491,22 @@ export function PresetLibrarySheet({ visible, onClose, language }: PresetLibrary
             </View>
           </View>
 
-          {/* Presets List */}
-          <ScrollView
+          {/* Presets Virtualized List */}
+          <FlatList
+            data={filteredPresets}
+            keyExtractor={keyExtractor}
+            renderItem={renderPresetItem}
+            ListEmptyComponent={renderEmpty}
             style={styles.listScroll}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={Platform.OS === 'android'}
+            keyboardShouldPersistTaps="handled"
             testID="preset-library-list"
-          >
-            {filteredPresets.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyTitle}>{translate('noPresetsFound')}</Text>
-              </View>
-            ) : (
-              filteredPresets.map((preset) => {
-                const isSelected = selectedIds.has(preset.id);
-                const isCustomized = !!customConfigs[preset.id];
-                const cat = CATEGORY_MAP[preset.category] || { icon: '📋' };
-
-                const activeConfig = customConfigs[preset.id];
-                const title = activeConfig ? activeConfig.title : (isHi ? preset.titleHi : preset.title);
-                const freq = activeConfig ? activeConfig.freq : (isHi ? preset.freqHi : preset.freq);
-                const amount = activeConfig ? activeConfig.amount : preset.amount;
-                const icon = activeConfig?.icon ?? preset.icon ?? cat.icon;
-
-                return (
-                  <Card
-                    key={preset.id}
-                    style={[styles.presetCard, isSelected && styles.presetCardSelected]}
-                    mode="elevated"
-                    testID={`preset-card-${preset.id}`}
-                  >
-                    <TouchableRipple
-                      onPress={() => toggleSelect(preset.id)}
-                      style={styles.cardRipple}
-                      borderless
-                    >
-                      <View style={styles.cardInner}>
-                        {/* Checkbox circle */}
-                        <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
-                          {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-
-                        {/* Category Icon */}
-                        <View style={styles.iconCircle}>
-                          <Text style={styles.iconText}>{icon}</Text>
-                        </View>
-
-                        {/* Task Details */}
-                        <View style={styles.infoCol}>
-                          <View style={styles.titleRow}>
-                            <Text style={styles.cardTitle} numberOfLines={1}>
-                              {title}
-                            </Text>
-                            {isCustomized && (
-                              <View style={styles.customBadge}>
-                                <Text style={styles.customBadgeText}>
-                                  {isHi ? 'संपादित' : 'Custom'}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-
-                          <Text style={styles.cardFreq} numberOfLines={1}>
-                            {freq}
-                            {amount ? ` · ₹${amount.toLocaleString('en-IN')}` : ''}
-                          </Text>
-                        </View>
-
-                        {/* Inline Customize Button */}
-                        <Pressable
-                          onPress={(e) => {
-                            e.stopPropagation?.();
-                            handleOpenEdit(preset);
-                          }}
-                          style={styles.editBtn}
-                          hitSlop={8}
-                          testID={`preset-edit-btn-${preset.id}`}
-                        >
-                          <AppIcon name="create-outline" size={16} color={Colors.tealDeep} />
-                          <Text style={styles.editBtnText}>
-                            {translate('editPreset')}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </TouchableRipple>
-                  </Card>
-                );
-              })
-            )}
-          </ScrollView>
+          />
 
           {/* Sticky Bottom Action Bar */}
           <View style={styles.footerBar}>
@@ -723,14 +782,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderColor: Colors.ivoryLine,
+    padding: 12,
   },
   presetCardSelected: {
     borderColor: Colors.tealDeep,
     backgroundColor: '#F7FCF9',
-  },
-  cardRipple: {
-    padding: 12,
   },
   cardInner: {
     flexDirection: 'row',

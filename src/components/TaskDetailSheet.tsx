@@ -212,7 +212,7 @@ function TaskDetailSheetComponent({
         ? `${doseProgress.nextDoseIndex + 1}/${doseProgress.totalDoses} पूरा करें (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`
         : `Mark ${doseProgress.nextDoseIndex + 1} of ${doseProgress.totalDoses} Done (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`)
     : isEarlyAllowed
-    ? (language === 'hi' ? `समय पूर्व पूरा करें (${days}d)` : `Mark Done Early (${days}d early)`)
+    ? (language === 'hi' ? `समय पूर्व पूरा करें (${days}d)` : `Mark Done Early (${days}d)`)
     : translate('markDone');
 
   const handleMarkDone = () => {
@@ -734,6 +734,7 @@ function TaskDetailSheetComponent({
                         loading={completing}
                         disabled={completing}
                         style={styles.donePrimaryBtn}
+                        textStyle={{ fontSize: 13 }}
                       />
                       <Button
                         title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
@@ -1680,11 +1681,12 @@ const styles = StyleSheet.create({
   },
   doneButtonsRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 10,
     width: '100%',
   },
   donePrimaryBtn: {
-    flex: 1,
+    flex: 1.85,
   },
   doneSecondaryBtn: {
     flex: 1,

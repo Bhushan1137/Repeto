@@ -1,5 +1,4 @@
-import type { AnyCategoryKey, CategoryKey, CompletionStatus, HouseholdMemberProfile, RecurrenceRule, RepeatingTask, TaskGroup } from '@/types';
-import { CATEGORY_MAP } from '@/constants/categories';
+import type { AnyCategoryKey, CompletionStatus, HouseholdMemberProfile, RecurrenceRule, RepeatingTask, TaskGroup } from '@/types';
 import { getCategoryDef } from '@/constants/categoryHelpers';
 import { daysUntilDue, getTaskGroup, isCurrentMonth, getMonthLabel } from '@/domain/recurrence';
 import { hasCompletedToday } from '@/domain/task';

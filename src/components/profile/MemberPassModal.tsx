@@ -18,6 +18,8 @@ interface MemberPassModalProps {
   language: Language;
 }
 
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.repeto.tasks';
+
 export function MemberPassModal({ visible, onClose, user, language }: MemberPassModalProps) {
   const { showToast } = useToast();
   const isHi = language === 'hi';
@@ -32,8 +34,8 @@ export function MemberPassModal({ visible, onClose, user, language }: MemberPass
   const handleShare = async () => {
     try {
       const message = isHi
-        ? `Repeato पर मुझसे जुड़ें! मेरा सदस्य कोड है: ${userCode}`
-        : `Join me on Repeato! My member code is: ${userCode}`;
+        ? `Repeto पर मुझसे जुड़ें! मेरा सदस्य कोड है: ${userCode}\n👉 डाउनलोड करें: ${PLAY_STORE_URL}`
+        : `Join me on Repeto! My member code is: ${userCode}\n👉 Download: ${PLAY_STORE_URL}`;
       await Share.share({ message });
     } catch {
       // Ignored

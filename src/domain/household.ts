@@ -40,9 +40,11 @@ export function normalizeHouseholdProfile(
   const userCode = user.userCode || generateUserCode(user.id || user.email);
   const householdCode = user.householdCode || userCode;
   const householdMembers = user.householdMembers ?? [];
-  const householdMemberUids = householdMembers
+  const legacyUids = householdMembers
     .map((m) => m.userId)
     .filter((id): id is string => !!id);
+  const multiHhUids = (user.households ?? []).flatMap((h) => h.memberUids ?? []);
+  const householdMemberUids = Array.from(new Set([...legacyUids, ...multiHhUids]));
 
   const households = user.households
     ? user.households.map((hh) => {

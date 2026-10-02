@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
-import { getFirestoreDb } from './firebase/app';
+import { getFirestoreDb, getFirebaseAuth } from './firebase/app';
 import { forFirestore } from './firebase/firestore';
 
 export type HouseholdActivityAction =
@@ -79,7 +79,9 @@ export async function saveHouseholdActivitiesLocal(householdId: string, items: H
 }
 
 export async function recordHouseholdActivity(entry: RecordActivityInput): Promise<HouseholdActivityItem> {
-  const actorId = entry.actorId || entry.userId || 'unknown';
+  const auth = getFirebaseAuth();
+  const currentUid = auth?.currentUser?.uid;
+  const actorId = currentUid || entry.actorId || entry.userId || 'unknown';
   const actorName = entry.actorName || entry.userName || 'Member';
   const item: HouseholdActivityItem = {
     id: entry.id || generateActivityId(),

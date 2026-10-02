@@ -1,4 +1,4 @@
-import { CATEGORY_MAP, type CategoryDef } from '@/constants/categories';
+import { CATEGORY_MAP } from '@/constants/categories';
 import type { AnyCategoryKey, CategoryKey, CustomCategoryDef, Language } from '@/types';
 
 // In-memory cache of user-defined custom categories

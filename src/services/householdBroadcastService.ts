@@ -21,12 +21,47 @@ export interface BroadcastHouseholdTaskOptions {
   nextAssigneeId?: string;
 }
 
+export async function resolveRecipientCanonicalUserId(
+  rawRecipientId: string,
+  allMembers: HouseholdMemberProfile[] = []
+): Promise<string> {
+  if (!rawRecipientId) return rawRecipientId;
+  const trimmed = rawRecipientId.trim();
+
+  // 1. Direct match with a member's userId
+  const memberByUid = allMembers.find((m) => m.userId && m.userId.trim() === trimmed);
+  if (memberByUid?.userId) return memberByUid.userId.trim();
+
+  // 2. Direct match with a member's code that has a userId
+  const memberByCode = allMembers.find(
+    (m) => m.code && normalizeInviteCode(m.code) === normalizeInviteCode(trimmed)
+  );
+  if (memberByCode?.userId) return memberByCode.userId.trim();
+
+  // 3. If trimmed looks like a userCode (e.g. starts with RPT- or REP-), resolve from userCodes index
+  if (
+    (trimmed.toUpperCase().startsWith('RPT-') || trimmed.toUpperCase().startsWith('REP-')) &&
+    typeof userRepository.resolveUserCode === 'function'
+  ) {
+    try {
+      const userCodeRecord = await userRepository.resolveUserCode(trimmed);
+      if (userCodeRecord?.userId) return userCodeRecord.userId.trim();
+    } catch {
+      // Ignore resolution error
+    }
+  }
+
+  // 4. Fallback to raw string (which is likely a Firebase Auth UID)
+  return trimmed;
+}
+
 export async function broadcastHouseholdTaskEvent({
   eventType,
   task,
   actorUser,
   targetUserIds,
   allMembers = [],
+  previousAssigneeId,
   nextAssigneeId,
 }: BroadcastHouseholdTaskOptions): Promise<void> {
   if (!task.householdId) return;
@@ -38,11 +73,21 @@ export async function broadcastHouseholdTaskEvent({
 
   if (targetUserIds && targetUserIds.length > 0) {
     recipients = targetUserIds.filter((uid) => uid && uid !== actorUser.id && uid !== actorUser.userCode);
-  } else if (eventType === 'task_assigned' && task.assignedTo) {
-    // If assigned, primary recipient is the assignee
+  } else if (
+    eventType === 'task_assigned' &&
+    task.assignedTo &&
+    task.assignedTo !== actorUser.id &&
+    task.assignedTo !== actorUser.userCode
+  ) {
+    // If assigned to another member, primary recipient is the assignee
     recipients = [task.assignedTo];
-  } else if (eventType === 'task_completed_rotation' && nextAssigneeId) {
-    // If rotated, primary recipient is the next assignee
+  } else if (
+    eventType === 'task_completed_rotation' &&
+    nextAssigneeId &&
+    nextAssigneeId !== actorUser.id &&
+    nextAssigneeId !== actorUser.userCode
+  ) {
+    // If rotated to another member, primary recipient is the next assignee
     recipients = [nextAssigneeId];
   } else {
     // Broadcast to all other members in the household
@@ -58,64 +103,113 @@ export async function broadcastHouseholdTaskEvent({
 
   if (uniqueRecipients.length === 0) return;
 
-  // Determine Title & Body
-  let title = 'Repeto Household 🏠';
-  let body = `${actorName} updated "${task.title}".`;
-
-  switch (eventType) {
-    case 'task_assigned':
-      title = '📋 New Task Assigned';
-      body = `${actorName} assigned "${task.title}" to you.`;
-      break;
-    case 'task_taken_over':
-      title = '🤝 Task Taken Over';
-      body = `${actorName} took over "${task.title}" for this turn.`;
-      break;
-    case 'task_completed_rotation':
-      title = '🔄 It\'s Your Turn!';
-      body = `${actorName} completed "${task.title}". You are up next!`;
-      break;
-    case 'task_completed':
-      title = '✅ Task Completed';
-      body = `${actorName} completed "${task.title}".`;
-      break;
-    case 'task_rescheduled':
-      title = '📅 Task Rescheduled';
-      body = `${actorName} updated the schedule for "${task.title}".`;
-      break;
-  }
+  // Find assignee name if task is assigned
+  const assigneeMember = task.assignedTo
+    ? allMembers.find(
+        (m) =>
+          (m.userId && m.userId.trim() === task.assignedTo?.trim()) ||
+          (m.code && normalizeInviteCode(m.code) === normalizeInviteCode(task.assignedTo || ''))
+      )
+    : undefined;
+  const assigneeName = assigneeMember?.name || 'a member';
 
   // Dispatch to each recipient concurrently (non-blocking)
   await Promise.allSettled(
-    uniqueRecipients.map(async (recipientId) => {
+    uniqueRecipients.map(async (rawRecipientId) => {
       try {
-        // 1. In-app notification in recipient's Firestore notifications subcollection
-        const notif: AppNotification = {
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          type: 'household',
-          title,
-          body,
-          timestamp: new Date().toISOString(),
-          read: false,
-          metadata: {
-            taskId: task.id,
-            householdId: task.householdId ?? undefined,
-          },
-        };
-        await userRepository.saveNotification(recipientId, notif);
+        const recipientId = await resolveRecipientCanonicalUserId(rawRecipientId, allMembers);
 
-        // 2. Direct Expo push notification if target has push token registered
-        const targetProfile = await userRepository.loadRemote(recipientId);
-        if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
-          await sendRemotePushNotification(
-            targetProfile.expoPushToken,
+        // Determine if this recipient is the assigned user
+        const isAssignee = Boolean(
+          task.assignedTo &&
+            (task.assignedTo === recipientId ||
+              task.assignedTo === rawRecipientId ||
+              (assigneeMember?.userId && assigneeMember.userId === recipientId))
+        );
+
+        const isPreviousAssignee = Boolean(
+          previousAssigneeId &&
+            (previousAssigneeId === recipientId || previousAssigneeId === rawRecipientId)
+        );
+
+        let title = 'Repeto Household 🏠';
+        let body = `${actorName} updated "${task.title}".`;
+
+        switch (eventType) {
+          case 'task_assigned': {
+            if (isAssignee) {
+              title = '📋 New Task Assigned';
+              body = `${actorName} assigned "${task.title}" to you.`;
+            } else if (task.assignedTo) {
+              title = '📋 New Household Task';
+              body = `${actorName} added "${task.title}" (assigned to ${assigneeName}).`;
+            } else {
+              title = '📋 New Household Task';
+              body = `${actorName} added "${task.title}" to the household.`;
+            }
+            break;
+          }
+          case 'task_taken_over': {
+            title = '🤝 Task Taken Over';
+            if (isPreviousAssignee) {
+              body = `${actorName} took over your turn for "${task.title}".`;
+            } else {
+              body = `${actorName} took over "${task.title}" for this turn.`;
+            }
+            break;
+          }
+          case 'task_completed_rotation': {
+            title = "🔄 It's Your Turn!";
+            body = `${actorName} completed "${task.title}". You are up next!`;
+            break;
+          }
+          case 'task_completed': {
+            title = '✅ Task Completed';
+            body = `${actorName} completed "${task.title}".`;
+            break;
+          }
+          case 'task_rescheduled': {
+            title = '📅 Task Rescheduled';
+            body = `${actorName} updated the schedule for "${task.title}".`;
+            break;
+          }
+        }
+
+        // 1. In-app notification in recipient's Firestore notifications subcollection
+        try {
+          const notif: AppNotification = {
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            type: 'household',
             title,
             body,
-            { taskId: task.id, householdId: task.householdId, type: 'household' }
-          );
+            timestamp: new Date().toISOString(),
+            read: false,
+            metadata: {
+              taskId: task.id,
+              householdId: task.householdId ?? undefined,
+            },
+          };
+          await userRepository.saveNotification(recipientId, notif);
+        } catch (notifErr) {
+          console.warn(`[Repeato Broadcast] Failed to save in-app notification for ${recipientId}:`, notifErr);
+        }
+
+        // 2. Direct Expo push notification if target has push token registered
+        try {
+          const targetProfile = await userRepository.loadRemote(recipientId);
+          if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
+            await sendRemotePushNotification(
+              targetProfile.expoPushToken,
+              title,
+              body,
+              { taskId: task.id, householdId: task.householdId, type: 'household' }
+            );
+          }
+        } catch (pushErr) {
+          console.warn(`[Repeato Broadcast] Failed to send push notification to ${recipientId}:`, pushErr);
         }
       } catch (err) {
-        console.warn(`[Repeato Broadcast] Failed to notify member ${recipientId}:`, err);
+        console.warn(`[Repeato Broadcast] Failed to notify member ${rawRecipientId}:`, err);
       }
     })
   );
@@ -167,25 +261,33 @@ export async function broadcastMemberJoinedHousehold({
     const welcomeBody = `${actorName} added you to "${householdName}".`;
 
     try {
-      const notif: AppNotification = {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        type: 'household',
-        title: welcomeTitle,
-        body: welcomeBody,
-        timestamp: new Date().toISOString(),
-        read: false,
-        metadata: { householdId },
-      };
-      await userRepository.saveNotification(newMember.id, notif);
+      try {
+        const notif: AppNotification = {
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          type: 'household',
+          title: welcomeTitle,
+          body: welcomeBody,
+          timestamp: new Date().toISOString(),
+          read: false,
+          metadata: { householdId },
+        };
+        await userRepository.saveNotification(newMember.id, notif);
+      } catch (notifErr) {
+        console.warn(`[Repeato Broadcast] Failed to save in-app welcome notification for ${newMember.id}:`, notifErr);
+      }
 
-      const targetProfile = await userRepository.loadRemote(newMember.id);
-      if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
-        await sendRemotePushNotification(
-          targetProfile.expoPushToken,
-          welcomeTitle,
-          welcomeBody,
-          { householdId, type: 'household' }
-        );
+      try {
+        const targetProfile = await userRepository.loadRemote(newMember.id);
+        if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
+          await sendRemotePushNotification(
+            targetProfile.expoPushToken,
+            welcomeTitle,
+            welcomeBody,
+            { householdId, type: 'household' }
+          );
+        }
+      } catch (pushErr) {
+        console.warn(`[Repeato Broadcast] Failed to send welcome push to ${newMember.id}:`, pushErr);
       }
     } catch (err) {
       console.warn(`[Repeato Broadcast] Failed to notify new member ${newMember.id}:`, err);
@@ -239,30 +341,39 @@ export async function broadcastMemberJoinedHousehold({
   const joinBody = `${newMemberName} has joined "${householdName}".`;
 
   await Promise.allSettled(
-    uniqueExisting.map(async (recipientId) => {
+    uniqueExisting.map(async (rawRecipientId) => {
       try {
-        const notif: AppNotification = {
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          type: 'household',
-          title: joinTitle,
-          body: joinBody,
-          timestamp: new Date().toISOString(),
-          read: false,
-          metadata: { householdId },
-        };
-        await userRepository.saveNotification(recipientId, notif);
+        const recipientId = await resolveRecipientCanonicalUserId(rawRecipientId, allMembers);
+        try {
+          const notif: AppNotification = {
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            type: 'household',
+            title: joinTitle,
+            body: joinBody,
+            timestamp: new Date().toISOString(),
+            read: false,
+            metadata: { householdId },
+          };
+          await userRepository.saveNotification(recipientId, notif);
+        } catch (notifErr) {
+          console.warn(`[Repeato Broadcast] Failed to save in-app notification for ${recipientId}:`, notifErr);
+        }
 
-        const targetProfile = await userRepository.loadRemote(recipientId);
-        if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
-          await sendRemotePushNotification(
-            targetProfile.expoPushToken,
-            joinTitle,
-            joinBody,
-            { householdId, type: 'household' }
-          );
+        try {
+          const targetProfile = await userRepository.loadRemote(recipientId);
+          if (targetProfile?.expoPushToken && targetProfile?.pushOptIn !== false) {
+            await sendRemotePushNotification(
+              targetProfile.expoPushToken,
+              joinTitle,
+              joinBody,
+              { householdId, type: 'household' }
+            );
+          }
+        } catch (pushErr) {
+          console.warn(`[Repeato Broadcast] Failed to send push notification to ${recipientId}:`, pushErr);
         }
       } catch (err) {
-        console.warn(`[Repeato Broadcast] Failed to notify existing member ${recipientId}:`, err);
+        console.warn(`[Repeato Broadcast] Failed to notify existing member ${rawRecipientId}:`, err);
       }
     })
   );
@@ -347,8 +458,9 @@ export async function broadcastMemberLeftHousehold({
   });
 
   await Promise.allSettled(
-    Array.from(recipientIds).map(async (recipientId) => {
+    Array.from(recipientIds).map(async (rawRecipientId) => {
       try {
+        const recipientId = await resolveRecipientCanonicalUserId(rawRecipientId, allMembers);
         const notif: AppNotification = {
           id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           type: 'household',
@@ -370,7 +482,7 @@ export async function broadcastMemberLeftHousehold({
           );
         }
       } catch (err) {
-        console.warn(`[Repeato Broadcast] Failed to notify member ${recipientId} on leave:`, err);
+        console.warn(`[Repeato Broadcast] Failed to notify member ${rawRecipientId} on leave:`, err);
       }
     })
   );
@@ -392,7 +504,7 @@ export async function broadcastHouseholdDisbanded({
   members,
 }: BroadcastHouseholdDisbandedOptions): Promise<void> {
   const title = '🏠 Household Disbanded';
-  const body = `"${householdName}" was deleted by ${ownerName || 'the owner'}.`;
+  const body = `"${householdName}" was disbanded by ${ownerName || 'the owner'}.`;
 
   const recipientIds = new Set<string>();
   (members || []).forEach((m) => {
@@ -403,8 +515,9 @@ export async function broadcastHouseholdDisbanded({
   });
 
   await Promise.allSettled(
-    Array.from(recipientIds).map(async (recipientId) => {
+    Array.from(recipientIds).map(async (rawRecipientId) => {
       try {
+        const recipientId = await resolveRecipientCanonicalUserId(rawRecipientId, members);
         const notif: AppNotification = {
           id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           type: 'household',
@@ -426,7 +539,7 @@ export async function broadcastHouseholdDisbanded({
           );
         }
       } catch (err) {
-        console.warn(`[Repeato Broadcast] Failed to notify member ${recipientId} on disband:`, err);
+        console.warn(`[Repeato Broadcast] Failed to notify member ${rawRecipientId} on disband:`, err);
       }
     })
   );

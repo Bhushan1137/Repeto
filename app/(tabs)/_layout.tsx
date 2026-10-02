@@ -125,7 +125,7 @@ export default function TabLayout() {
       <AddTaskSheet
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        defaultToHousehold={isHouseholdTab || Boolean(activeHousehold)}
+        defaultToHousehold={isHouseholdTab && Boolean(activeHousehold)}
       />
 
       <Toast message={message} />

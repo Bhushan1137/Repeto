@@ -18,7 +18,7 @@ export const DEFAULT_FILTER: FilterState = {
   householdId: 'all',
 };
 
-export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
+export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState, dayKey?: string) {
   return useMemo(() => {
     let result = tasks;
 
@@ -67,5 +67,5 @@ export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
     }
 
     return result;
-  }, [tasks, filter]);
+  }, [tasks, filter, dayKey]);
 }

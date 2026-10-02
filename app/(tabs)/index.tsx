@@ -8,7 +8,6 @@ import { TaskItemRow } from '@/components/TaskItemRow';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { TodayFocusSection } from '@/components/TodayFocusSection';
-import { CATEGORIES } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -25,11 +24,11 @@ import { useRecommendations } from '@/providers/RecommendationProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useCategories } from '@/hooks/useCategories';
-import type { AnyCategoryKey, CategoryKey, TaskGroup } from '@/types';
+import type { AnyCategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
+import { Alert, AppState, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
 import { Card, ActivityIndicator } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth' | 'secLater'> = {
@@ -176,6 +175,29 @@ export default function HomeScreen() {
     }
   }, [focusTaskId, setFocusTaskId]);
 
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        const todayStr = new Date().toDateString();
+        if (todayStr !== dayKey) {
+          setDayKey(todayStr);
+        }
+      }
+    });
+    const interval = setInterval(() => {
+      const todayStr = new Date().toDateString();
+      if (todayStr !== dayKey) {
+        setDayKey(todayStr);
+      }
+    }, 60000);
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, [dayKey]);
+
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
@@ -205,8 +227,8 @@ export default function HomeScreen() {
   );
   const firstName = user?.name?.split(' ')[0] ?? 'there';
 
-  // Apply search + filter before grouping
-  const filteredTasks = useFilteredTasks(tasks, filter);
+  // Apply search + filter before grouping (reactive to day rollover via dayKey)
+  const filteredTasks = useFilteredTasks(tasks, filter, dayKey);
 
   const calendarFilteredTasks = useMemo(() => {
     if (!selectedCalendarDate) return filteredTasks;
@@ -255,21 +277,25 @@ export default function HomeScreen() {
 
   // Pinned tasks shown at top (before groups), only when no active filter query
   // Tasks due today are rendered in Today's Focus, so we avoid rendering them twice
-  const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
-    ? tasks.filter((t) => t.pinned && daysUntilDue(t.nextDueDate) !== 0)
-    : [];
+  const pinnedTasks = useMemo(() => {
+    void dayKey;
+    return filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
+      ? tasks.filter((t) => t.pinned && daysUntilDue(t.nextDueDate) !== 0)
+      : [];
+  }, [tasks, filter.query, filter.group, filter.category, selectedCalendarDate, dayKey]);
 
   // Tasks that go through the group layout (excluding pinned when not filtering)
   const unpinnedFiltered = pinnedTasks.length > 0
     ? calendarFilteredTasks.filter((t) => !t.pinned)
     : calendarFilteredTasks;
 
-  const groups = useGroupedTasks(unpinnedFiltered);
+  const groups = useGroupedTasks(unpinnedFiltered, dayKey);
 
   const isFiltering = filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all' || !!selectedCalendarDate;
   const hasTasks = tasks.length > 0;
 
   const stats = useMemo(() => {
+    void dayKey;
     let today = 0;
     let overdue = 0;
     let upcoming = 0;
@@ -280,7 +306,7 @@ export default function HomeScreen() {
       else if (d <= 7) upcoming += 1;
     }
     return { today, overdue, upcoming };
-  }, [tasks]);
+  }, [tasks, dayKey]);
 
   const categoryCounts = useMemo(() => {
     const counts: Partial<Record<string, number>> = {};
@@ -309,6 +335,7 @@ export default function HomeScreen() {
   }, [selectedCalendarDate, language]);
 
   const greetingTitle = useMemo(() => {
+    void dayKey;
     const hour = new Date().getHours();
     if (language === 'hi') {
       const timeHi = hour < 12 ? 'सुप्रभात' : hour < 17 ? 'नमस्ते' : 'शुभ संध्या';
@@ -316,7 +343,7 @@ export default function HomeScreen() {
     }
     const timeEn = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     return `${timeEn}, ${firstName} 👋`;
-  }, [language, firstName]);
+  }, [language, firstName, dayKey]);
 
   return (
     <View style={styles.root}>

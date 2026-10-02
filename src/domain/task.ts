@@ -1,6 +1,5 @@
 import type {
   AnyCategoryKey,
-  CategoryKey,
   CompletionStatus,
   ParsedTaskInput,
   RecurrenceRule,
@@ -19,6 +18,7 @@ import {
   parseFrequencyLabel,
 } from '@/domain/recurrence';
 import { daysUntilDue } from '@/domain/recurrence';
+import { normalizeInviteCode } from '@/domain/household';
 
 export const FREE_TASK_LIMIT = 10;
 export const FREE_SHARED_PARTICIPANT_LIMIT = 1;
@@ -761,6 +761,127 @@ export function updateTaskInList(
   return tasks.map((task) => (task.id === taskId ? updater(task) : task));
 }
 
+export interface MemberTaskCleanupTarget {
+  userId?: string;
+  memberCode?: string;
+  userCodes?: string[];
+}
+
+export interface CleanupHouseholdTasksResult {
+  updatedTasks: RepeatingTask[];
+  modifiedTasks: RepeatingTask[];
+}
+
+/**
+ * Cleans up and reassigns household tasks when a member leaves or is removed from a household:
+ * 1. Tasks assigned to the leaving member:
+ *    - If rotating (isRotating):
+ *      - Leaving member is removed from rotationMembers.
+ *      - If remaining rotation members exist, reassigns turn to the next available member in sequence.
+ *      - If no remaining rotation members exist, unassigns task (assignedTo = undefined, isRotating = false, rotationMembers = []).
+ *    - If not rotating:
+ *      - Unassigns task (assignedTo = undefined).
+ * 2. Tasks not currently assigned to the leaving member, but containing them in rotationMembers:
+ *    - Removes them from rotationMembers so future rotations only assign to other available users.
+ *    - If 0 remaining rotation members, sets isRotating = false, rotationMembers = [].
+ * 3. Removes member from sharedWith if present.
+ */
+export function cleanupHouseholdTasksForMember(
+  tasks: RepeatingTask[],
+  householdId: string,
+  target: MemberTaskCleanupTarget
+): CleanupHouseholdTasksResult {
+  const normalizedTargetCode = target.memberCode ? normalizeInviteCode(target.memberCode) : '';
+  const normalizedUserCodes = (target.userCodes || []).map(normalizeInviteCode).filter(Boolean);
+
+  const matchesTarget = (idOrCode?: string): boolean => {
+    if (!idOrCode) return false;
+    const trimmed = idOrCode.trim();
+    if (target.userId && trimmed === target.userId) return true;
+    if (target.memberCode && trimmed === target.memberCode) return true;
+    const normalized = normalizeInviteCode(trimmed);
+    if (normalizedTargetCode && normalized === normalizedTargetCode) return true;
+    if (normalizedUserCodes.includes(normalized)) return true;
+    return false;
+  };
+
+  const modifiedTasks: RepeatingTask[] = [];
+
+  const updatedTasks = tasks.map((t) => {
+    // Only process tasks belonging to the specified household
+    if (t.householdId !== householdId) {
+      return t;
+    }
+
+    let changed = false;
+    const updated: RepeatingTask = { ...t };
+
+    // 1. Clean rotationMembers
+    const originalRotation = updated.rotationMembers || [];
+    let remainingRotation = originalRotation;
+    if (originalRotation.length > 0) {
+      remainingRotation = originalRotation.filter((m) => !matchesTarget(m));
+      if (remainingRotation.length !== originalRotation.length) {
+        updated.rotationMembers = remainingRotation;
+        changed = true;
+      }
+    }
+
+    // 2. Clean sharedWith
+    if (updated.sharedWith && updated.sharedWith.length > 0) {
+      const remainingShared = updated.sharedWith.filter(
+        (s) => !matchesTarget(s.userId) && !matchesTarget(s.code)
+      );
+      if (remainingShared.length !== updated.sharedWith.length) {
+        updated.sharedWith = remainingShared;
+        changed = true;
+      }
+    }
+
+    // 3. Handle assignedTo
+    const isAssignedToLeaving = matchesTarget(updated.assignedTo);
+    if (isAssignedToLeaving) {
+      if (updated.isRotating) {
+        if (remainingRotation.length > 0) {
+          // Find next available member after the leaving member in the original sequence
+          const leavingIdx = originalRotation.findIndex((m) => matchesTarget(m));
+          const nextAvailable =
+            leavingIdx !== -1
+              ? originalRotation.slice(leavingIdx + 1).find((m) => !matchesTarget(m)) ?? remainingRotation[0]
+              : remainingRotation[0];
+
+          updated.assignedTo = nextAvailable;
+          updated.rotationMembers = remainingRotation;
+        } else {
+          // No members left to rotate with -> unassign / open to all
+          updated.assignedTo = undefined;
+          updated.isRotating = false;
+          updated.rotationMembers = [];
+        }
+      } else {
+        // Non-rotating task -> unassign / open to all
+        updated.assignedTo = undefined;
+      }
+      changed = true;
+    } else if (updated.isRotating && remainingRotation.length === 0) {
+      // Not currently assigned to leaving member, but rotation became empty
+      updated.isRotating = false;
+      updated.rotationMembers = [];
+      changed = true;
+    }
+
+    if (changed) {
+      updated.updatedAt = new Date().toISOString();
+      modifiedTasks.push(updated);
+      return updated;
+    }
+
+    return t;
+  });
+
+  return { updatedTasks, modifiedTasks };
+}
+
 export function cleanupTasksOnRemoval(
   tasks: RepeatingTask[],
   removedCode: string,
@@ -769,21 +890,51 @@ export function cleanupTasksOnRemoval(
 ): RepeatingTask[] {
   const matchesRemoved = (idOrCode?: string) => {
     if (!idOrCode) return false;
-    return idOrCode === removedCode || (!!removedUserId && idOrCode === removedUserId);
+    const trimmed = idOrCode.trim();
+    if (trimmed === removedCode || (!!removedUserId && trimmed === removedUserId)) return true;
+    const norm = normalizeInviteCode(trimmed);
+    return norm === normalizeInviteCode(removedCode);
   };
 
   if (removeSharedTasks) {
     return tasks.filter((t) => !t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId)));
   } else {
     return tasks.map((t) => {
-      const isShared = t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId));
+      let changed = false;
+      const updated: RepeatingTask = { ...t };
+
+      const isShared = updated.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId));
       if (isShared) {
-        return {
-          ...t,
-          sharedWith: t.sharedWith.filter((m) => !matchesRemoved(m.code) && !matchesRemoved(m.userId)),
-          assignedTo: matchesRemoved(t.assignedTo) ? undefined : t.assignedTo,
-          updatedAt: new Date().toISOString(),
-        };
+        updated.sharedWith = updated.sharedWith.filter((m) => !matchesRemoved(m.code) && !matchesRemoved(m.userId));
+        changed = true;
+      }
+
+      // Check rotation members
+      if (updated.rotationMembers && updated.rotationMembers.length > 0) {
+        const remaining = updated.rotationMembers.filter((m) => !matchesRemoved(m));
+        if (remaining.length !== updated.rotationMembers.length) {
+          updated.rotationMembers = remaining;
+          changed = true;
+        }
+      }
+
+      // Check assignedTo
+      if (matchesRemoved(updated.assignedTo)) {
+        if (updated.isRotating && updated.rotationMembers && updated.rotationMembers.length > 0) {
+          updated.assignedTo = updated.rotationMembers[0];
+        } else {
+          updated.assignedTo = undefined;
+          if (updated.isRotating) {
+            updated.isRotating = false;
+            updated.rotationMembers = [];
+          }
+        }
+        changed = true;
+      }
+
+      if (changed) {
+        updated.updatedAt = new Date().toISOString();
+        return updated;
       }
       return t;
     });

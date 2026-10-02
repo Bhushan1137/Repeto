@@ -9,6 +9,7 @@ vi.mock('@/data/repositories/userRepository', () => ({
   userRepository: {
     saveNotification: vi.fn().mockResolvedValue(undefined),
     loadRemote: vi.fn(),
+    resolveUserCode: vi.fn(),
   },
 }));
 
@@ -103,6 +104,72 @@ describe('services/householdBroadcastService', () => {
       expect.objectContaining({
         type: 'household',
         title: '🤝 Task Taken Over',
+        body: 'Malay took over your turn for "Cook Dinner".',
+      })
+    );
+  });
+
+  it('broadcasts unassigned task to household members as "New Household Task"', async () => {
+    const task = {
+      ...createTaskFromPreset('Clean Dishes', 'home', 'Daily'),
+      householdId: 'hh-home',
+      assignedTo: undefined,
+    };
+
+    vi.mocked(userRepository.loadRemote).mockResolvedValueOnce({
+      id: 'user-bob',
+      name: 'Bob',
+      expoPushToken: 'ExponentPushToken[bob-phone]',
+      pushOptIn: true,
+    } as any);
+
+    await broadcastHouseholdTaskEvent({
+      eventType: 'task_assigned',
+      task,
+      actorUser,
+      allMembers: [memberBob],
+    });
+
+    expect(userRepository.saveNotification).toHaveBeenCalledWith(
+      'user-bob',
+      expect.objectContaining({
+        type: 'household',
+        title: '📋 New Household Task',
+        body: 'Malay added "Clean Dishes" to the household.',
+      })
+    );
+  });
+
+  it('broadcasts task assigned to another member with assignee name in body', async () => {
+    const memberCharlie: HouseholdMemberProfile = {
+      code: 'CHARLIE1',
+      userId: 'user-charlie',
+      name: 'Charlie',
+      color: '#333',
+      addedAt: new Date().toISOString(),
+      status: 'active',
+    };
+
+    const task = {
+      ...createTaskFromPreset('Wash Windows', 'home', 'Monthly'),
+      householdId: 'hh-home',
+      assignedTo: 'user-bob',
+    };
+
+    await broadcastHouseholdTaskEvent({
+      eventType: 'task_assigned',
+      task,
+      actorUser,
+      targetUserIds: ['user-charlie'],
+      allMembers: [memberBob, memberCharlie],
+    });
+
+    expect(userRepository.saveNotification).toHaveBeenCalledWith(
+      'user-charlie',
+      expect.objectContaining({
+        type: 'household',
+        title: '📋 New Household Task',
+        body: 'Malay added "Wash Windows" (assigned to Bob).',
       })
     );
   });
@@ -428,13 +495,49 @@ describe('services/householdBroadcastService', () => {
         expect.objectContaining({
           type: 'household',
           title: '🏠 Household Disbanded',
-          body: '"Shared Flat" was deleted by Alice.',
+          body: '"Shared Flat" was disbanded by Alice.',
         })
       );
       expect(userRepository.saveNotification).not.toHaveBeenCalledWith(
         'user-alice',
         expect.anything()
       );
+    });
+  });
+
+  describe('resolveRecipientCanonicalUserId', () => {
+    it('returns member userId directly if member is matched by userId', async () => {
+      const { resolveRecipientCanonicalUserId } = await import('../householdBroadcastService');
+      const res = await resolveRecipientCanonicalUserId('user-bob', [memberBob]);
+      expect(res).toBe('user-bob');
+    });
+
+    it('resolves member userId if recipient is passed as member code', async () => {
+      const { resolveRecipientCanonicalUserId } = await import('../householdBroadcastService');
+      const res = await resolveRecipientCanonicalUserId('BOB1', [memberBob]);
+      expect(res).toBe('user-bob');
+    });
+
+    it('resolves recipient UID from userRepository.resolveUserCode if code is not in local allMembers', async () => {
+      const { resolveRecipientCanonicalUserId } = await import('../householdBroadcastService');
+      vi.mocked(userRepository.resolveUserCode).mockResolvedValueOnce({
+        userId: 'user-charlie-resolved',
+        userCode: 'RPT-CHARLIE',
+        name: 'Charlie',
+        color: '#123',
+      } as any);
+
+      const res = await resolveRecipientCanonicalUserId('RPT-CHARLIE', [memberBob]);
+      expect(res).toBe('user-charlie-resolved');
+      expect(userRepository.resolveUserCode).toHaveBeenCalledWith('RPT-CHARLIE');
+    });
+
+    it('falls back to raw recipient identifier if code cannot be resolved', async () => {
+      const { resolveRecipientCanonicalUserId } = await import('../householdBroadcastService');
+      vi.mocked(userRepository.resolveUserCode).mockResolvedValueOnce(null);
+
+      const res = await resolveRecipientCanonicalUserId('RPT-UNKNOWN', []);
+      expect(res).toBe('RPT-UNKNOWN');
     });
   });
 });

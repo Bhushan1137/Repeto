@@ -23,8 +23,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { ActivityIndicator, Card, Text, TouchableRipple } from 'react-native-paper';
-import { AppIcon } from '@/components/AppIcon';
+import { Card, Text } from 'react-native-paper';
 import { Button } from '@/components/Button';
 import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
 import { useCategories, type CreateCustomCategoryInput } from '@/hooks/useCategories';

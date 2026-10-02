@@ -37,6 +37,7 @@ import {
   setNextDueDate,
   duplicateTask,
   cleanupTasksOnRemoval,
+  cleanupHouseholdTasksForMember,
   takeOverTask,
   mergeTasksLocalAndRemote,
 } from '@/domain/task';
@@ -46,7 +47,7 @@ import { recordHouseholdActivity } from '@/services/householdActivityService';
 import { useRouter } from 'expo-router';
 import { subscribeToUserTasksAndHouseholds } from '@/services/firebase/taskListener';
 import { computePreviousDueDate } from '@/domain/recurrence';
-import { removeHouseholdMember, normalizeHouseholdProfile, mergeHouseholds as domainMergeHouseholds } from '@/domain/household';
+import { removeHouseholdMember, normalizeHouseholdProfile, mergeHouseholds as domainMergeHouseholds, normalizeInviteCode } from '@/domain/household';
 
 interface OnboardingPreset {
   title: string;
@@ -118,6 +119,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const userIdRef = useRef<string | null>(null);
   const wasOfflineRef = useRef<boolean>(false);
   const tasksRef = useRef<RepeatingTask[]>(tasks);
+  const inFlightMutationsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -290,7 +292,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (task.archived) {
         await cancelTaskReminder(task.id);
         await cancelOverdueReminders(task.id);
-      } else if (user.pushOptIn !== false || task.reminderTime || task.alarmEnabled) {
+      } else if (user.pushOptIn !== false && (task.reminderTime || task.alarmEnabled)) {
         await cancelTaskReminder(task.id);
         await scheduleTaskReminder(task);
         // Cancel overdue reminders whenever the task is mutated (completed/snoozed/skipped/updated).
@@ -373,6 +375,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       const currentTasks = tasksRef.current;
       const existing = currentTasks.find((t) => t.id === taskId);
       if (!existing) return;
+      if (inFlightMutationsRef.current.has(taskId)) return;
+      inFlightMutationsRef.current.add(taskId);
       try {
         const mutated = updater(existing);
         const next = updateTaskInList(currentTasks, taskId, () => mutated);
@@ -410,17 +414,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               const userName = user?.name || 'A household member';
 
               if (lastHistory.status === 'snoozed') {
-                title = user?.language === 'hi' ? 'कार्य आगे बढ़ाया गया' : 'Task Snoozed';
+                title = user?.language === 'hi' ? '⏰ कार्य आगे बढ़ाया गया' : '⏰ Task Snoozed';
                 body = user?.language === 'hi'
-                  ? `"${mutated.title}" को सणूज़ किया गया।`
+                  ? `"${mutated.title}" को स्नूज़ किया गया।`
                   : `"${mutated.title}" has been snoozed.`;
               } else if (lastHistory.status === 'skipped') {
-                title = user?.language === 'hi' ? 'कार्य छोड़ा गया' : 'Task Skipped';
+                title = user?.language === 'hi' ? '⏭️ कार्य छोड़ा गया' : '⏭️ Task Skipped';
                 body = user?.language === 'hi'
                   ? `"${mutated.title}" का यह चक्र छोड़ दिया गया।`
                   : `"${mutated.title}" occurrence was skipped.`;
               } else {
-                title = user?.language === 'hi' ? 'कार्य पूरा हुआ' : 'Task Completed';
+                title = user?.language === 'hi' ? '✅ कार्य पूरा हुआ' : '✅ Task Completed';
                 body = user?.language === 'hi'
                   ? `"${mutated.title}" को पूरा किया गया।`
                   : `"${mutated.title}" was marked complete.`;
@@ -481,10 +485,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               for (const member of mutated.sharedWith) {
                 if (member.userId && member.userId !== user?.id) {
                   const peerTitle = lastHistory.status === 'snoozed'
-                    ? `${userName} snoozed task`
+                    ? `⏰ ${userName} snoozed task`
                     : lastHistory.status === 'skipped'
-                    ? `${userName} skipped task`
-                    : `${userName} completed task`;
+                    ? `⏭️ ${userName} skipped task`
+                    : `✅ ${userName} completed task`;
                   
                   const peerBody = lastHistory.status === 'snoozed'
                     ? `"${mutated.title}" has been snoozed.`
@@ -511,6 +515,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         })();
       } catch {
         showToast(translate('saveError'));
+      } finally {
+        setTimeout(() => {
+          inFlightMutationsRef.current.delete(taskId);
+        }, 350);
       }
     },
     [syncTask, showToast, translate, addNotification, user, activeHousehold?.members]
@@ -1232,7 +1240,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
 
       const currentTasks = tasksRef.current;
-      const nextTasks = cleanupTasksOnRemoval(currentTasks, memberCode, member.userId, removeSharedTasks);
+      let nextTasks = cleanupTasksOnRemoval(currentTasks, memberCode, member.userId, removeSharedTasks);
+      if (activeHousehold?.id) {
+        const { updatedTasks } = cleanupHouseholdTasksForMember(nextTasks, activeHousehold.id, {
+          userId: member.userId,
+          memberCode,
+          userCodes: [normalizeInviteCode(memberCode)],
+        });
+        nextTasks = updatedTasks;
+      }
       setTasks(nextTasks);
       tasksRef.current = nextTasks;
       await persistAll(nextTasks);

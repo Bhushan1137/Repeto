@@ -72,6 +72,8 @@ export type AppIconName =
   | 'share-social-outline'
   | 'pricetag-outline'
   | 'megaphone-outline'
+  | 'gift'
+  | 'gift-outline'
   | 'grid-outline';
 
 interface AppIconProps {

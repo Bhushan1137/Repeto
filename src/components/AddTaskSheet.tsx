@@ -43,7 +43,7 @@ export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSh
   const { user, activeHousehold } = useAuth();
   const shouldDefaultHousehold = defaultToHousehold !== undefined
     ? defaultToHousehold
-    : (activeHousehold ? true : !!(pathname && pathname.includes('household')));
+    : !!(pathname && pathname.includes('household') && activeHousehold);
 
   const { addTask } = useTasks();
   const { showToast, message } = useToast();

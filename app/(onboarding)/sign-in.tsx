@@ -358,16 +358,14 @@ export default function SignInScreen() {
         <View style={[styles.contentWrapper, { maxWidth: isLargeScreen ? 820 : 440 }]}>
 
           {/* Prominent Brand Header */}
-          <View style={[styles.brandHeader, keyboardOpen && !isLargeScreen && styles.brandHeaderCompact]}>
+          <View style={[styles.brandHeader, keyboardOpen && !isLargeScreen && styles.brandHeaderKeyboard]}>
             <Image
               source={require('../../assets/images/icon.png')}
-              style={[styles.logoImage, keyboardOpen && !isLargeScreen && styles.logoImageCompact]}
+              style={[styles.logoImage, keyboardOpen && !isLargeScreen && styles.logoImageKeyboard]}
               resizeMode="contain"
             />
-            <Text style={[styles.brandTitle, keyboardOpen && !isLargeScreen && styles.brandTitleCompact]}>Repeto</Text>
-            {(!keyboardOpen || isLargeScreen) && (
-              <Text style={styles.sub}>Repeat Together Effortlessly</Text>
-            )}
+            <Text style={[styles.brandTitle, keyboardOpen && !isLargeScreen && styles.brandTitleKeyboard]}>Repeto</Text>
+            <Text style={[styles.sub, keyboardOpen && !isLargeScreen && styles.subKeyboard]}>Repeat Together Effortlessly</Text>
           </View>
 
           {/* 2. Main Layout Container */}
@@ -797,12 +795,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
-  brandHeaderCompact: {
-    flexDirection: 'row',
+  brandHeaderKeyboard: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 2,
+    marginTop: 4,
     marginBottom: 10,
   },
   logoImage: {
@@ -815,12 +811,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     ...Shadows.md,
   },
-  logoImageCompact: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    marginBottom: 0,
-    borderWidth: 1,
+  logoImageKeyboard: {
+    width: 56,
+    height: 56,
+    borderRadius: 15,
+    marginBottom: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(27,31,59,0.08)',
+    backgroundColor: Colors.white,
   },
   brandTitle: {
     fontFamily: 'Fraunces_700Bold',
@@ -828,8 +826,12 @@ const styles = StyleSheet.create({
     color: Colors.indigo950,
     letterSpacing: -0.3,
   },
-  brandTitleCompact: {
-    fontSize: 19,
+  brandTitleKeyboard: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 22,
+    color: Colors.indigo950,
+    letterSpacing: -0.3,
+    marginBottom: 1,
   },
   sub: {
     fontFamily: 'Manrope_500Medium',
@@ -837,6 +839,13 @@ const styles = StyleSheet.create({
     color: Colors.inkSoft,
     textAlign: 'center',
     marginTop: 2,
+  },
+  subKeyboard: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    marginTop: 1,
   },
   actionSection: {
     width: '100%',

@@ -85,8 +85,8 @@ export async function sendTaskNudge({
       if (targetUser?.expoPushToken && targetUser?.pushOptIn !== false) {
         await sendRemotePushNotification(
           targetUser.expoPushToken,
-          'Repeto Nudge 👉',
-          `${fromUser.name} nudged you to complete "${taskTitle}"!`,
+          '👉 Chore Nudge',
+          `${fromUser.name} nudged you to complete "${taskTitle}".`,
           { taskId, type: 'nudge' }
         );
       }
