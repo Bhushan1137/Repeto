@@ -17,11 +17,33 @@ const ALARM_PERMISSIONS = [
   'android.permission.POST_NOTIFICATIONS',
 ];
 
+const BLOCKED_PERMISSIONS = [
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+];
+
 function withAlarmPermissions(config) {
   return withAndroidManifest(config, (config) => {
     const manifest = config.modResults.manifest;
     if (!manifest['uses-permission']) {
       manifest['uses-permission'] = [];
+    }
+
+    // Strip blocked permissions from manifest
+    manifest['uses-permission'] = manifest['uses-permission'].filter(
+      (item) => !BLOCKED_PERMISSIONS.includes(item.$['android:name'])
+    );
+
+    // Add tools:node="remove" so Gradle manifest merger strips them from libraries
+    for (const permission of BLOCKED_PERMISSIONS) {
+      manifest['uses-permission'].push({
+        $: {
+          'android:name': permission,
+          'tools:node': 'remove',
+        },
+      });
     }
 
     for (const permission of ALARM_PERMISSIONS) {
@@ -95,6 +117,20 @@ function withAlarmActivities(config) {
         ],
       });
     }
+
+    // Remove AudioControlsService so foregroundServiceType="mediaPlayback" is never requested
+    if (!mainApplication.service) {
+      mainApplication.service = [];
+    }
+    mainApplication.service = mainApplication.service.filter(
+      (s) => !s.$?.['android:name']?.includes('AudioControlsService')
+    );
+    mainApplication.service.push({
+      $: {
+        'android:name': 'expo.modules.audio.service.AudioControlsService',
+        'tools:node': 'remove',
+      },
+    });
 
     return config;
   });
