@@ -18,7 +18,7 @@ export function useAlarmListener() {
   const recentActionsRef = useRef<Map<string, number>>(new Map());
 
   const handleAlarmAction = useCallback(
-    async (action: 'MARK_DONE' | 'SNOOZE_2D', taskId: string) => {
+    async (action: 'MARK_DONE' | 'SNOOZE_2D' | 'SNOOZE_10M', taskId: string) => {
       if (!taskId) return;
 
       // Debounce duplicate events for same task & action within 3 seconds
@@ -43,6 +43,8 @@ export function useAlarmListener() {
           await completeTask(taskId, undefined, { maxEarlyDays: 1 });
         } else if (action === 'SNOOZE_2D') {
           await snoozeTask(taskId, 2);
+        } else if (action === 'SNOOZE_10M') {
+          // Alarm is scheduled natively for 10 minutes from now; no task mutation needed
         }
       } catch (err) {
         console.warn('[useAlarmListener] Error performing alarm action:', err);
@@ -115,7 +117,7 @@ export function useAlarmListener() {
 
     const subAction = DeviceEventEmitter.addListener(
       'onAlarmAction',
-      (data: { action?: 'MARK_DONE' | 'SNOOZE_2D'; taskId?: string }) => {
+      (data: { action?: 'MARK_DONE' | 'SNOOZE_2D' | 'SNOOZE_10M'; taskId?: string }) => {
         if (data?.taskId && data.action) {
           handleAlarmAction(data.action, data.taskId);
         }

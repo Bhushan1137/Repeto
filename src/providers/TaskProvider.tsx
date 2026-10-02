@@ -1445,6 +1445,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         await completeTask(taskId, undefined, { maxEarlyDays: 1 });
       } else if (actionIdentifier === 'SNOOZE_2D') {
         await snoozeTask(taskId, 2);
+      } else if (actionIdentifier === 'SNOOZE_10M') {
+        // Native alarm already scheduled for 10 minutes later; no task due date mutation needed
       } else {
         // User tapped the notification body itself
         setFocusTaskId(taskId);

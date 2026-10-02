@@ -215,7 +215,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .setSound(soundUri)
             .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
             .addAction(0, "Mark Done", donePendingIntent)
-            .addAction(0, "Snooze 2 Days", snoozePendingIntent)
+            .addAction(0, "Snooze 10 Min", snoozePendingIntent)
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
@@ -253,13 +253,13 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun handleSnooze(context: Context, taskId: String, title: String, notificationId: Int) {
         NotificationManagerCompat.from(context).cancel(notificationId)
-        // Snooze 2 days in milliseconds
-        val snoozeTime = System.currentTimeMillis() + (2L * 24 * 60 * 60 * 1000)
+        // Snooze 10 minutes in milliseconds
+        val snoozeTime = System.currentTimeMillis() + (10L * 60 * 1000)
         schedule(context, taskId, title, snoozeTime)
-        AlarmModule.recordAction(context, "SNOOZE_2D", taskId)
+        AlarmModule.recordAction(context, "SNOOZE_10M", taskId)
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-            putExtra("alarmAction", "SNOOZE_2D")
+            putExtra("alarmAction", "SNOOZE_10M")
             putExtra("taskId", taskId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }

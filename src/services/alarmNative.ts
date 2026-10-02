@@ -1,7 +1,7 @@
 import { NativeModules, Platform, DeviceEventEmitter, type EmitterSubscription } from 'react-native';
 
 export interface AlarmActionPayload {
-  action: 'MARK_DONE' | 'SNOOZE_2D';
+  action: 'MARK_DONE' | 'SNOOZE_2D' | 'SNOOZE_10M';
   taskId: string;
 }
 
