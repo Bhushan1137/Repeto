@@ -120,8 +120,14 @@ export function computeNextDueDate(rule: RecurrenceRule, from: Date = new Date()
   switch (rule.type) {
     case 'daily':
       return addDays(base, 1).toISOString();
-    case 'weekly':
+    case 'weekly': {
+      if (rule.weekday !== undefined) {
+        const next = addDays(base, 1);
+        const diff = (rule.weekday - next.getDay() + 7) % 7;
+        return addDays(next, diff).toISOString();
+      }
       return addDays(base, 7).toISOString();
+    }
     case 'monthly':
       return addMonths(base, 1).toISOString();
     case 'yearly':

@@ -16,7 +16,33 @@ export type CategoryKey =
   | 'shopping'
   | 'fitness'
   | 'medicines'
-  | 'work';
+  | 'work'
+  | 'supplies'
+  | 'maintenance'
+  | 'documents'
+  | 'gardening';
+
+/** Runtime key for user-created categories — prefixed `custom_<uuid>` */
+export type CustomCategoryKey = `custom_${string}`;
+
+/** Union of built-in + custom category keys used across the app */
+export type AnyCategoryKey = CategoryKey | CustomCategoryKey;
+
+/** A user-defined category stored in local AsyncStorage */
+export interface CustomCategoryDef {
+  /** Unique key — always starts with `custom_` */
+  key: CustomCategoryKey;
+  labelEn: string;
+  labelHi?: string;       // optional Hindi label
+  icon: string;           // emoji
+  /** Visual accent — reuses existing palette tokens */
+  accent: 'clay' | 'teal' | 'marigold';
+  /** Lifecycle group */
+  group: 'money' | 'home' | 'life';
+  createdAt: string;      // ISO timestamp
+  /** Optional default recurrence label (e.g. "Every month") */
+  defaultFreqLabel?: string;
+}
 
 export type RecurrenceType =
   | 'daily'
@@ -100,7 +126,7 @@ export interface RepeatingTask {
   householdId?: string | null; // Belongs to a specific HouseholdContext (null for personal tasks)
   title: string;
   icon?: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrence: RecurrenceRule;
   frequencyLabel: string;
   nextDueDate: string;
@@ -123,6 +149,9 @@ export interface RepeatingTask {
   archived?: boolean;
   archivedAt?: string;
   creatorName?: string;
+  /** true = fullscreen native alarm; false/undefined = standard push notification */
+  alarmEnabled?: boolean;
+  note?: string;
 }
 
 export interface UserProfile {
@@ -157,6 +186,13 @@ export interface UserProfile {
   deletionReason?: string;
   /** ISO timestamp after which a server-side job may permanently purge the data */
   purgeAfter?: string;
+  /** Activity tracking for presence & device diagnostics */
+  lastActiveAt?: string;
+  deviceInfo?: {
+    platform: 'ios' | 'android' | 'web';
+    appVersion: string;
+    osVersion?: string;
+  };
 }
 
 export interface AppState {
@@ -165,7 +201,7 @@ export interface AppState {
 }
 
 export interface DetectedToken {
-  id: 'amount' | 'time' | 'recurrence' | 'category' | 'doses';
+  id: 'amount' | 'time' | 'recurrence' | 'category' | 'doses' | 'alarm';
   label: string;
   icon: string;
 }
@@ -176,7 +212,7 @@ export interface ParsedTaskInput {
   frequencyLabel: string;
   recurrence: RecurrenceRule;
   amount?: number;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   reminderTime?: string;
   timesPerDay?: number;
   isMultiTime?: boolean;
@@ -186,5 +222,8 @@ export interface ParsedTaskInput {
   isRotating?: boolean;
   rotationMembers?: string[];
   detectedTokens?: DetectedToken[];
+  /** true = fullscreen native alarm; false/undefined = standard push notification */
+  alarmEnabled?: boolean;
+  note?: string;
 }
 

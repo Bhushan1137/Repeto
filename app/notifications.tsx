@@ -104,6 +104,9 @@ function NotificationItem({
         onPress={onPress ? () => onPress(item) : undefined}
         testID={`notification-card-${item.id}`}
       >
+        {/* Unread Accent Indicator Bar (smoothly clipped, no corner border artifacts) */}
+        {!item.read && <View style={styles.unreadIndicatorBar} />}
+
         <Card.Content style={styles.cardContent} testID={`notification-card-content-${item.id}`}>
           <View style={[styles.iconCircle, { backgroundColor: styleOpts.bg }]} testID={`notification-icon-wrap-${item.id}`}>
             <AppIcon name={styleOpts.icon} size={20} color={styleOpts.color} />
@@ -116,7 +119,10 @@ function NotificationItem({
                 </Text>
               </View>
             )}
-            <Text style={styles.notifTitle} testID={`notification-title-${item.id}`}>{item.title}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.notifTitle} testID={`notification-title-${item.id}`}>{item.title}</Text>
+              {!item.read && <View style={styles.unreadDot} />}
+            </View>
             <Text style={styles.notifBody} testID={`notification-body-${item.id}`}>{item.body}</Text>
             {item.type === 'campaign' && item.metadata?.promoCode ? (
               <View style={styles.promoCodeChip}>
@@ -337,6 +343,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 12,
+    overflow: 'hidden',
   },
   campaignCard: {
     borderColor: 'rgba(232, 163, 61, 0.35)',
@@ -388,9 +395,28 @@ const styles = StyleSheet.create({
     color: Colors.clayDeep,
   },
   unreadCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.marigold,
     backgroundColor: '#FFFDF9',
+  },
+  unreadIndicatorBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: Colors.marigold,
+    zIndex: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: Colors.marigold,
   },
   cardContent: {
     flexDirection: 'row',

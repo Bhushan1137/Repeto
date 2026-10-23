@@ -6,6 +6,7 @@ import {
   saveTasksSqlite,
   saveSingleTaskSqlite,
   deleteSingleTaskSqlite,
+  deleteMultipleTasksSqlite,
   enqueueSyncSqlite,
   drainSyncQueueSqlite,
   clearAllSqliteData,
@@ -37,6 +38,10 @@ export async function saveSingleTaskLocal(userId: string, task: RepeatingTask): 
 
 export async function deleteSingleTaskLocal(userId: string, taskId: string): Promise<void> {
   return deleteSingleTaskSqlite(userId, taskId);
+}
+
+export async function deleteMultipleTasksLocal(userId: string, taskIds: string[]): Promise<void> {
+  return deleteMultipleTasksSqlite(userId, taskIds);
 }
 
 export async function clearUserData(userId?: string): Promise<void> {

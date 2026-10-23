@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { cancelTaskReminder, requestNotificationPermission, scheduleTaskReminder } from '@/services/notifications';
+import { scheduleNativeAlarm } from '@/services/alarmNative';
 import { createTaskFromPreset } from '@/domain/task';
+
+vi.mock('@/services/alarmNative', () => ({
+  scheduleNativeAlarm: vi.fn().mockResolvedValue(true),
+  cancelNativeAlarm: vi.fn().mockResolvedValue(true),
+  cancelAllNativeAlarms: vi.fn().mockResolvedValue(true),
+  triggerTestAlarm: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock('expo-notifications', () => ({
   setNotificationHandler: vi.fn(),
@@ -66,6 +74,33 @@ describe('services/notifications', () => {
         trigger: expect.objectContaining({
           type: 'weekly',
           weekday: 2,
+        }),
+      })
+    );
+  });
+
+  it('scheduleTaskReminder schedules native alarm and skips expo notification on Android when alarmEnabled is true', async () => {
+    Platform.OS = 'android';
+    const task = createTaskFromPreset('Blood pressure med', 'medicines', 'Every day');
+    task.reminderTime = '09:00';
+    task.alarmEnabled = true;
+
+    await scheduleTaskReminder(task);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(task.id, task.title, expect.any(Number));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('scheduleTaskReminder uses default channel on Android when alarmEnabled is false', async () => {
+    Platform.OS = 'android';
+    const task = createTaskFromPreset('Read book', 'education', 'Every day');
+    task.reminderTime = '21:00';
+    task.alarmEnabled = false;
+
+    await scheduleTaskReminder(task);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: expect.objectContaining({
+          channelId: 'default',
         }),
       })
     );

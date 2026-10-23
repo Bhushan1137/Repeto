@@ -8,7 +8,6 @@ import { TaskItemRow } from '@/components/TaskItemRow';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { TaskFormSheet } from '@/components/TaskFormSheet';
 import { TodayFocusSection } from '@/components/TodayFocusSection';
-import { CATEGORIES } from '@/constants/categories';
 import { Colors, Radius } from '@/constants/theme';
 import { taskToFormValues } from '@/domain/preset';
 import { daysUntilDue } from '@/domain/recurrence';
@@ -24,12 +23,13 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
-import type { CategoryKey, TaskGroup } from '@/types';
+import { useCategories } from '@/hooks/useCategories';
+import type { AnyCategoryKey, TaskGroup } from '@/types';
 import type { Recommendation } from '@/types/recommendation';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
-import { Card } from 'react-native-paper';
+import { Alert, AppState, Image, Linking, Modal, Pressable, StyleSheet, Text, View, TextInput, ScrollView } from 'react-native';
+import { Card, ActivityIndicator } from 'react-native-paper';
 
 const SECTION_KEYS: Record<TaskGroup, 'secOverdue' | 'secToday' | 'secWeek' | 'secMonth' | 'secLater'> = {
   overdue: 'secOverdue',
@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const {
     tasks,
     loading,
+    isOnboardingTasksAdding,
     completeTask: rawCompleteTask,
     snoozeTask,
     skipTask,
@@ -73,6 +74,7 @@ export default function HomeScreen() {
     setFocusTaskId,
   } = useTasks();
   const { language, translate } = useTranslation();
+  const { allCategories } = useCategories();
 
   const { findMatch, logImpression, logClick } = useRecommendations();
   const [completedRecommendation, setCompletedRecommendation] = useState<Recommendation | null>(null);
@@ -173,9 +175,32 @@ export default function HomeScreen() {
     }
   }, [focusTaskId, setFocusTaskId]);
 
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        const todayStr = new Date().toDateString();
+        if (todayStr !== dayKey) {
+          setDayKey(todayStr);
+        }
+      }
+    });
+    const interval = setInterval(() => {
+      const todayStr = new Date().toDateString();
+      if (todayStr !== dayKey) {
+        setDayKey(todayStr);
+      }
+    }, 60000);
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, [dayKey]);
+
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [filterVisible, setFilterVisible] = useState(true);
+  const [filterVisible, setFilterVisible] = useState(false);
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [laterExpanded, setLaterExpanded] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
@@ -196,10 +221,14 @@ export default function HomeScreen() {
     d1.getDate() === d2.getDate();
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null;
+  const editingInitialValues = useMemo(
+    () => (editingTask ? taskToFormValues(editingTask, language) : null),
+    [editingTask?.id, editingTask?.updatedAt, language]
+  );
   const firstName = user?.name?.split(' ')[0] ?? 'there';
 
-  // Apply search + filter before grouping
-  const filteredTasks = useFilteredTasks(tasks, filter);
+  // Apply search + filter before grouping (reactive to day rollover via dayKey)
+  const filteredTasks = useFilteredTasks(tasks, filter, dayKey);
 
   const calendarFilteredTasks = useMemo(() => {
     if (!selectedCalendarDate) return filteredTasks;
@@ -248,21 +277,25 @@ export default function HomeScreen() {
 
   // Pinned tasks shown at top (before groups), only when no active filter query
   // Tasks due today are rendered in Today's Focus, so we avoid rendering them twice
-  const pinnedTasks = filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
-    ? tasks.filter((t) => t.pinned && daysUntilDue(t.nextDueDate) !== 0)
-    : [];
+  const pinnedTasks = useMemo(() => {
+    void dayKey;
+    return filter.query.trim() === '' && filter.group === 'all' && filter.category === 'all' && !selectedCalendarDate
+      ? tasks.filter((t) => t.pinned && daysUntilDue(t.nextDueDate) !== 0)
+      : [];
+  }, [tasks, filter.query, filter.group, filter.category, selectedCalendarDate, dayKey]);
 
   // Tasks that go through the group layout (excluding pinned when not filtering)
   const unpinnedFiltered = pinnedTasks.length > 0
     ? calendarFilteredTasks.filter((t) => !t.pinned)
     : calendarFilteredTasks;
 
-  const groups = useGroupedTasks(unpinnedFiltered);
+  const groups = useGroupedTasks(unpinnedFiltered, dayKey);
 
   const isFiltering = filter.query.trim() !== '' || filter.group !== 'all' || filter.category !== 'all' || !!selectedCalendarDate;
   const hasTasks = tasks.length > 0;
 
   const stats = useMemo(() => {
+    void dayKey;
     let today = 0;
     let overdue = 0;
     let upcoming = 0;
@@ -273,13 +306,13 @@ export default function HomeScreen() {
       else if (d <= 7) upcoming += 1;
     }
     return { today, overdue, upcoming };
-  }, [tasks]);
+  }, [tasks, dayKey]);
 
   const categoryCounts = useMemo(() => {
-    const counts: Partial<Record<CategoryKey, number>> = {};
+    const counts: Partial<Record<string, number>> = {};
     for (const t of tasks) {
       if (t.category) {
-        counts[t.category as CategoryKey] = (counts[t.category as CategoryKey] || 0) + 1;
+        counts[t.category] = (counts[t.category] || 0) + 1;
       }
     }
     return counts;
@@ -302,6 +335,7 @@ export default function HomeScreen() {
   }, [selectedCalendarDate, language]);
 
   const greetingTitle = useMemo(() => {
+    void dayKey;
     const hour = new Date().getHours();
     if (language === 'hi') {
       const timeHi = hour < 12 ? 'सुप्रभात' : hour < 17 ? 'नमस्ते' : 'शुभ संध्या';
@@ -309,7 +343,7 @@ export default function HomeScreen() {
     }
     const timeEn = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     return `${timeEn}, ${firstName} 👋`;
-  }, [language, firstName]);
+  }, [language, firstName, dayKey]);
 
   return (
     <View style={styles.root}>
@@ -574,7 +608,7 @@ export default function HomeScreen() {
             )}
 
             {/* Other categories with tasks */}
-            {CATEGORIES.filter(c => !['bills', 'health', 'finance', 'home'].includes(c.key) && (categoryCounts[c.key as CategoryKey] || 0) > 0).map(cat => (
+            {allCategories.filter(c => !['bills', 'health', 'finance', 'home'].includes(c.key) && (categoryCounts[c.key] || 0) > 0).map(cat => (
               <Pressable
                 key={cat.key}
                 style={[
@@ -583,7 +617,7 @@ export default function HomeScreen() {
                 ]}
                 onPress={() => setFilter(prev => ({
                   ...prev,
-                  category: prev.category === cat.key ? 'all' : (cat.key as CategoryKey),
+                  category: prev.category === cat.key ? 'all' : (cat.key as AnyCategoryKey),
                   group: 'all',
                 }))}
               >
@@ -595,7 +629,7 @@ export default function HomeScreen() {
                       filter.category === cat.key && styles.chipTextActive,
                     ]}
                   >
-                    {(language === 'hi' ? cat.labelHi : cat.labelEn) + ` (${categoryCounts[cat.key as CategoryKey]})`}
+                    {(language === 'hi' ? cat.labelHi : cat.labelEn) + ` (${categoryCounts[cat.key]})`}
                   </Text>
                 </View>
               </Pressable>
@@ -680,7 +714,22 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {loading && !hasTasks ? (
+        {isOnboardingTasksAdding ? (
+          <Card style={styles.onboardingAddingCard} mode="elevated" testID="homescreen-adding-presets-card">
+            <View style={styles.onboardingAddingInner}>
+              <View style={styles.onboardingAddingIconCircle}>
+                <AppIcon name="sparkles" size={30} color={Colors.marigoldDeep} />
+              </View>
+              <Text style={styles.onboardingAddingTitle}>
+                {translate('addingOnboardingTasks')}
+              </Text>
+              <Text style={styles.onboardingAddingSub}>
+                {translate('addingOnboardingTasksSub')}
+              </Text>
+              <ActivityIndicator size="small" color={Colors.marigoldDeep} style={{ marginTop: 16 }} />
+            </View>
+          </Card>
+        ) : loading && !hasTasks ? (
           <DashboardSkeleton />
         ) : !hasTasks ? (
           <EmptyState
@@ -935,7 +984,7 @@ export default function HomeScreen() {
           language={language}
           translate={translate}
           heading={translate('editTask')}
-          initial={editingTask ? taskToFormValues(editingTask, language) : null}
+          initial={editingInitialValues}
           initialShared={editingTask?.sharedWith}
           editingTaskId={editingTask?.id}
           mode="edit"
@@ -1516,5 +1565,46 @@ const styles = StyleSheet.create({
   chipBtnClear: {
     borderColor: Colors.marigold,
     backgroundColor: 'rgba(232,163,61,0.1)',
+  },
+  onboardingAddingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    marginVertical: 24,
+    padding: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232,163,61,0.25)',
+    elevation: 3,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  onboardingAddingInner: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  onboardingAddingIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FEF8EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  onboardingAddingTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 19,
+    color: Colors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  onboardingAddingSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
   },
 });

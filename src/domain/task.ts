@@ -1,7 +1,8 @@
 import type {
-  CategoryKey,
+  AnyCategoryKey,
   CompletionStatus,
   ParsedTaskInput,
+  RecurrenceRule,
   RepeatingTask,
   SharedMember,
   UserProfile,
@@ -17,6 +18,7 @@ import {
   parseFrequencyLabel,
 } from '@/domain/recurrence';
 import { daysUntilDue } from '@/domain/recurrence';
+import { normalizeInviteCode } from '@/domain/household';
 
 export const FREE_TASK_LIMIT = 10;
 export const FREE_SHARED_PARTICIPANT_LIMIT = 1;
@@ -79,23 +81,43 @@ export function createTaskFromFormValues(
     updatedAt: now,
     escalationCount: 0,
     icon: values.icon,
+    alarmEnabled: values.alarmEnabled,
     creatorName,
   };
 }
 
+export interface PresetTaskConfig {
+  title: string;
+  category: AnyCategoryKey;
+  freq: string;
+  amount?: number;
+  finance?: boolean;
+  icon?: string;
+  recurrence?: RecurrenceRule;
+  reminderTime?: string;
+  reminderTimes?: string[];
+  timesPerDay?: number;
+  startDate?: string;
+  assignedTo?: string | null;
+  householdId?: string | null;
+  note?: string;
+  alarmEnabled?: boolean;
+}
+
 export function createTaskFromPreset(
   title: string,
-  category: CategoryKey,
+  category: AnyCategoryKey,
   freq: string,
   amount?: number,
   finance?: boolean,
   icon?: string,
-  creatorName?: string
+  creatorName?: string,
+  householdId?: string | null
 ): RepeatingTask {
   const recurrence = parseFrequencyLabel(freq);
   return {
     id: createTaskId(),
-    householdId: null,
+    householdId: householdId ?? null,
     title,
     icon,
     category,
@@ -109,7 +131,48 @@ export function createTaskFromPreset(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
+    alarmEnabled: category === 'medicines',
     creatorName,
+  };
+}
+
+export function createTaskFromPresetConfig(
+  config: PresetTaskConfig,
+  creatorName?: string,
+  fallbackHouseholdId?: string | null
+): RepeatingTask {
+  const recurrence = config.recurrence ?? parseFrequencyLabel(config.freq);
+  const nextDueDate = computeInitialDueDate(
+    recurrence,
+    config.startDate,
+    config.reminderTime,
+    new Date(),
+    config.reminderTimes
+  );
+  return {
+    id: createTaskId(),
+    householdId: config.householdId !== undefined ? config.householdId : (fallbackHouseholdId ?? null),
+    title: config.title,
+    icon: config.icon,
+    category: config.category,
+    recurrence,
+    frequencyLabel: config.freq,
+    nextDueDate,
+    amount: config.amount,
+    finance: config.finance ?? !!config.amount,
+    reminderTime: config.reminderTime,
+    timesPerDay: config.timesPerDay,
+    reminderTimes: config.reminderTimes,
+    startDate: config.startDate,
+    sharedWith: [],
+    assignedTo: config.assignedTo ?? undefined,
+    history: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    escalationCount: 0,
+    alarmEnabled: config.alarmEnabled !== undefined ? config.alarmEnabled : (config.category === 'medicines'),
+    creatorName,
+    note: config.note,
   };
 }
 
@@ -125,10 +188,18 @@ export function createTaskFromParsed(
     category: parsed.category,
     recurrence: parsed.recurrence,
     frequencyLabel: parsed.frequencyLabel,
-    nextDueDate: computeInitialDueDate(parsed.recurrence, parsed.startDate, parsed.reminderTime),
+    nextDueDate: computeInitialDueDate(
+      parsed.recurrence,
+      parsed.startDate,
+      parsed.reminderTime,
+      new Date(),
+      parsed.reminderTimes
+    ),
     amount: parsed.amount,
     finance: opts.finance || !!parsed.amount,
     reminderTime: parsed.reminderTime,
+    timesPerDay: parsed.timesPerDay,
+    reminderTimes: parsed.reminderTimes,
     startDate: parsed.startDate,
     sharedWith: opts.shared,
     assignedTo: parsed.assignedTo,
@@ -139,7 +210,9 @@ export function createTaskFromParsed(
     updatedAt: new Date().toISOString(),
     escalationCount: 0,
     icon: parsed.icon,
+    alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
     creatorName,
+    note: parsed.note,
   };
 }
 
@@ -557,12 +630,17 @@ export function setNextDueDate(task: RepeatingTask, date: Date): RepeatingTask {
   return { ...task, nextDueDate: date.toISOString(), updatedAt: new Date().toISOString() };
 }
 
-export function duplicateTask(task: RepeatingTask): RepeatingTask {
+export function duplicateTask(task: RepeatingTask, validHouseholdIds?: string[]): RepeatingTask {
   const now = new Date().toISOString();
+  const householdId =
+    task.householdId && validHouseholdIds && !validHouseholdIds.includes(task.householdId)
+      ? undefined
+      : task.householdId;
   return {
     ...task,
     id: createTaskId(),
     title: `${task.title} (copy)`,
+    householdId,
     history: [],
     escalationCount: 0,
     pinned: false,
@@ -576,17 +654,18 @@ export function duplicateTask(task: RepeatingTask): RepeatingTask {
 }
 
 export function snoozeTaskInstance(task: RepeatingTask, days = 2, userId?: string): RepeatingTask {
+  const safeDays = Math.min(Math.max(1, days), 30);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const base = new Date(task.nextDueDate);
   const due = base < today ? today : base;
-  due.setDate(due.getDate() + days);
+  due.setDate(due.getDate() + safeDays);
   const now = new Date().toISOString();
   return {
     ...task,
     history: [
       ...(task.history ?? []).slice(-12),
-      { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${days} days` },
+      { month: getMonthLabel(), status: 'snoozed', completedAt: now, completedBy: userId, note: `Snoozed by ${safeDays} days` },
     ],
     nextDueDate: due.toISOString(),
     snoozedUntil: due.toISOString(),
@@ -668,6 +747,7 @@ export function updateTaskDetails(task: RepeatingTask, values: TaskFormValues): 
     rotationMembers: values.rotationMembers !== undefined ? values.rotationMembers : task.rotationMembers,
     householdId: values.householdId !== undefined ? values.householdId : task.householdId,
     icon: values.icon,
+    alarmEnabled: values.alarmEnabled !== undefined ? values.alarmEnabled : task.alarmEnabled,
     nextDueDate,
     updatedAt: new Date().toISOString(),
   };
@@ -681,6 +761,127 @@ export function updateTaskInList(
   return tasks.map((task) => (task.id === taskId ? updater(task) : task));
 }
 
+export interface MemberTaskCleanupTarget {
+  userId?: string;
+  memberCode?: string;
+  userCodes?: string[];
+}
+
+export interface CleanupHouseholdTasksResult {
+  updatedTasks: RepeatingTask[];
+  modifiedTasks: RepeatingTask[];
+}
+
+/**
+ * Cleans up and reassigns household tasks when a member leaves or is removed from a household:
+ * 1. Tasks assigned to the leaving member:
+ *    - If rotating (isRotating):
+ *      - Leaving member is removed from rotationMembers.
+ *      - If remaining rotation members exist, reassigns turn to the next available member in sequence.
+ *      - If no remaining rotation members exist, unassigns task (assignedTo = undefined, isRotating = false, rotationMembers = []).
+ *    - If not rotating:
+ *      - Unassigns task (assignedTo = undefined).
+ * 2. Tasks not currently assigned to the leaving member, but containing them in rotationMembers:
+ *    - Removes them from rotationMembers so future rotations only assign to other available users.
+ *    - If 0 remaining rotation members, sets isRotating = false, rotationMembers = [].
+ * 3. Removes member from sharedWith if present.
+ */
+export function cleanupHouseholdTasksForMember(
+  tasks: RepeatingTask[],
+  householdId: string,
+  target: MemberTaskCleanupTarget
+): CleanupHouseholdTasksResult {
+  const normalizedTargetCode = target.memberCode ? normalizeInviteCode(target.memberCode) : '';
+  const normalizedUserCodes = (target.userCodes || []).map(normalizeInviteCode).filter(Boolean);
+
+  const matchesTarget = (idOrCode?: string): boolean => {
+    if (!idOrCode) return false;
+    const trimmed = idOrCode.trim();
+    if (target.userId && trimmed === target.userId) return true;
+    if (target.memberCode && trimmed === target.memberCode) return true;
+    const normalized = normalizeInviteCode(trimmed);
+    if (normalizedTargetCode && normalized === normalizedTargetCode) return true;
+    if (normalizedUserCodes.includes(normalized)) return true;
+    return false;
+  };
+
+  const modifiedTasks: RepeatingTask[] = [];
+
+  const updatedTasks = tasks.map((t) => {
+    // Only process tasks belonging to the specified household
+    if (t.householdId !== householdId) {
+      return t;
+    }
+
+    let changed = false;
+    const updated: RepeatingTask = { ...t };
+
+    // 1. Clean rotationMembers
+    const originalRotation = updated.rotationMembers || [];
+    let remainingRotation = originalRotation;
+    if (originalRotation.length > 0) {
+      remainingRotation = originalRotation.filter((m) => !matchesTarget(m));
+      if (remainingRotation.length !== originalRotation.length) {
+        updated.rotationMembers = remainingRotation;
+        changed = true;
+      }
+    }
+
+    // 2. Clean sharedWith
+    if (updated.sharedWith && updated.sharedWith.length > 0) {
+      const remainingShared = updated.sharedWith.filter(
+        (s) => !matchesTarget(s.userId) && !matchesTarget(s.code)
+      );
+      if (remainingShared.length !== updated.sharedWith.length) {
+        updated.sharedWith = remainingShared;
+        changed = true;
+      }
+    }
+
+    // 3. Handle assignedTo
+    const isAssignedToLeaving = matchesTarget(updated.assignedTo);
+    if (isAssignedToLeaving) {
+      if (updated.isRotating) {
+        if (remainingRotation.length > 0) {
+          // Find next available member after the leaving member in the original sequence
+          const leavingIdx = originalRotation.findIndex((m) => matchesTarget(m));
+          const nextAvailable =
+            leavingIdx !== -1
+              ? originalRotation.slice(leavingIdx + 1).find((m) => !matchesTarget(m)) ?? remainingRotation[0]
+              : remainingRotation[0];
+
+          updated.assignedTo = nextAvailable;
+          updated.rotationMembers = remainingRotation;
+        } else {
+          // No members left to rotate with -> unassign / open to all
+          updated.assignedTo = undefined;
+          updated.isRotating = false;
+          updated.rotationMembers = [];
+        }
+      } else {
+        // Non-rotating task -> unassign / open to all
+        updated.assignedTo = undefined;
+      }
+      changed = true;
+    } else if (updated.isRotating && remainingRotation.length === 0) {
+      // Not currently assigned to leaving member, but rotation became empty
+      updated.isRotating = false;
+      updated.rotationMembers = [];
+      changed = true;
+    }
+
+    if (changed) {
+      updated.updatedAt = new Date().toISOString();
+      modifiedTasks.push(updated);
+      return updated;
+    }
+
+    return t;
+  });
+
+  return { updatedTasks, modifiedTasks };
+}
+
 export function cleanupTasksOnRemoval(
   tasks: RepeatingTask[],
   removedCode: string,
@@ -689,21 +890,51 @@ export function cleanupTasksOnRemoval(
 ): RepeatingTask[] {
   const matchesRemoved = (idOrCode?: string) => {
     if (!idOrCode) return false;
-    return idOrCode === removedCode || (!!removedUserId && idOrCode === removedUserId);
+    const trimmed = idOrCode.trim();
+    if (trimmed === removedCode || (!!removedUserId && trimmed === removedUserId)) return true;
+    const norm = normalizeInviteCode(trimmed);
+    return norm === normalizeInviteCode(removedCode);
   };
 
   if (removeSharedTasks) {
     return tasks.filter((t) => !t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId)));
   } else {
     return tasks.map((t) => {
-      const isShared = t.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId));
+      let changed = false;
+      const updated: RepeatingTask = { ...t };
+
+      const isShared = updated.sharedWith.some((m) => matchesRemoved(m.code) || matchesRemoved(m.userId));
       if (isShared) {
-        return {
-          ...t,
-          sharedWith: t.sharedWith.filter((m) => !matchesRemoved(m.code) && !matchesRemoved(m.userId)),
-          assignedTo: matchesRemoved(t.assignedTo) ? undefined : t.assignedTo,
-          updatedAt: new Date().toISOString(),
-        };
+        updated.sharedWith = updated.sharedWith.filter((m) => !matchesRemoved(m.code) && !matchesRemoved(m.userId));
+        changed = true;
+      }
+
+      // Check rotation members
+      if (updated.rotationMembers && updated.rotationMembers.length > 0) {
+        const remaining = updated.rotationMembers.filter((m) => !matchesRemoved(m));
+        if (remaining.length !== updated.rotationMembers.length) {
+          updated.rotationMembers = remaining;
+          changed = true;
+        }
+      }
+
+      // Check assignedTo
+      if (matchesRemoved(updated.assignedTo)) {
+        if (updated.isRotating && updated.rotationMembers && updated.rotationMembers.length > 0) {
+          updated.assignedTo = updated.rotationMembers[0];
+        } else {
+          updated.assignedTo = undefined;
+          if (updated.isRotating) {
+            updated.isRotating = false;
+            updated.rotationMembers = [];
+          }
+        }
+        changed = true;
+      }
+
+      if (changed) {
+        updated.updatedAt = new Date().toISOString();
+        return updated;
       }
       return t;
     });
@@ -724,7 +955,8 @@ export interface TaskMergeResult {
  */
 export function mergeTasksLocalAndRemote(
   localTasks: RepeatingTask[] = [],
-  remoteTasks: RepeatingTask[] = []
+  remoteTasks: RepeatingTask[] = [],
+  subscribedHouseholdIds?: Set<string>
 ): TaskMergeResult {
   const localMap = new Map<string, RepeatingTask>();
   for (const t of localTasks) {
@@ -745,6 +977,11 @@ export function mergeTasksLocalAndRemote(
     const remote = remoteMap.get(local.id);
 
     if (!remote) {
+      // If this is a household task belonging to an actively subscribed household,
+      // its absence from remote means it was deleted remotely by another member.
+      if (local.householdId && subscribedHouseholdIds?.has(local.householdId)) {
+        continue;
+      }
       // Local only — keep local and tag for remote sync
       mergedMap.set(local.id, local);
       newerLocalTasks.push(local);

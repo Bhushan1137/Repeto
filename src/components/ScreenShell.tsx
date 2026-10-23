@@ -32,6 +32,7 @@ interface ScreenShellProps {
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
   hideNotificationBell?: boolean;
+  hasTabs?: boolean;
 }
 
 export function ScreenShell({
@@ -49,6 +50,7 @@ export function ScreenShell({
   onRefresh,
   refreshing,
   hideNotificationBell = false,
+  hasTabs,
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -398,7 +400,43 @@ export function ScreenShell({
     }
   );
 
-  const { onScroll: _externalOnScroll, refreshControl: _externalRefreshControl, ...restScrollProps } = scrollProps ?? {};
+  // Check if current screen is within the tab navigator
+  const isTabPath = (p: string | null | undefined): boolean => {
+    if (!p || p === '/') return true;
+    const clean = p.split('?')[0];
+    return (
+      clean === '/' ||
+      clean.startsWith('/(tabs)') ||
+      clean === '/household' ||
+      clean.startsWith('/household/') ||
+      clean === '/insights' ||
+      clean.startsWith('/insights/') ||
+      clean === '/profile' ||
+      clean.startsWith('/profile/') ||
+      clean === '/add' ||
+      clean.startsWith('/add/')
+    );
+  };
+
+  const isTabScreen = hasTabs !== undefined ? hasTabs : isTabPath(pathname);
+
+  // Floating tab bar clearance:
+  // Layout.tabBarHeight = 72
+  // Floating bottom offset = Math.max(insets.bottom, 12)
+  // Center FAB button extends 32px above the tab bar top edge (total 104px above bottom offset)
+  // We provide a clean 16px buffer above the FAB so all cards clear the floating UI cleanly.
+  // Tab clearance: Math.max(insets.bottom, 12) + 72 + 32 + 16 = Math.max(insets.bottom, 12) + 120.
+  // For non-tab screens: Math.max(insets.bottom, 16) + 16.
+  const bottomClearance = isTabScreen
+    ? Math.max(insets.bottom, 12) + Layout.tabBarHeight + 48
+    : Math.max(insets.bottom, 16) + 16;
+
+  const {
+    onScroll: _externalOnScroll,
+    refreshControl: _externalRefreshControl,
+    contentContainerStyle: _externalContentContainerStyle,
+    ...restScrollProps
+  } = scrollProps ?? {};
 
   const refreshControlNode = onRefresh ? (
     <RefreshControl
@@ -416,7 +454,11 @@ export function ScreenShell({
         <Animated.ScrollView
           ref={scrollRef as any}
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: bottomClearance },
+            _externalContentContainerStyle,
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
@@ -428,7 +470,7 @@ export function ScreenShell({
           {body}
         </Animated.ScrollView>
       ) : (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingBottom: isTabScreen ? bottomClearance : insets.bottom }}>
           {expandedHeaderInner}
           {body}
         </View>
@@ -639,14 +681,14 @@ const styles = StyleSheet.create({
 
   // ── Scroll / content ──
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 140 },
+  scrollContent: { flexGrow: 1 },
   content: {
     backgroundColor: Colors.surfaceMuted,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     paddingHorizontal: Layout.screenPadding,
     paddingTop: Layout.screenPadding,
-    paddingBottom: 48,
+    paddingBottom: 0,
     minHeight: 200,
   },
   contentFlat: {

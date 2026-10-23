@@ -16,9 +16,9 @@ import {
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { RepeatingTask } from '@/types';
-import { CATEGORIES, CATEGORY_MAP } from '@/constants/categories';
+import { CATEGORIES } from '@/constants/categories';
 import { AccentHex, Colors, Radius } from '@/constants/theme';
-import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryAccent, getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
 import { daysUntilDue } from '@/domain/recurrence';
 import { AppIcon } from '@/components/AppIcon';
 import { TaskHistoryPanel } from '@/components/TaskHistoryPanel';
@@ -108,7 +108,7 @@ function TaskRowCard({
   onPress: () => void;
 }) {
   const { task, onTimePercent, status } = row;
-  const cat = CATEGORY_MAP[task.category] ?? CATEGORY_MAP['home'];
+  const cat = getCategoryDef(task.category);
   const accent = AccentHex[getCategoryAccent(task.category)];
   const theme = getStatusTheme(status);
   const isLateDone = onTimePercent === 0 && row.totalDone > 0;

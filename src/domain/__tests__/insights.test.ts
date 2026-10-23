@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   calculateStreak,
   calculateDailyStreak,
@@ -112,7 +112,25 @@ describe('insights domain module', () => {
     expect(forecast.yearlyEstimate).toBe(180000);
     expect(forecast.currency).toBe('₹');
     expect(forecast.spentSoFarThisMonth).toBe(15000); // completed history in current month
-    expect(forecast.upcomingThisMonth).toBe(0);
+  });
+
+  it('correctly calculates upcomingThisMonth for bills due later this month', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T10:00:00.000Z'));
+    try {
+      const pendingTask: RepeatingTask = {
+        ...mockTask,
+        id: 'task-pending',
+        amount: 4500,
+        nextDueDate: '2026-06-28T10:00:00.000Z',
+        history: [],
+      };
+      const forecast = computeSpendForecast([pendingTask], 'en');
+      expect(forecast.upcomingThisMonth).toBe(4500);
+      expect(forecast.spentSoFarThisMonth).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('calculates true daily streak across multiple days', () => {
@@ -187,5 +205,31 @@ describe('insights domain module', () => {
 
     const stats = getHouseholdStats([mockTask]);
     expect(stats.shared).toHaveLength(1);
+  });
+
+  it('does not resurrect departed members from task.sharedWith when householdMembers is provided', () => {
+    // Task historically has Alice in sharedWith
+    const taskWithAlice: RepeatingTask = {
+      ...mockTask,
+      sharedWith: [{ code: 'ALICE_CODE', name: 'Alice', phone: '123', color: '#123456', userId: 'user-alice' }],
+    };
+
+    // Alice has left the household! Authoritative householdMembers only has Bob
+    const authoritativeMembers = [
+      { code: 'BOB_CODE', name: 'Bob', color: '#654321', status: 'active' as const, addedAt: '2026-01-01', userId: 'user-bob' },
+    ];
+
+    const derived = deriveHouseholdMembers(
+      [taskWithAlice],
+      'Owner',
+      authoritativeMembers,
+      'user-owner',
+      'OWNER_CODE'
+    );
+
+    // Should contain: Owner (isYou) and Bob. Alice must NOT be resurrected!
+    expect(derived).toHaveLength(2);
+    expect(derived.map((m) => m.name)).toEqual(['Owner', 'Bob']);
+    expect(derived.some((m) => m.name === 'Alice')).toBe(false);
   });
 });

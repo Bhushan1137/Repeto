@@ -15,9 +15,11 @@ import {
   recurrenceTypeLabel,
   recurrenceToFormState,
   validateFormState,
+  validateSmartTitle,
   weekdayLabel,
 } from '@/domain/taskForm';
-import { createTaskFromPreset } from '@/domain/task';
+import { createTaskFromParsed, createTaskFromPreset, updateTaskDetails } from '@/domain/task';
+import { taskToFormValues } from '@/domain/preset';
 import type { TaskFormState } from '@/domain/taskForm';
 
 describe('domain/taskForm', () => {
@@ -57,6 +59,7 @@ describe('domain/taskForm', () => {
     const state1 = formStateFromTask(task);
     expect(state1.title).toBe('Rent');
     expect(state1.amountText).toBe('10000');
+    expect(state1.alarmEnabled).toBe(false);
 
     const state2 = formStateFromParsed({
       title: 'Gym',
@@ -66,6 +69,7 @@ describe('domain/taskForm', () => {
       amount: 1500,
     });
     expect(state2.title).toBe('Gym');
+    expect(state2.alarmEnabled).toBe(false);
 
     const state3 = formStateFromValues({
       title: 'Car Service',
@@ -75,6 +79,108 @@ describe('domain/taskForm', () => {
       finance: false,
     });
     expect(state3.title).toBe('Car Service');
+    expect(state3.alarmEnabled).toBe(false);
+  });
+
+  it('manages alarmEnabled state consistency across parsed, values, task, and category changes', () => {
+    // 1. formStateFromParsed with explicit alarmEnabled true
+    const parsedAlarmOn = formStateFromParsed({
+      title: 'Wake up',
+      category: 'personal',
+      recurrence: { type: 'daily' },
+      frequencyLabel: 'Daily',
+      alarmEnabled: true,
+    });
+    expect(parsedAlarmOn.alarmEnabled).toBe(true);
+
+    // 2. formStateFromParsed with explicit alarmEnabled false
+    const parsedAlarmOff = formStateFromParsed({
+      title: 'BP Tablets',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      frequencyLabel: 'Daily',
+      alarmEnabled: false,
+    });
+    expect(parsedAlarmOff.alarmEnabled).toBe(false);
+
+    // 3. formStateFromValues defaults medicines to true if unspecified
+    const medValues = formStateFromValues({
+      title: 'Insulin',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+    });
+    expect(medValues.alarmEnabled).toBe(true);
+
+    // 4. formStateFromValues preserves explicit false for medicines
+    const medValuesOff = formStateFromValues({
+      title: 'Vitamins',
+      category: 'medicines',
+      recurrence: { type: 'daily' },
+      freq: 'Daily',
+      finance: false,
+      alarmEnabled: false,
+    });
+    expect(medValuesOff.alarmEnabled).toBe(false);
+
+    // 5. applyCategoryChange switches alarm to true when category becomes medicines
+    const baseState = defaultFormState('home');
+    expect(baseState.alarmEnabled).toBe(false);
+    const medState = applyCategoryChange(baseState, 'medicines');
+    expect(medState.alarmEnabled).toBe(true);
+  });
+
+  it('preserves alarmEnabled throughout full create -> save -> open edit -> update -> re-open lifecycle', () => {
+    // 1. User starts Add Task form and enables Alarm Mode
+    const createFormState = defaultFormState('home');
+    createFormState.title = 'Morning Workout';
+    createFormState.alarmEnabled = true;
+    createFormState.reminderTime = '06:30';
+
+    // 2. Form state is converted to submit values (as done in AddTaskSheet and add.tsx)
+    const submitValues = formStateToValues(createFormState, 'en');
+    expect(submitValues.alarmEnabled).toBe(true);
+
+    // 3. Task is created via createTaskFromParsed (with alarmEnabled passed)
+    const createdTask = createTaskFromParsed(
+      {
+        title: submitValues.title,
+        frequencyLabel: submitValues.freq,
+        recurrence: submitValues.recurrence,
+        category: submitValues.category,
+        reminderTime: submitValues.reminderTime,
+        timesPerDay: submitValues.timesPerDay,
+        reminderTimes: submitValues.reminderTimes,
+        startDate: submitValues.startDate,
+        alarmEnabled: submitValues.alarmEnabled,
+      },
+      { finance: submitValues.finance, shared: [] }
+    );
+    expect(createdTask.alarmEnabled).toBe(true);
+
+    // 4. User opens Edit Sheet -> initial values extracted via taskToFormValues
+    const editInitialValues = taskToFormValues(createdTask, 'en');
+    expect(editInitialValues.alarmEnabled).toBe(true);
+
+    // 5. Edit TaskFormSheet initializes formStateFromValues
+    const editFormState = formStateFromValues(editInitialValues);
+    expect(editFormState.alarmEnabled).toBe(true);
+
+    // 6. User edits task title and saves
+    editFormState.title = 'Morning Cardio & Workout';
+    const updatedValues = formStateToValues(editFormState, 'en');
+    expect(updatedValues.alarmEnabled).toBe(true);
+
+    const updatedTask = updateTaskDetails(createdTask, updatedValues);
+    expect(updatedTask.alarmEnabled).toBe(true);
+    expect(updatedTask.title).toBe('Morning Cardio & Workout');
+
+    // 7. User re-opens edit on updated task
+    const reOpenInitial = taskToFormValues(updatedTask, 'en');
+    expect(reOpenInitial.alarmEnabled).toBe(true);
+    const reOpenState = formStateFromValues(reOpenInitial);
+    expect(reOpenState.alarmEnabled).toBe(true);
   });
 
   it('applyCategoryChange updates defaults and limits allowed recurrence types', () => {
@@ -163,6 +269,137 @@ describe('domain/taskForm', () => {
     expect(restoredState.assignedTo).toBe('user-sarah');
     expect(restoredState.isRotating).toBe(true);
     expect(restoredState.rotationMembers).toEqual(['user-sarah', 'user-malay']);
+  });
+
+  it('validateSmartTitle validates pure numbers, frequencies, symbols, and length', () => {
+    // Empty
+    expect(validateSmartTitle('').isValid).toBe(false);
+    expect(validateSmartTitle('   ').isValid).toBe(false);
+
+    // Too short
+    expect(validateSmartTitle('A').isValid).toBe(false);
+
+    // Pure numbers
+    const numRes = validateSmartTitle('15000');
+    expect(numRes.isValid).toBe(false);
+    expect(numRes.error).toContain('15000');
+
+    // Pure frequency without task name
+    const freqRes = validateSmartTitle('daily');
+    expect(freqRes.isValid).toBe(false);
+
+    // Valid title
+    expect(validateSmartTitle('Water plants').isValid).toBe(true);
+    expect(validateSmartTitle('किराया 15000', 'hi').isValid).toBe(true);
+  });
+
+  it('defaultFormState initializes startDate and reminderTime with current local date and time', () => {
+    const state = defaultFormState('bills');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    expect(state.startDate).toBe(todayStr);
+    expect(state.reminderTime).toMatch(/^\d{2}:\d{2}$/);
+    expect(state.reminderTimes).toContain(state.reminderTime);
+  });
+
+  it('alarmEnabled defaults correctly and preserves through form conversions', () => {
+    // Medicine defaults to alarmEnabled: true
+    const medState = defaultFormState('medicines');
+    expect(medState.alarmEnabled).toBe(true);
+
+    // Bills default to alarmEnabled: false
+    const billState = defaultFormState('bills');
+    expect(billState.alarmEnabled).toBe(false);
+
+    // formStateToValues preserves alarmEnabled
+    medState.title = 'Blood pressure med';
+    const values = formStateToValues(medState, 'en');
+    expect(values.alarmEnabled).toBe(true);
+
+    // formStateFromValues reads alarmEnabled
+    const restored = formStateFromValues(values);
+    expect(restored.alarmEnabled).toBe(true);
+
+    // Explicitly toggle off
+    restored.alarmEnabled = false;
+    const toggledValues = formStateToValues(restored, 'en');
+    expect(toggledValues.alarmEnabled).toBe(false);
+  });
+
+  it('preserves task note across form conversions and task creation (VAL-021, VAL-022)', () => {
+    // 1. formStateFromParsed preserves note
+    const parsedWithNote = {
+      title: 'Water filter replacement',
+      category: 'home' as const,
+      recurrence: { type: 'monthly' as const },
+      frequencyLabel: 'Monthly',
+      note: 'Order filter model RO-75',
+    };
+    const stateFromParsed = formStateFromParsed(parsedWithNote);
+    expect(stateFromParsed.note).toBe('Order filter model RO-75');
+
+    // 2. formStateToValues extracts note
+    const values = formStateToValues(stateFromParsed, 'en');
+    expect(values.note).toBe('Order filter model RO-75');
+
+    // 3. createTaskFromParsed stores note in RepeatingTask
+    const task = createTaskFromParsed(parsedWithNote, { finance: false, shared: [] });
+    expect(task.note).toBe('Order filter model RO-75');
+
+    // 4. formStateFromTask restores existing note (VAL-021 fix)
+    const stateFromTask = formStateFromTask(task);
+    expect(stateFromTask.note).toBe('Order filter model RO-75');
+  });
+
+  it('validates smart title sanitization and rejects HTML/script tags (VAL-019, VAL-063)', () => {
+    // 1. Rejects script and HTML tags
+    const scriptCheck = validateSmartTitle('<script>alert("xss")</script>');
+    expect(scriptCheck.isValid).toBe(false);
+    expect(scriptCheck.error).toContain('HTML tags');
+
+    const htmlCheck = validateSmartTitle('<b>Bold Title</b>');
+    expect(htmlCheck.isValid).toBe(false);
+
+    // 2. Strips zero-width/control characters
+    const controlCharsTitle = 'Daily\u200B Medicine\u0000';
+    const sanitizedCheck = validateSmartTitle(controlCharsTitle);
+    expect(sanitizedCheck.isValid).toBe(true);
+    expect(sanitizedCheck.sanitized).toBe('Daily Medicine');
+  });
+
+  it('validates multi-dose time conflicts and note length limits (VAL-014, VAL-016)', () => {
+    const dummyTranslate = (k: string) => k;
+    const baseState: TaskFormState = {
+      ...defaultFormState('medicines'),
+      title: 'Antibiotics',
+    };
+
+    // Note > 500 chars fails validation
+    const longNoteState: TaskFormState = {
+      ...baseState,
+      note: 'A'.repeat(501),
+    };
+    const noteErrors = validateFormState(longNoteState, dummyTranslate);
+    expect(noteErrors.note).toBeDefined();
+
+    // Multi-dose with identical / close times (< 5 min apart) fails validation
+    const conflictTimesState: TaskFormState = {
+      ...baseState,
+      isMultiTime: true,
+      timesPerDay: 2,
+      reminderTimes: ['09:00', '09:03'],
+    };
+    const timeErrors = validateFormState(conflictTimesState, dummyTranslate);
+    expect(timeErrors.time).toBeDefined();
+
+    // Multi-dose with separated times passes
+    const validTimesState: TaskFormState = {
+      ...baseState,
+      isMultiTime: true,
+      timesPerDay: 2,
+      reminderTimes: ['09:00', '13:00'],
+    };
+    const validErrors = validateFormState(validTimesState, dummyTranslate);
+    expect(validErrors.time).toBeUndefined();
   });
 });
 

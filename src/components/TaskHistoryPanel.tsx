@@ -5,13 +5,14 @@ import {
   StyleSheet,
   Pressable,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { CompletionStatus, RepeatingTask } from '@/types';
-import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Radius } from '@/constants/theme';
-import { getCategoryAccent, getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryAccent, getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
 import { daysUntilDue } from '@/domain/recurrence';
 import { AppIcon } from '@/components/AppIcon';
 import { computeTaskStats } from '@/domain/taskReport';
@@ -63,10 +64,16 @@ function formatDateTime(iso?: string, lang?: 'en' | 'hi'): string {
 // ─── Component ────────────────────────────────────────────────────────────
 
 export function TaskHistoryPanel({ task, language, onBack }: TaskHistoryPanelProps) {
+  const insets = useSafeAreaInsets();
   const [showAll, setShowAll] = useState(false);
   const isHi = language === 'hi';
 
-  const cat = CATEGORY_MAP[task.category] ?? CATEGORY_MAP['home'];
+  const topPad = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 16
+  ) + 8;
+
+  const cat = getCategoryDef(task.category);
   const accent = AccentHex[getCategoryAccent(task.category)];
   const catLabel = getCategoryLabel(task.category, language);
   const stats = computeTaskStats(task);
@@ -95,16 +102,16 @@ export function TaskHistoryPanel({ task, language, onBack }: TaskHistoryPanelPro
   return (
     <View style={styles.root}>
       {/* ── Top Back Header Bar ──────────────────────────────── */}
-      <View style={styles.backRow}>
+      <View style={[styles.backRow, { paddingTop: topPad }]}>
         <Pressable onPress={onBack} style={styles.backBtn} hitSlop={12}>
           <View style={styles.backIconCircle}>
             <AppIcon name="chevron-back" size={16} color={Colors.ink} />
           </View>
-          <Text style={styles.backLabel}>{isHi ? 'सभी कार्य लिस्ट' : 'All Tasks'}</Text>
+          <Text style={styles.backLabel} numberOfLines={1}>{isHi ? 'सभी कार्य लिस्ट' : 'All Tasks'}</Text>
         </Pressable>
 
         <View style={styles.headerRightBadge}>
-          <Text style={styles.headerRightBadgeText}>{catLabel}</Text>
+          <Text style={styles.headerRightBadgeText} numberOfLines={1}>{catLabel}</Text>
         </View>
       </View>
 
@@ -302,7 +309,7 @@ export function TaskHistoryPanel({ task, language, onBack }: TaskHistoryPanelPro
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: Math.max(insets.bottom, 24) + 16 }} />
       </ScrollView>
     </View>
   );
@@ -319,7 +326,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 10 : 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.ivoryLine,
@@ -329,6 +335,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 1,
   },
   backIconCircle: {
     width: 28,
@@ -350,10 +357,11 @@ const styles = StyleSheet.create({
     borderRadius: 99,
     borderWidth: 1,
     borderColor: Colors.ivoryLine,
+    maxWidth: 160,
   },
   headerRightBadgeText: {
     fontFamily: 'Manrope_700Bold',
-    fontSize: 11,
+    fontSize: 10.5,
     color: Colors.marigoldDeep,
     textTransform: 'uppercase',
   },

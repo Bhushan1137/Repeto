@@ -1,7 +1,7 @@
 import type { Language, UserProfile } from '@/types';
 import type { User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { signInWithGoogleNative, getAuthErrorMessage, signOutFirebase } from '@/services/firebase/auth';
+import { signInWithGoogleNative, getAuthErrorMessage } from '@/services/firebase/auth';
 import { loadUserRemote, softDeleteUserRemote } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { normalizeHouseholdProfile } from '@/domain/household';
@@ -19,7 +19,7 @@ export function profileFromFirebaseUser(fbUser: User, language: Language): UserP
   return normalizeHouseholdProfile({
     id: fbUser.uid,
     name: fbUser.displayName?.trim() ?? '',
-    email: fbUser.email ?? '',
+    email: (fbUser.email ?? '').trim().toLowerCase(),
     phone: fbUser.phoneNumber ?? '',
     photoUrl: fbUser.photoURL ?? undefined,
     language,
@@ -46,7 +46,10 @@ async function buildProfile(fbUser: User, language: Language): Promise<UserProfi
     });
   }
 
-  return normalizeHouseholdProfile(base);
+  return normalizeHouseholdProfile({
+    ...base,
+    languageSelected: true,
+  });
 }
 
 export async function signInWithGoogle(language: Language): Promise<SignInResult> {
@@ -104,9 +107,10 @@ export async function signInWithEmail(
   pass: string,
   language: Language
 ): Promise<SignInResult> {
+  const normalizedEmail = email.trim().toLowerCase();
   try {
     const { signInWithEmailPassword } = await import('@/services/firebase/auth');
-    const fbUser = await signInWithEmailPassword(email.trim(), pass);
+    const fbUser = await signInWithEmailPassword(normalizedEmail, pass);
     const remote = await loadUserRemote(fbUser.uid);
     if (remote?.isDeleted === true) {
       return {
@@ -116,7 +120,7 @@ export async function signInWithEmail(
           deletedAt: remote.deletedAt ?? new Date().toISOString(),
           purgeAfter: remote.purgeAfter ?? null,
           userId: fbUser.uid,
-          email: fbUser.email ?? remote.email ?? email.trim(),
+          email: fbUser.email ?? remote.email ?? normalizedEmail,
         },
       };
     }
@@ -137,15 +141,18 @@ export async function signUpWithEmail(
   language: Language,
   name?: string
 ): Promise<SignInResult> {
+  const normalizedEmail = email.trim().toLowerCase();
   try {
     const { signUpWithEmailPassword } = await import('@/services/firebase/auth');
     const { saveUserRemote } = await import('@/services/firebase/firestore');
-    const fbUser = await signUpWithEmailPassword(email.trim(), pass);
+    const fbUser = await signUpWithEmailPassword(normalizedEmail, pass);
     const base = profileFromFirebaseUser(fbUser, language);
     const user: UserProfile = {
       ...base,
-      name: name?.trim() || base.name || email.trim().split('@')[0],
+      name: name?.trim() || base.name || normalizedEmail.split('@')[0],
+      email: normalizedEmail,
       profileComplete: Boolean(name && name.trim().length >= 2),
+      languageSelected: true,
     };
     try {
       await saveUserRemote(user);
@@ -177,7 +184,6 @@ export async function deleteAccountSoft(
   }
   try {
     await softDeleteUserRemote(userId, deletionReason);
-    await signOutFirebase();
     return { ok: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

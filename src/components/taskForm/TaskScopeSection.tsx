@@ -259,7 +259,7 @@ export function TaskScopeSection({
                 <View style={styles.modeTabInner}>
                   <AppIcon
                     name="globe-outline"
-                    size={15}
+                    size={16}
                     color={activeMode === 'open' ? Colors.tealDeep : Colors.inkSoft}
                   />
                   <Text
@@ -269,7 +269,7 @@ export function TaskScopeSection({
                     ]}
                     numberOfLines={1}
                   >
-                    {translate('respOpen')}
+                    {translate('respOpenTab') || translate('respOpen')}
                   </Text>
                 </View>
               </TouchableRipple>
@@ -283,7 +283,7 @@ export function TaskScopeSection({
                 <View style={styles.modeTabInner}>
                   <AppIcon
                     name="person-outline"
-                    size={15}
+                    size={16}
                     color={activeMode === 'assigned' ? Colors.tealDeep : Colors.inkSoft}
                   />
                   <Text
@@ -293,7 +293,7 @@ export function TaskScopeSection({
                     ]}
                     numberOfLines={1}
                   >
-                    {translate('respAssigned')}
+                    {translate('respAssignedTab') || translate('respAssigned')}
                   </Text>
                 </View>
               </TouchableRipple>
@@ -307,7 +307,7 @@ export function TaskScopeSection({
                 <View style={styles.modeTabInner}>
                   <AppIcon
                     name="refresh-outline"
-                    size={15}
+                    size={16}
                     color={activeMode === 'rotating' ? Colors.marigoldDeep : Colors.inkSoft}
                   />
                   <Text
@@ -317,7 +317,7 @@ export function TaskScopeSection({
                     ]}
                     numberOfLines={1}
                   >
-                    {translate('respRotating')}
+                    {translate('respRotatingTab') || translate('respRotating')}
                   </Text>
                 </View>
               </TouchableRipple>
@@ -568,37 +568,38 @@ const styles = StyleSheet.create({
   },
   modeTabsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceMuted,
-    borderRadius: Radius.sm,
-    padding: 3,
-    gap: 4,
+    backgroundColor: 'rgba(27,31,59,0.06)',
+    borderRadius: Radius.md,
+    padding: 4,
+    gap: 6,
     marginBottom: 14,
   },
   modeTab: {
     flex: 1,
-    borderRadius: Radius.xs,
+    borderRadius: Radius.sm,
     overflow: 'hidden',
   },
   modeTabActive: {
     backgroundColor: Colors.white,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
+    shadowColor: Colors.indigo950,
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
   modeTabInner: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 9,
     paddingHorizontal: 4,
-    gap: 5,
+    gap: 4,
   },
   modeTabLabel: {
-    fontFamily: 'Manrope_600SemiBold',
+    fontFamily: 'Manrope_700Bold',
     fontSize: 11,
     color: Colors.inkSoft,
+    textAlign: 'center',
   },
   modeTabLabelActive: {
     color: Colors.tealDeep,

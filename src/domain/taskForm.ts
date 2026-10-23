@@ -1,11 +1,11 @@
-import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
 import { computeNextDueDate, frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
 import type { TranslationKey } from '@/i18n';
+import type { AnyCategoryKey, CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 
 export interface TaskFormValues {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrence: RecurrenceRule;
   freq: string;
   amount?: number;
@@ -20,11 +20,13 @@ export interface TaskFormValues {
   note?: string;
   isRotating?: boolean;
   rotationMembers?: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled?: boolean;
 }
 
 export interface TaskFormState {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrenceType: RecurrenceType;
   dayOfMonth: number;
   weekday: number;
@@ -44,6 +46,8 @@ export interface TaskFormState {
   note: string;
   isRotating: boolean;
   rotationMembers: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled: boolean;
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -148,27 +152,30 @@ export function normalizeReminderTimes(timesPerDay?: number, reminderTimes?: str
   return result;
 }
 
-export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState {
+export function defaultFormState(category: AnyCategoryKey = 'bills'): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
-  const defaultTime = config.defaultReminderTime ?? '09:00';
+  const now = new Date();
+  const defaultDate = now.toISOString().slice(0, 10);
+  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   return {
     title: '',
     category,
     ...rec,
     amountText: '',
     finance: config.showFinance,
-    reminderTime: config.defaultReminderTime ?? null,
+    reminderTime: defaultTime,
     isMultiTime: false,
     timesPerDay: 1,
     reminderTimes: [defaultTime],
-    startDate: null,
+    startDate: defaultDate,
     assignedTo: null,
     householdId: null,
     icon: null,
     note: '',
     isRotating: false,
     rotationMembers: [],
+    alarmEnabled: category === 'medicines',
   };
 }
 
@@ -197,6 +204,8 @@ export function formStateFromValues(values: TaskFormValues): TaskFormState {
     note: values.note ?? '',
     isRotating: !!values.isRotating,
     rotationMembers: values.rotationMembers ?? [],
+    // Respect explicit alarmEnabled; fallback to true for medicines, false for others
+    alarmEnabled: values.alarmEnabled !== undefined ? values.alarmEnabled : (values.category === 'medicines'),
   };
 }
 
@@ -226,9 +235,11 @@ export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
     assignedTo: null,
     householdId: null,
     icon: parsed.icon ?? null,
-    note: '',
+    note: parsed.note ?? '',
     isRotating: false,
     rotationMembers: [],
+    // Respect explicit alarm intent from smart input parser; otherwise medicine defaults to ON
+    alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
   };
 }
 
@@ -255,13 +266,15 @@ export function formStateFromTask(task: RepeatingTask): TaskFormState {
     assignedTo: task.assignedTo ?? null,
     householdId: task.householdId ?? null,
     icon: task.icon ?? null,
-    note: '',
+    note: task.note ?? '',
     isRotating: !!task.isRotating,
     rotationMembers: task.rotationMembers ?? [],
+    // Preserve existing alarmEnabled; medicine defaults to ON for new tasks
+    alarmEnabled: task.alarmEnabled ?? (task.category === 'medicines'),
   };
 }
 
-export function applyCategoryChange(state: TaskFormState, category: CategoryKey): TaskFormState {
+export function applyCategoryChange(state: TaskFormState, category: AnyCategoryKey): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
   const allowed = config.allowedRecurrenceTypes;
@@ -278,6 +291,8 @@ export function applyCategoryChange(state: TaskFormState, category: CategoryKey)
     finance: config.showFinance ? state.finance || config.showAmount : false,
     reminderTime: state.reminderTime ?? config.defaultReminderTime ?? null,
     startDate: state.startDate,
+    // Switch to alarm ON when switching category to medicines
+    alarmEnabled: category === 'medicines' ? true : state.alarmEnabled,
   };
 }
 
@@ -317,13 +332,14 @@ export function formStateToValues(state: TaskFormState, lang: Language): TaskFor
     note: state.note.trim() || undefined,
     isRotating: state.isRotating,
     rotationMembers: state.rotationMembers.length > 0 ? state.rotationMembers : undefined,
+    alarmEnabled: state.alarmEnabled,
   };
 }
 
 export function formStateFromLegacyFreq(
   title: string,
   freq: string,
-  category: CategoryKey,
+  category: AnyCategoryKey,
   amount?: number,
   finance?: boolean,
   _lang: Language = 'en',
@@ -346,6 +362,96 @@ export interface TaskFormErrors {
   title?: string;
   amount?: string;
   recurrence?: string;
+  time?: string;
+  note?: string;
+}
+
+export interface SmartTitleValidation {
+  isValid: boolean;
+  error?: string;
+  warning?: string;
+  sanitized?: string;
+}
+
+export function validateSmartTitle(
+  title: string,
+  lang: Language = 'en'
+): SmartTitleValidation {
+  const trimmed = title.trim();
+
+  if (!trimmed) {
+    return {
+      isValid: false,
+      error: lang === 'hi' ? 'कृपया कार्य का नाम दर्ज करें' : 'Please enter a task name',
+    };
+  }
+
+  // Reject HTML tags, script, or javascript URI patterns
+  if (/<[^>]*>|javascript:|data:/i.test(trimmed)) {
+    return {
+      isValid: false,
+      error: lang === 'hi' ? 'कार्य के नाम में अमान्य वर्ण या HTML टैग हैं' : 'Task name contains unsupported characters or HTML tags',
+    };
+  }
+
+  // Pure digits or currency: e.g. "15000", "₹15,000", "500"
+  const cleanDigits = trimmed.replace(/[₹$,.\s]/g, '');
+  if (/^\d+$/.test(cleanDigits)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'यह केवल एक राशि है! कृपया कार्य का नाम भी लिखें (उदा. "किराया ₹' + cleanDigits + '")'
+        : `Looks like an amount! Please add a task name (e.g. "Rent ₹${cleanDigits}")`,
+    };
+  }
+
+  // Pure symbols or emojis without alphanumeric
+  const hasWordChars = /[\p{L}\p{N}]/u.test(trimmed);
+  if (!hasWordChars) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया कार्य के नाम में शब्द या अक्षर शामिल करें'
+        : 'Please include letters or words for the task name',
+    };
+  }
+
+  // Strip invisible control characters before checking minimum length
+  // eslint-disable-next-line no-control-regex
+  const sanitized = trimmed.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f]/gu, '');
+
+  // Minimum length check
+  if (sanitized.length < 2) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कार्य का नाम कम से कम 2 अक्षरों का होना चाहिए'
+        : 'Task name must be at least 2 characters',
+    };
+  }
+
+  // Pure frequency without task name: e.g. "daily", "monthly", "हर दिन", "हर महीने"
+  const lower = trimmed.toLowerCase();
+  if (/^(daily|everyday|every\s*day|weekly|every\s*week|monthly|every\s*month|yearly|हर\s*दिन|रोज़|रोज|हर\s*महीने|हर\s*हफ्ते)$/i.test(lower)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया बताएं कि क्या दोहराना है (उदा. "कसरत हर दिन")'
+        : `Please specify what task to do (e.g. "Workout ${trimmed}")`,
+    };
+  }
+
+  if (trimmed.length > 70) {
+    return {
+      isValid: true,
+      sanitized,
+      warning: lang === 'hi'
+        ? `${80 - trimmed.length} अक्षर शेष`
+        : `${80 - trimmed.length} characters remaining`,
+    };
+  }
+
+  return { isValid: true, sanitized };
 }
 
 export function validateFormState(
@@ -354,10 +460,8 @@ export function validateFormState(
 ): TaskFormErrors {
   const errors: TaskFormErrors = {};
 
-  const trimmedTitle = state.title.trim();
-  // eslint-disable-next-line no-misleading-character-class
-  const hasAlphanumeric = /[a-zA-Z0-9\u0900-\u097F]/.test(trimmedTitle);
-  if (trimmedTitle.length < 2 || !hasAlphanumeric) {
+  const titleValidation = validateSmartTitle(state.title);
+  if (!titleValidation.isValid) {
     errors.title = translate('presetTitleRequired');
   }
 
@@ -375,6 +479,32 @@ export function validateFormState(
     errors.recurrence = translate('intervalRequired');
   }
 
+  // Multi-dose time conflict check (VAL-016)
+  if (state.isMultiTime && state.timesPerDay > 1 && state.reminderTimes && state.reminderTimes.length > 1) {
+    const minutesList = state.reminderTimes.slice(0, state.timesPerDay).map((t) => {
+      const [h, m] = t.split(':').map(Number);
+      return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+    });
+    let hasConflict = false;
+    for (let i = 0; i < minutesList.length; i++) {
+      for (let j = i + 1; j < minutesList.length; j++) {
+        if (Math.abs(minutesList[i] - minutesList[j]) < 5) {
+          hasConflict = true;
+          break;
+        }
+      }
+      if (hasConflict) break;
+    }
+    if (hasConflict) {
+      errors.time = 'Reocurrence time must be at least 5 minutes apart';
+    }
+  }
+
+  // Note length validation (VAL-014)
+  if (state.note && state.note.length > 500) {
+    errors.note = 'Note cannot exceed 500 characters';
+  }
+
   return errors;
 }
 
@@ -388,7 +518,11 @@ export function dayOfMonthOptions(): { value: number; labelEn: string; labelHi: 
 export function intervalPresets(category: CategoryKey): number[] {
   switch (category) {
     case 'vehicle':
+    case 'maintenance':
+    case 'documents':
       return [3, 6, 12];
+    case 'supplies':
+    case 'gardening':
     case 'home':
     case 'pets':
     case 'health':

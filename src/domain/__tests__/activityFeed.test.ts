@@ -68,4 +68,53 @@ describe('activityFeed domain module', () => {
     expect(feed[0].completedByName).toBe('Household member');
     expect(feed[0].completedByColor).toBe('#363E71');
   });
+
+  it('incorporates explicit household activities with action details and sorts newest first', () => {
+    const explicitActs = [
+      {
+        id: 'act-1',
+        householdId: 'hh-1',
+        action: 'task_created' as const,
+        taskId: 't-new',
+        taskTitle: 'Buy Groceries',
+        actorId: 'user-1',
+        actorName: 'Malay',
+        timestamp: '2026-09-02T10:00:00.000Z',
+      },
+      {
+        id: 'act-2',
+        householdId: 'hh-1',
+        action: 'member_joined' as const,
+        actorId: 'user-2',
+        actorName: 'Alice',
+        timestamp: '2026-09-02T11:00:00.000Z',
+      },
+      {
+        id: 'act-3',
+        householdId: 'hh-1',
+        action: 'task_assigned' as const,
+        taskId: 't-new',
+        taskTitle: 'Buy Groceries',
+        actorId: 'user-1',
+        actorName: 'Malay',
+        targetUserName: 'Alice',
+        timestamp: '2026-09-02T12:00:00.000Z',
+      },
+    ];
+
+    const feed = buildActivityFeed([mockTask], members, 'user-1', 'Malay', explicitActs);
+
+    expect(feed[0].action).toBe('task_assigned');
+    expect(feed[0].targetUserName).toBe('Alice');
+    expect(feed[0].completedByName).toBe('Malay');
+
+    expect(feed[1].action).toBe('member_joined');
+    expect(feed[1].completedByName).toBe('Alice');
+
+    expect(feed[2].action).toBe('task_created');
+    expect(feed[2].taskTitle).toBe('Buy Groceries');
+
+    // Deduplication ensures history-based entries don't duplicate explicit activities
+    expect(feed.length).toBe(5); // 3 explicit + 2 mockTask history
+  });
 });

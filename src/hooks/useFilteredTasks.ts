@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { CategoryKey, RepeatingTask, TaskGroup } from '@/types';
+import type { AnyCategoryKey, RepeatingTask, TaskGroup } from '@/types';
 import { daysUntilDue } from '@/domain/recurrence';
 
 export type FilterGroup = TaskGroup | 'upcoming' | 'all';
@@ -7,7 +7,7 @@ export type FilterGroup = TaskGroup | 'upcoming' | 'all';
 export interface FilterState {
   query: string;
   group: FilterGroup;
-  category: CategoryKey | 'all';
+  category: AnyCategoryKey | 'all';
   householdId?: string | 'all' | 'personal';
 }
 
@@ -18,7 +18,7 @@ export const DEFAULT_FILTER: FilterState = {
   householdId: 'all',
 };
 
-export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
+export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState, dayKey?: string) {
   return useMemo(() => {
     let result = tasks;
 
@@ -67,5 +67,5 @@ export function useFilteredTasks(tasks: RepeatingTask[], filter: FilterState) {
     }
 
     return result;
-  }, [tasks, filter]);
+  }, [tasks, filter, dayKey]);
 }

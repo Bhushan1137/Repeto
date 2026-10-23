@@ -179,8 +179,57 @@ export const CATEGORY_FORM_CONFIG: Record<CategoryKey, CategoryFormConfig> = {
     defaultReminderTime: '09:00',
     allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
   },
+  supplies: {
+    titlePlaceholder: 'catPlaceholderSupplies',
+    showAmount: true,
+    showFinance: true,
+    showReminderTime: true,
+    defaultReminderTime: '08:00',
+    showStartDate: false,
+    defaultRecurrence: { type: 'monthDay', dayOfMonth: 1 },
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
+  },
+  maintenance: {
+    titlePlaceholder: 'catPlaceholderMaintenance',
+    showAmount: false,
+    showFinance: false,
+    showReminderTime: false,
+    showStartDate: false,
+    defaultRecurrence: { type: 'interval', interval: 3, intervalUnit: 'months' },
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
+  },
+  documents: {
+    titlePlaceholder: 'catPlaceholderDocuments',
+    showAmount: false,
+    showFinance: false,
+    showReminderTime: false,
+    showStartDate: false,
+    defaultRecurrence: { type: 'interval', interval: 6, intervalUnit: 'months' },
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
+  },
+  gardening: {
+    titlePlaceholder: 'catPlaceholderGardening',
+    showAmount: false,
+    showFinance: false,
+    showReminderTime: true,
+    defaultReminderTime: '08:00',
+    showStartDate: false,
+    defaultRecurrence: { type: 'daily' },
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
+  },
 };
 
-export function getCategoryFormConfig(category: CategoryKey): CategoryFormConfig {
-  return CATEGORY_FORM_CONFIG[category];
+export function getCategoryFormConfig(category: import('@/types').AnyCategoryKey): CategoryFormConfig {
+  if (category in CATEGORY_FORM_CONFIG) {
+    return CATEGORY_FORM_CONFIG[category as CategoryKey];
+  }
+  return {
+    titlePlaceholder: 'presetTitlePlaceholder',
+    showAmount: true,
+    showFinance: true,
+    showReminderTime: true,
+    showStartDate: false,
+    defaultRecurrence: { type: 'monthly' },
+    allowedRecurrenceTypes: ALL_RECURRENCE_TYPES,
+  };
 }

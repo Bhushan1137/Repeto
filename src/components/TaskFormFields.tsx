@@ -2,37 +2,56 @@ import { AppIcon } from '@/components/AppIcon';
 import { DateField } from '@/components/DateField';
 import { FormField } from '@/components/FormField';
 import { RepeatExamplesStrip } from '@/components/RepeatExamplesStrip';
+import { AlarmToggleRow } from '@/components/taskForm/AlarmToggleRow';
 import { CategoryPickerModal } from '@/components/taskForm/CategoryPickerModal';
 import { IconPickerStrip } from '@/components/taskForm/IconPickerStrip';
 import { RecurrencePickerModal } from '@/components/taskForm/RecurrencePickerModal';
 import { TimeField } from '@/components/TimeField';
-import { formatTime12 } from '@/utils/timeFormat';
 import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { getCategoryIcon, getCategoryLabel } from '@/constants/categoryHelpers';
 import { Colors, Radius } from '@/constants/theme';
 import { parseTaskInput } from '@/domain/parser';
 import { computeInitialDueDate, daysUntilDue, frequencyLabelFromRule } from '@/domain/recurrence';
 import {
   buildRecurrenceRule,
   getDefaultDoseTimes,
+  validateSmartTitle,
   type TaskFormErrors,
   type TaskFormState,
 } from '@/domain/taskForm';
 import type { TranslationKey } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
-import type { CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
+import type { AnyCategoryKey, CategoryKey, DetectedToken, Language, SharedMember } from '@/types';
+import { formatTime12 } from '@/utils/timeFormat';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Card, Text, TouchableRipple } from 'react-native-paper';
+
+const getTokenStyle = (id: string) => {
+  switch (id) {
+    case 'amount':
+      return { bg: '#E8F5E9', border: '#A5D6A7', text: '#1B5E20' };
+    case 'recurrence':
+      return { bg: '#E3F2FD', border: '#90CAF9', text: '#0D47A1' };
+    case 'time':
+    case 'doses':
+      return { bg: '#FFF8E1', border: '#FFE082', text: '#E65100' };
+    case 'alarm':
+      return { bg: '#EDE7F6', border: '#B39DDB', text: '#4A148C' };
+    case 'category':
+    default:
+      return { bg: '#FFF3E0', border: '#FFCC80', text: '#B7791F' };
+  }
+};
 
 interface TaskFormFieldsProps {
   language: Language;
   translate: (key: TranslationKey, params?: Record<string, string | number>) => string;
   state: TaskFormState;
   onChange: (patch: Partial<TaskFormState>) => void;
-  onCategoryChange: (category: CategoryKey) => void;
+  onCategoryChange: (category: AnyCategoryKey) => void;
   errors?: TaskFormErrors;
   editingTaskId?: string;
   onTriggerCalendarPicker?: () => void;
@@ -56,6 +75,17 @@ export function TaskFormFields({
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [detectedTokens, setDetectedTokens] = useState<DetectedToken[]>([]);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  const defaultCurrentTime = useMemo(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }, []);
+
+  const liveTitleValidation = useMemo(() => {
+    if (!titleTouched && !state.title) return { isValid: true };
+    return validateSmartTitle(state.title, language);
+  }, [state.title, titleTouched, language]);
 
   const cleanTitleCandidate = useMemo(() => {
     if (!state.title || !state.title.trim()) return '';
@@ -64,6 +94,7 @@ export function TaskFormFields({
   }, [state.title, language]);
 
   const handleTitleChange = (rawText: string) => {
+    setTitleTouched(true);
     const text = rawText.slice(0, 80);
     if (text.trim()) {
       const res = parseTaskInput(text, language);
@@ -86,6 +117,9 @@ export function TaskFormFields({
         if (res.recurrence.intervalUnit) patch.intervalUnit = res.recurrence.intervalUnit;
         if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
         if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
+      }
+      if (res.alarmEnabled !== undefined) {
+        patch.alarmEnabled = res.alarmEnabled;
       }
       if (res.category && res.category !== state.category) {
         onCategoryChange(res.category);
@@ -121,6 +155,9 @@ export function TaskFormFields({
       if (res.recurrence.dayOfMonth) patch.dayOfMonth = res.recurrence.dayOfMonth;
       if (res.recurrence.weekday !== undefined) patch.weekday = res.recurrence.weekday;
     }
+    if (res.alarmEnabled !== undefined) {
+      patch.alarmEnabled = res.alarmEnabled;
+    }
     if (res.category && res.category !== state.category) {
       onCategoryChange(res.category);
     }
@@ -138,6 +175,8 @@ export function TaskFormFields({
       onChange({ isMultiTime: false, timesPerDay: 1 });
     } else if (tokenId === 'recurrence') {
       onChange({ recurrenceType: 'monthly', interval: 1, dayOfMonth: 1 });
+    } else if (tokenId === 'alarm') {
+      onChange({ alarmEnabled: !state.alarmEnabled });
     }
   };
 
@@ -151,9 +190,9 @@ export function TaskFormFields({
   const previewRule = buildRecurrenceRule(state);
   const previewLabel = frequencyLabelFromRule(previewRule, language);
 
-  const defaultIcon = CATEGORY_MAP[state.category].icon;
+  const defaultIcon = getCategoryIcon(state.category);
   const emojiOptions = useMemo(() => {
-    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '🚗', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴'];
+    const baseEmojis = ['🏠', '💳', '🏍️', '📄', '🔥', '💧', '🧹', '🍳', '💊', '☀️', '📺', '💪', '🍬', '🎁', '🏫', '📝', '🚗', '💅', '🍖', '🩺', '📈', '📁', '🏊', '🚌', '🛒', '⚡', '📶', '🔑', '🧼', '🧺', '🪴', '🥛', '🔧', '🪪', '🚰', '👔', '🌱'];
     return [defaultIcon, ...baseEmojis.filter((e) => e !== defaultIcon)];
   }, [defaultIcon]);
 
@@ -267,7 +306,7 @@ export function TaskFormFields({
           style={[
             styles.titleInputContainer,
             isTitleFocused && styles.titleInputFocused,
-            errors?.title && styles.titleInputError,
+            ((errors?.title) || (titleTouched && !liveTitleValidation.isValid)) && styles.titleInputError,
           ]}
         >
           <AppIcon
@@ -281,11 +320,14 @@ export function TaskFormFields({
             value={state.title}
             onChangeText={handleTitleChange}
             onFocus={() => setIsTitleFocused(true)}
-            onBlur={() => setIsTitleFocused(false)}
+            onBlur={() => {
+              setIsTitleFocused(false);
+              setTitleTouched(true);
+            }}
             placeholder={
               language === 'hi'
-                ? 'उदा. "किराया ₹15000 हर महीने 5 तारीख"'
-                : 'e.g. "Rent ₹15,000 monthly on 5th at 9am"'
+                ? 'उदा. "पौधों को पानी रोज़", "किराया ₹15000 हर महीने 5 तारीख"'
+                : 'e.g. "Water plants daily at 8am", "Rent ₹15,000 monthly 5th"'
             }
             placeholderTextColor={Colors.inkFaint}
             maxLength={80}
@@ -297,7 +339,40 @@ export function TaskFormFields({
             </TouchableOpacity>
           )}
         </View>
-        {errors?.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
+        {errors?.title ? (
+          <Text style={styles.errorText}>{errors.title}</Text>
+        ) : titleTouched && !liveTitleValidation.isValid && liveTitleValidation.error ? (
+          <Text style={styles.smartGuidanceText}>💡 {liveTitleValidation.error}</Text>
+        ) : liveTitleValidation.warning ? (
+          <Text style={styles.smartWarningText}>{liveTitleValidation.warning}</Text>
+        ) : null}
+
+        {/* Clean Title Preview Banner */}
+        {cleanTitleCandidate &&
+          cleanTitleCandidate.trim().toLowerCase() !== state.title.trim().toLowerCase() &&
+          cleanTitleCandidate.trim().length >= 2 && (
+            <View style={styles.cleanTitleCard}>
+              <View style={styles.cleanTitleLeft}>
+                <AppIcon name="sparkles" size={15} color={Colors.tealDeep} />
+                <View style={styles.cleanTitleTextCol}>
+                  <Text style={styles.cleanTitleLabel}>
+                    {language === 'hi' ? 'स्मार्ट संक्षिप्त नाम' : 'Clean Title Preview'}
+                  </Text>
+                  <Text style={styles.cleanTitleValue}>{`"${cleanTitleCandidate}"`}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.cleanTitleActionBtn}
+                onPress={() => onChange({ title: cleanTitleCandidate })}
+                activeOpacity={0.7}
+              >
+                <AppIcon name="checkmark" size={13} color={Colors.white} />
+                <Text style={styles.cleanTitleActionText}>
+                  {language === 'hi' ? 'अपनाएं' : 'Use Clean'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
         {/* Live Detected Tokens Badges */}
         {detectedTokens.length > 0 && (
@@ -306,30 +381,29 @@ export function TaskFormFields({
               <Text style={styles.detectedTitle}>
                 ⚡ {language === 'hi' ? 'ऑटो-पहचाने गए फ़ील्ड:' : 'Auto-detected:'}
               </Text>
-              {cleanTitleCandidate && cleanTitleCandidate !== state.title && (
-                <TouchableOpacity
-                  style={styles.cleanTitleBtn}
-                  onPress={() => onChange({ title: cleanTitleCandidate })}
-                >
-                  <Text style={styles.cleanTitleBtnText}>
-                    ✂️ {language === 'hi' ? `नाम: "${cleanTitleCandidate}"` : `Keep clean: "${cleanTitleCandidate}"`}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detectedTokensRow}>
-              {detectedTokens.map((token) => (
-                <View key={token.id} style={styles.tokenBadge}>
-                  <Text style={styles.tokenBadgeText}>
-                    {token.icon} {token.label}
-                  </Text>
-                  {token.id !== 'category' && (
-                    <TouchableOpacity onPress={() => dismissToken(token.id)} hitSlop={6} style={styles.tokenCloseBtn}>
-                      <Text style={styles.tokenCloseText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
+              {detectedTokens.map((token) => {
+                const tokenColors = getTokenStyle(token.id);
+                return (
+                  <View
+                    key={token.id}
+                    style={[
+                      styles.tokenBadge,
+                      { backgroundColor: tokenColors.bg, borderColor: tokenColors.border },
+                    ]}
+                  >
+                    <Text style={[styles.tokenBadgeText, { color: tokenColors.text }]}>
+                      {token.icon} {token.label}
+                    </Text>
+                    {token.id !== 'category' && (
+                      <TouchableOpacity onPress={() => dismissToken(token.id)} hitSlop={6} style={styles.tokenCloseBtn}>
+                        <Text style={[styles.tokenCloseText, { color: tokenColors.text }]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -337,9 +411,15 @@ export function TaskFormFields({
         {/* Quick Inspiration Pills */}
         <View style={styles.inspirationContainer}>
           <Text style={styles.inspirationLabel}>
-            💡 {language === 'hi' ? 'उदाहरण:' : 'Try:'}
+            💡 {language === 'hi' ? 'त्वरित सुझाव (1-टैप):' : 'Quick Suggestions (1-tap):'}
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.inspirationScroll}>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'पौधों को पानी रोज़ सुबह 8 बजे' : 'Water plants daily at 8am')}
+            >
+              <Text style={styles.inspirationChipText}>🪴 {language === 'hi' ? 'पौधे (रोज़ 8am)' : 'Water plants (Daily 8am)'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
               onPress={() => applyInspirationPrompt(language === 'hi' ? 'किराया ₹15000 हर महीने 5 तारीख' : 'House Rent ₹15,000 monthly on 5th')}
@@ -348,21 +428,45 @@ export function TaskFormFields({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'दवा दिन में 2 बार सुबह 8 बजे' : 'Medicine twice daily at 8am')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'दवा सुबह और रात अलार्म के साथ' : 'Medicine morning and night with alarm')}
             >
-              <Text style={styles.inspirationChipText}>💊 {language === 'hi' ? 'दवा (2 बार रोज़)' : 'Medicine (2x daily)'}</Text>
+              <Text style={styles.inspirationChipText}>💊 {language === 'hi' ? 'दवा (सुबह-रात + अलार्म)' : 'Medicine (Morn/Night + Alarm)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹5000 हर महीने 1 तारीख' : 'Maid salary ₹5000 monthly on 1st')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'जिम कसरत एक दिन छोड़कर सुबह 6:30 बजे' : 'Gym workout alternate days at 6:30am')}
             >
-              <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹5,000 (1 तारीख)' : 'Maid ₹5,000 (1st)'}</Text>
+              <Text style={styles.inspirationChipText}>💪 {language === 'hi' ? 'जिम (एक दिन छोड़कर)' : 'Gym (Alternate days)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'पानी बिल ₹500 हर 2 महीने' : 'Water bill ₹500 every 2 months')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹4000 हर महीने 1 तारीख' : 'Maid salary ₹4000 monthly on 1st')}
             >
-              <Text style={styles.inspirationChipText}>💧 {language === 'hi' ? 'पानी बिल ₹500 (हर 2 महीने)' : 'Water bill ₹500 (2 mos)'}</Text>
+              <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹4,000 (1 तारीख)' : 'Maid ₹4,000 (1st)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'वाईफाई बिल ₹800 हर महीने 15 तारीख' : 'Wifi bill ₹800 monthly on 15th')}
+            >
+              <Text style={styles.inspirationChipText}>📶 {language === 'hi' ? 'वाईफाई ₹800 (15 तारीख)' : 'Wifi ₹800 (15th)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'विटामिन डी हर रविवार सुबह 10 बजे' : 'Vitamin D every sunday at 10am')}
+            >
+              <Text style={styles.inspirationChipText}>☀️ {language === 'hi' ? 'विटामिन डी (रविवार)' : 'Vitamin D (Sunday)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कार सर्विस हर 6 महीने' : 'Car service every 6 months')}
+            >
+              <Text style={styles.inspirationChipText}>🚗 {language === 'hi' ? 'कार सर्विस (6 महीने)' : 'Car service (6m)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'गैस सिलेंडर हर 45 दिन' : 'Gas cylinder every 45 days')}
+            >
+              <Text style={styles.inspirationChipText}>🔥 {language === 'hi' ? 'गैस सिलेंडर (45 दिन)' : 'Gas cylinder (45d)'}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -374,13 +478,15 @@ export function TaskFormFields({
             <View style={styles.dropdownRow}>
               <View style={styles.dropdownLeft}>
                 <View style={styles.categoryEmojiBadge}>
-                  <Text style={styles.dropdownEmoji}>{CATEGORY_MAP[state.category]?.icon || '📋'}</Text>
+                  <Text style={styles.dropdownEmoji}>{getCategoryIcon(state.category)}</Text>
                 </View>
                 <View style={styles.categoryTextCol}>
                   <Text style={styles.dropdownText}>{getCategoryLabel(state.category, language)}</Text>
-                  <Text style={styles.catHintInCard} numberOfLines={1}>
-                    {CATEGORY_MAP[state.category]?.[language === 'hi' ? 'hintHi' : 'hintEn']}
-                  </Text>
+                  {Boolean(CATEGORY_MAP[state.category as CategoryKey]?.[language === 'hi' ? 'hintHi' : 'hintEn']) && (
+                    <Text style={styles.catHintInCard} numberOfLines={1}>
+                      {CATEGORY_MAP[state.category as CategoryKey]?.[language === 'hi' ? 'hintHi' : 'hintEn']}
+                    </Text>
+                  )}
                 </View>
               </View>
               <View style={styles.chevronWrap}>
@@ -476,7 +582,7 @@ export function TaskFormFields({
               const count = nextMulti ? Math.max(2, state.timesPerDay || 2) : 1;
               const times = nextMulti
                 ? (state.reminderTimes.length >= count ? state.reminderTimes : getDefaultDoseTimes(count))
-                : [state.reminderTimes[0] || state.reminderTime || '09:00'];
+                : [state.reminderTimes[0] || state.reminderTime || defaultCurrentTime];
               onChange({
                 isMultiTime: nextMulti,
                 timesPerDay: count,
@@ -506,7 +612,7 @@ export function TaskFormFields({
             <View style={{ marginTop: 10 }}>
               <TimeField
                 label={language === 'hi' ? 'समय' : 'Time'}
-                value={state.reminderTime || '09:00'}
+                value={state.reminderTime || defaultCurrentTime}
                 onChange={(reminderTime) =>
                   onChange({ reminderTime, reminderTimes: [reminderTime] })
                 }
@@ -578,6 +684,17 @@ export function TaskFormFields({
               </View>
             </View>
           )}
+
+          {errors?.time ? (
+            <Text style={[styles.errorText, { marginTop: 8 }]}>{errors.time}</Text>
+          ) : null}
+
+          {/* Alarm Mode Toggle (Fullscreen Alarm vs Push Notification) */}
+          <AlarmToggleRow
+            value={state.alarmEnabled}
+            onChange={(alarmEnabled) => onChange({ alarmEnabled })}
+            language={language}
+          />
         </View>
 
         {/* 4. Schedule Summary Box */}
@@ -589,8 +706,8 @@ export function TaskFormFields({
             <Text style={styles.summaryTitle}>{language === 'hi' ? 'अनुसूची सारांश' : 'Schedule Summary'}</Text>
             <Text style={styles.summarySub}>
               {language === 'hi'
-                ? `आपको ${previewLabel} पर ${summaryTimesStr} बजे याद दिलाया जाएगा${state.isMultiTime && state.timesPerDay > 1 ? ` (दिन में ${state.timesPerDay} बार)` : ''}।`
-                : `You'll be reminded ${previewLabel} at ${summaryTimesStr}${state.isMultiTime && state.timesPerDay > 1 ? ` (${state.timesPerDay} times a day)` : ''}.`}
+                ? `आपको ${previewLabel} पर ${summaryTimesStr} बजे याद दिलाया जाएगा${state.isMultiTime && state.timesPerDay > 1 ? ` (दिन में ${state.timesPerDay} बार)` : ''}${state.alarmEnabled ? ' (🔔 अलार्म)' : ' (📲 सूचना)'}।`
+                : `You'll be reminded ${previewLabel} at ${summaryTimesStr}${state.isMultiTime && state.timesPerDay > 1 ? ` (${state.timesPerDay} times a day)` : ''}${state.alarmEnabled ? ' (🔔 Alarm)' : ' (📲 Push)'}.`}
               {state.amountText ? ` Amount: ₹${state.amountText}` : ''}
             </Text>
           </View>
@@ -637,7 +754,7 @@ export function TaskFormFields({
               label={language === 'hi' ? 'राशि (₹)' : 'Amount (₹)'}
               value={state.amountText}
               onChangeText={(val) => {
-                const cleaned = val.replace(/\D/g, '').slice(0, 7);
+                const cleaned = val.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 7);
                 onChange({ amountText: cleaned });
               }}
               placeholder={language === 'hi' ? 'राशि प्रविष्ट करें (उदा. ₹1,500)' : 'Enter amount (e.g. ₹1,500)'}
@@ -664,6 +781,8 @@ export function TaskFormFields({
           onChangeText={(note) => onChange({ note })}
           placeholder={language === 'hi' ? 'जैसे: खाता विवरण, मीटर नंबर, आदि...' : 'e.g., Account ID, meter number, instructions...'}
           multiline
+          maxLength={500}
+          error={errors?.note}
           testID="task-note-input"
         />
       </View>
@@ -1262,6 +1381,73 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
   },
+  smartGuidanceText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11.5,
+    color: '#D97706',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  smartWarningText: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.inkFaint,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+
+  // Live Detected Tokens Badges
+  // Clean Title Card
+  cleanTitleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#E6FFFA',
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#81E6D9',
+    marginTop: 8,
+    marginBottom: 4,
+    gap: 8,
+  },
+  cleanTitleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  cleanTitleTextCol: {
+    flex: 1,
+  },
+  cleanTitleLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10,
+    color: Colors.tealDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cleanTitleValue: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+    marginTop: 1,
+  },
+  cleanTitleActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.tealDeep,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+  },
+  cleanTitleActionText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
+    color: Colors.white,
+  },
 
   // Live Detected Tokens Badges
   detectedContainer: {
@@ -1332,8 +1518,8 @@ const styles = StyleSheet.create({
 
   // Inspiration Pills
   inspirationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 6,
     marginTop: 6,
     marginBottom: 10,

@@ -7,12 +7,12 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
 import { FormField } from '@/components/FormField';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { validateName, validatePhone, formatPhone } from '@/domain/validation';
 import type { TranslationKey } from '@/i18n';
 import { Colors } from '@/constants/theme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { OnboardingStepIndicator } from '@/components/OnboardingStepIndicator';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export default function ProfileScreen() {
     const resolvedEmail = user?.email || ctxEmail || '';
     if (resolvedEmail && !email) setEmail(resolvedEmail);
     if (resolvedEmail) setCtxEmail(resolvedEmail);
-  }, [user, ctxEmail]);
+  }, [user?.name, user?.email, ctxEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleContinue = async () => {
     const nameResult = validateName(name);
@@ -64,6 +64,8 @@ export default function ProfileScreen() {
       setCtxPhone(formattedPhone);
       setCtxEmail(finalEmail);
       router.replace('/(onboarding)/categories');
+    } catch {
+      setErrors({ name: language === 'hi' ? 'प्रोफ़ाइल सहेजने में विफल। कृपया पुनः प्रयास करें।' : 'Failed to save profile. Please check your connection and try again.' });
     } finally {
       setLoading(false);
     }
@@ -75,20 +77,26 @@ export default function ProfileScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
+      <View style={{ paddingTop: Math.max(insets.top, 16) }}>
+        <OnboardingStepIndicator
+          currentStep={2}
+          totalSteps={5}
+          stepLabel={language === 'hi' ? 'प्रोफ़ाइल' : 'Profile'}
+          onBack={() => router.replace('/(onboarding)/language')}
+        />
+      </View>
       <ScrollView
         contentContainerStyle={[
           styles.container,
           {
-            paddingTop: Math.max(insets.top, 16) + 16,
-            paddingBottom: Math.max(insets.bottom, 16) + 120,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 24) + 80,
           },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         testID="profile-screen-scroll"
       >
-        <OnboardingProgress step={2} />
-
         <View style={styles.avatarSection}>
           <View style={styles.avatarCircle}>
             <Text style={styles.avatarText}>

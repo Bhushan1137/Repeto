@@ -79,6 +79,25 @@ describe('computeNextDueDate', () => {
     const next = new Date(computeNextDueDate(rule, from));
     expect(next.getMonth()).toBe(6); // July (0-indexed)
   });
+
+  it('preserves scheduled weekday when completed on that weekday', () => {
+    // 2026-09-13 is Sunday (day 0)
+    const from = new Date('2026-09-13T10:00:00Z');
+    const rule = { type: 'weekly' as const, weekday: 0 };
+    const next = new Date(computeNextDueDate(rule, from));
+    expect(next.getDay()).toBe(0);
+    expect(next.getDate()).toBe(20);
+  });
+
+  it('preserves scheduled weekday when completed overdue on a different weekday', () => {
+    // Completed overdue on Thursday (2026-09-17, day 4), but rule is Sunday (day 0)
+    const from = new Date('2026-09-17T10:00:00Z');
+    const rule = { type: 'weekly' as const, weekday: 0 };
+    const next = new Date(computeNextDueDate(rule, from));
+    // Must advance to next Sunday (2026-09-20), not next Thursday!
+    expect(next.getDay()).toBe(0);
+    expect(next.getDate()).toBe(20);
+  });
 });
 
 describe('computeInitialDueDate', () => {

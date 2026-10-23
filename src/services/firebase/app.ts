@@ -12,23 +12,35 @@ let db: Firestore | null = null;
 
 export function initFirebase(): boolean {
   if (!isFirebaseConfigured()) return false;
-  if (!getApps().length) {
+  if (!app) {
+    app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
     try {
       setLogLevel('silent');
     } catch {
       // Ignore if setLogLevel fails on platform
     }
-    app = initializeApp(firebaseConfig);
+  }
+  if (!auth && app) {
     if (Platform.OS === 'web') {
-      auth = getAuth(app);
+      try {
+        auth = getAuth(app);
+      } catch {
+        auth = initializeAuth(app);
+      }
     } else {
-      auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage),
-      });
+      try {
+        auth = initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+      } catch {
+        auth = getAuth(app);
+      }
     }
+  }
+  if (!db && app) {
     db = getFirestore(app);
   }
-  return true;
+  return Boolean(app && auth && db);
 }
 
 export function getFirebaseAuth(): Auth | null {

@@ -8,6 +8,7 @@ import {
   householdMemberFromInvite,
   pendingMemberFromCode,
   normalizeInviteCode,
+  isValidInviteCode,
   addHouseholdMember,
   removeHouseholdMember,
   toSharedMember,
@@ -58,6 +59,19 @@ describe('household domain module', () => {
   it('normalizes invite codes cleanly', () => {
     expect(normalizeInviteCode('rpt123456')).toBe('RPT-123456');
     expect(normalizeInviteCode('RPT-ABCDEF')).toBe('RPT-ABCDEF');
+  });
+
+  it('validates invite code format', () => {
+    expect(isValidInviteCode('RPT-123456')).toBe(true);
+    expect(isValidInviteCode('RPT-ABCDEF')).toBe(true);
+    expect(isValidInviteCode('123456')).toBe(true);
+    expect(isValidInviteCode('ABCDEF')).toBe(true);
+    expect(isValidInviteCode('rpt123456')).toBe(true);
+    expect(isValidInviteCode('')).toBe(false);
+    expect(isValidInviteCode('RPT-12')).toBe(false);
+    expect(isValidInviteCode('12345')).toBe(false);
+    expect(isValidInviteCode('1234567')).toBe(false);
+    expect(isValidInviteCode('RPT-12345678')).toBe(false);
   });
 
   it('handles member creation from invite and pending code', () => {
@@ -120,5 +134,31 @@ describe('household domain module', () => {
       'RPT-888888'
     );
     expect(removePatch.households?.[0].members).toHaveLength(1);
+  });
+
+  it('removes member case-insensitively, updates memberUids, and prunes legacy householdMembers', () => {
+    const hhContext = createHouseholdContext('Home', '🏠', '#3E7C6A', mockUser);
+    const member = householdMemberFromInvite({
+      code: 'RPT-ABC123',
+      userId: 'usr-target',
+      name: 'Alice',
+      color: '#FF0000',
+    });
+    const hhWithMember = {
+      ...hhContext,
+      members: [...hhContext.members, member],
+      memberUids: [...hhContext.memberUids, 'usr-target'],
+    };
+    const userState: UserProfile = {
+      ...mockUser,
+      households: [hhWithMember],
+      householdMembers: [member],
+    };
+
+    // Remove using unnormalized lowercase string without hyphen
+    const patch = removeMemberFromHousehold(userState, hhContext.id, 'rptabc123');
+    expect(patch.households?.[0].members.find(m => m.code === 'RPT-ABC123')).toBeUndefined();
+    expect(patch.households?.[0].memberUids).not.toContain('usr-target');
+    expect(patch.householdMembers?.find(m => m.code === 'RPT-ABC123')).toBeUndefined();
   });
 });

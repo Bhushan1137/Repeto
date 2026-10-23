@@ -10,6 +10,7 @@ interface UpcomingStripProps {
   slots: UpcomingDaySlot[];
   language: "en" | "hi";
   onTaskPress: (taskId: string) => void;
+  showHeader?: boolean;
 }
 
 function formatAmount(amount: number): string {
@@ -84,12 +85,10 @@ function TaskRow({ task, onPress }: { task: UpcomingTaskItem; onPress: () => voi
   return (
     <Pressable onPress={onPress} style={styles.taskRow}>
       <View style={[styles.taskDot, { backgroundColor: accentColor }]} />
+      {task.icon ? <Text style={styles.taskIcon}>{task.icon}</Text> : null}
       <View style={styles.taskInfo}>
-        {task.icon ? (
-          <Text style={styles.taskIcon}>{task.icon} </Text>
-        ) : null}
         <Text style={styles.taskTitle} numberOfLines={1}>
-          {task.icon ? `${task.icon} ${task.title}` : task.title}
+          {task.title}
         </Text>
       </View>
       {task.finance && task.amount ? (
@@ -100,7 +99,7 @@ function TaskRow({ task, onPress }: { task: UpcomingTaskItem; onPress: () => voi
   );
 }
 
-export function UpcomingStrip({ slots, language, onTaskPress }: UpcomingStripProps) {
+export function UpcomingStrip({ slots, language, onTaskPress, showHeader = false }: UpcomingStripProps) {
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
 
   const isHi = language === "hi";
@@ -116,14 +115,16 @@ export function UpcomingStrip({ slots, language, onTaskPress }: UpcomingStripPro
   return (
     <View style={styles.wrapper}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>📅 {headerTitle}</Text>
-        {totalTaskCount > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{totalTaskCount}</Text>
-          </View>
-        )}
-      </View>
+      {showHeader && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>📅 {headerTitle}</Text>
+          {totalTaskCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{totalTaskCount}</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       <Card style={styles.card} mode="elevated">
         <Card.Content style={styles.cardContent}>

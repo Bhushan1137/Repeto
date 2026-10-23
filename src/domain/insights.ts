@@ -1,12 +1,12 @@
-import type { CategoryKey, CompletionStatus, HouseholdMemberProfile, RecurrenceRule, RepeatingTask, TaskGroup } from '@/types';
-import { CATEGORY_MAP } from '@/constants/categories';
+import type { AnyCategoryKey, CompletionStatus, HouseholdMemberProfile, RecurrenceRule, RepeatingTask, TaskGroup } from '@/types';
+import { getCategoryDef } from '@/constants/categoryHelpers';
 import { daysUntilDue, getTaskGroup, isCurrentMonth, getMonthLabel } from '@/domain/recurrence';
 import { hasCompletedToday } from '@/domain/task';
 
 export interface CategoryInsight {
   label: string;
   percent: number;
-  key: CategoryKey;
+  key: AnyCategoryKey;
 }
 
 export interface DailyActivity {
@@ -22,7 +22,7 @@ export interface UpcomingTaskItem {
   id: string;
   title: string;
   icon?: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   amount?: number;
   finance: boolean;
   isOverdue: boolean;
@@ -41,7 +41,7 @@ export interface UpcomingDaySlot {
 // ─── P3: Spend Forecast ────────────────────────────────────────────────────
 
 export interface SpendForecastCategory {
-  key: CategoryKey;
+  key: AnyCategoryKey;
   label: string;
   icon: string;
   amount: number;
@@ -52,7 +52,7 @@ export interface HighImpactTask {
   title: string;
   amount: number;
   dueDate: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   icon?: string;
   daysUntil: number;
 }
@@ -98,7 +98,7 @@ export interface WeeklyVelocity {
   completedCount: number;
   skippedCount: number;
   topHabitTitle: string | null;
-  slipCategory: CategoryKey | null;
+  slipCategory: AnyCategoryKey | null;
 }
 
 // ─── Existing InsightsResult (extended for P2 + P6) ──────────────────────
@@ -106,7 +106,7 @@ export interface WeeklyVelocity {
 export interface InsightsResult {
   overallPercent: number;
   bars: CategoryInsight[];
-  slipCategory: CategoryKey | null;
+  slipCategory: AnyCategoryKey | null;
   isEmpty: boolean;
   streak: number;
   dailyStreak: number;
@@ -309,9 +309,12 @@ export function getWeeklyActivity(tasks: RepeatingTask[], lang: 'en' | 'hi'): Da
   return result;
 }
 
-export function initials(name: string): string {
+export function initials(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
   return name
-    .split(' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
     .map((w) => w[0])
     .join('')
     .slice(0, 2)
@@ -445,9 +448,9 @@ export function computeInsights(tasks: RepeatingTask[], lang: 'en' | 'hi'): Insi
   const bars: CategoryInsight[] = Object.entries(byCategory)
     .filter(([, stats]) => stats.total > 0)
     .map(([key, stats]) => {
-      const cat = CATEGORY_MAP[key as CategoryKey];
+      const cat = getCategoryDef(key as AnyCategoryKey);
       return {
-        key: key as CategoryKey,
+        key: key as AnyCategoryKey,
         label: lang === 'hi' ? cat.labelHi : cat.labelEn,
         percent: Math.round((stats.onTime / stats.total) * 100),
       };
@@ -606,7 +609,7 @@ export function computeSpendForecast(
   let spentSoFarThisMonth = 0;
   let upcomingThisMonth = 0;
   let normalizedMonthlyTotal = 0;
-  const byCategoryMap = new Map<CategoryKey, number>();
+  const byCategoryMap = new Map<AnyCategoryKey, number>();
   const currentMonth = getMonthLabel();
 
   financeTasks.forEach((t) => {
@@ -630,7 +633,7 @@ export function computeSpendForecast(
     // Calculate upcoming bills in the current month
     const days = daysUntilDue(t.nextDueDate);
     const dueMonth = t.nextDueDate.slice(0, 7);
-    if (dueMonth === currentMonth && days >= 0) {
+    if (isCurrentMonth(dueMonth) && days >= 0) {
       upcomingThisMonth += amount;
     }
   });
@@ -654,7 +657,7 @@ export function computeSpendForecast(
 
   const byCategory: SpendForecastCategory[] = Array.from(byCategoryMap.entries())
     .map(([key, amount]) => {
-      const cat = CATEGORY_MAP[key] ?? CATEGORY_MAP['home'];
+      const cat = getCategoryDef(key);
       return {
         key,
         label: lang === 'hi' ? cat.labelHi : cat.labelEn,
@@ -880,33 +883,36 @@ export function deriveHouseholdMembers(
     });
   });
 
-  tasks.forEach((task) => {
-    (task.sharedWith ?? []).forEach((member) => {
-      if (
-        (currentUserId && member.userId === currentUserId) ||
-        (currentUserCode && member.code === currentUserCode) ||
-        (member.name && member.name.trim().toLowerCase() === currentUserName.trim().toLowerCase())
-      ) {
-        return;
-      }
-      const key = member.code ?? member.phone;
-      if (!memberMap.has(key)) {
-        const mStats = getMemberCompletions(member.userId, member.code, false);
-        const assignedCount = tasks.filter((t) => isMemberTask(t, member.userId, member.code)).length;
-        memberMap.set(key, {
-          name: member.name,
-          short: initials(member.name),
-          color: member.color,
-          taskCount: assignedCount,
-          completedCount: mStats.completedCount,
-          code: member.code,
-          userId: member.userId,
-          status: 'active',
-          onTimePercent: mStats.onTimePercent,
-        });
-      }
+  // Only fallback to scanning task.sharedWith if no explicit household members were provided (legacy mode)
+  if (householdMembers.length === 0) {
+    tasks.forEach((task) => {
+      (task.sharedWith ?? []).forEach((member) => {
+        if (
+          (currentUserId && member.userId === currentUserId) ||
+          (currentUserCode && member.code === currentUserCode) ||
+          (member.name && member.name.trim().toLowerCase() === currentUserName.trim().toLowerCase())
+        ) {
+          return;
+        }
+        const key = member.code ?? member.phone;
+        if (!memberMap.has(key)) {
+          const mStats = getMemberCompletions(member.userId, member.code, false);
+          const assignedCount = tasks.filter((t) => isMemberTask(t, member.userId, member.code)).length;
+          memberMap.set(key, {
+            name: member.name,
+            short: initials(member.name),
+            color: member.color,
+            taskCount: assignedCount,
+            completedCount: mStats.completedCount,
+            code: member.code,
+            userId: member.userId,
+            status: 'active',
+            onTimePercent: mStats.onTimePercent,
+          });
+        }
+      });
     });
-  });
+  }
 
   const allMembers = [you, ...Array.from(memberMap.values())];
 

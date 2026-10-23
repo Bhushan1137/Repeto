@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { completeTaskInstance, undoCompleteTaskInstance, claimTaskInstance } from '@/domain/task';
+import { completeTaskInstance, undoCompleteTaskInstance, claimTaskInstance, cleanupHouseholdTasksForMember } from '@/domain/task';
 import type { RepeatingTask } from '@/types';
 
 describe('Chore Rotation (Round-Robin) & Task Claiming', () => {
@@ -63,5 +63,125 @@ describe('Chore Rotation (Round-Robin) & Task Claiming', () => {
 
     const claimed = claimTaskInstance(unassignedTask, 'user-bob');
     expect(claimed.assignedTo).toBe('user-bob');
+  });
+
+  describe('cleanupHouseholdTasksForMember', () => {
+    it('unassigns non-rotating household tasks when assigned member leaves or is removed', () => {
+      const task: RepeatingTask = {
+        ...rotatingTask,
+        id: 'task-clean-dishes',
+        assignedTo: 'user-bob',
+        isRotating: false,
+        rotationMembers: [],
+      };
+
+      const { updatedTasks, modifiedTasks } = cleanupHouseholdTasksForMember(
+        [task],
+        'hh-1',
+        { userId: 'user-bob', memberCode: 'BOB1' }
+      );
+
+      expect(updatedTasks[0].assignedTo).toBeUndefined();
+      expect(modifiedTasks).toHaveLength(1);
+    });
+
+    it('reassigns rotating chore to next available user when current assignee leaves', () => {
+      // Rotation: Alice -> Bob -> Charlie. Bob is currently assigned.
+      const task: RepeatingTask = {
+        ...rotatingTask,
+        assignedTo: 'user-bob',
+        rotationMembers: ['user-alice', 'user-bob', 'user-charlie'],
+      };
+
+      const { updatedTasks, modifiedTasks } = cleanupHouseholdTasksForMember(
+        [task],
+        'hh-1',
+        { userId: 'user-bob', memberCode: 'BOB1' }
+      );
+
+      // Next available user after Bob is Charlie
+      expect(updatedTasks[0].assignedTo).toBe('user-charlie');
+      expect(updatedTasks[0].rotationMembers).toEqual(['user-alice', 'user-charlie']);
+      expect(updatedTasks[0].isRotating).toBe(true);
+      expect(modifiedTasks).toHaveLength(1);
+    });
+
+    it('wraps around to first member if the leaving member was last in rotation sequence', () => {
+      // Rotation: Alice -> Bob. Bob is currently assigned and is last in list.
+      const task: RepeatingTask = {
+        ...rotatingTask,
+        assignedTo: 'user-bob',
+        rotationMembers: ['user-alice', 'user-bob'],
+      };
+
+      const { updatedTasks } = cleanupHouseholdTasksForMember(
+        [task],
+        'hh-1',
+        { userId: 'user-bob' }
+      );
+
+      expect(updatedTasks[0].assignedTo).toBe('user-alice');
+      expect(updatedTasks[0].rotationMembers).toEqual(['user-alice']);
+    });
+
+    it('removes leaving member from rotationMembers even when not currently assigned', () => {
+      // Alice is currently assigned, but Bob is in future rotation
+      const task: RepeatingTask = {
+        ...rotatingTask,
+        assignedTo: 'user-alice',
+        rotationMembers: ['user-alice', 'user-bob', 'user-charlie'],
+      };
+
+      const { updatedTasks, modifiedTasks } = cleanupHouseholdTasksForMember(
+        [task],
+        'hh-1',
+        { userId: 'user-bob' }
+      );
+
+      // Alice keeps current turn, Bob is stripped from future turns
+      expect(updatedTasks[0].assignedTo).toBe('user-alice');
+      expect(updatedTasks[0].rotationMembers).toEqual(['user-alice', 'user-charlie']);
+      expect(modifiedTasks).toHaveLength(1);
+
+      // Verify that upon Alice completion, it directly rotates to Charlie (skipping Bob)
+      const afterAlice = completeTaskInstance(updatedTasks[0], undefined, 'Alice');
+      expect(afterAlice.assignedTo).toBe('user-charlie');
+    });
+
+    it('unassigns task and disables rotation when removed member was the only rotation member', () => {
+      const task: RepeatingTask = {
+        ...rotatingTask,
+        assignedTo: 'user-bob',
+        rotationMembers: ['user-bob'],
+      };
+
+      const { updatedTasks } = cleanupHouseholdTasksForMember(
+        [task],
+        'hh-1',
+        { userId: 'user-bob' }
+      );
+
+      expect(updatedTasks[0].assignedTo).toBeUndefined();
+      expect(updatedTasks[0].isRotating).toBe(false);
+      expect(updatedTasks[0].rotationMembers).toEqual([]);
+    });
+
+    it('does not touch tasks from a different household', () => {
+      const otherHouseholdTask: RepeatingTask = {
+        ...rotatingTask,
+        id: 'task-other-hh',
+        householdId: 'hh-other',
+        assignedTo: 'user-bob',
+      };
+
+      const { updatedTasks, modifiedTasks } = cleanupHouseholdTasksForMember(
+        [otherHouseholdTask],
+        'hh-1',
+        { userId: 'user-bob' }
+      );
+
+      expect(updatedTasks[0].assignedTo).toBe('user-bob');
+      expect(modifiedTasks).toHaveLength(0);
+    });
   });
 });

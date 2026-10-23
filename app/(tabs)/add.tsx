@@ -25,7 +25,7 @@ import type { SharedMember } from '@/types';
 export default function AddTaskScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ household?: string }>();
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
   const { addTask } = useTasks();
   const { showToast } = useToast();
   const { translate, language } = useTranslation();
@@ -36,13 +36,21 @@ export default function AddTaskScreen() {
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
 
   useEffect(() => {
-    if (params.household === 'true' && user?.householdMembers) {
+    if (activeHousehold) {
+      setFormState((prev) => ({
+        ...prev,
+        householdId: activeHousehold.id,
+      }));
+      if (activeHousehold.members && activeHousehold.members.length > 0) {
+        setShared(activeHousehold.members.map(toSharedMember));
+      }
+    } else if (params.household === 'true' && user?.householdMembers) {
       const activeMembers = user.householdMembers
         .filter((m) => m.status === 'active')
         .map(toSharedMember);
       setShared(activeMembers);
     }
-  }, [params.household, user?.householdMembers]);
+  }, [params.household, activeHousehold, user?.householdMembers]);
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
@@ -75,8 +83,8 @@ export default function AddTaskScreen() {
     setShared(nextShared);
   };
 
-  const removeContact = (phone: string) => {
-    setShared(shared.filter((s) => s.phone !== phone));
+  const removeContact = (key: string) => {
+    setShared(shared.filter((s) => (s.code || s.userId || s.phone) !== key));
   };
 
   const save = async () => {
@@ -99,10 +107,17 @@ export default function AddTaskScreen() {
           amount: values.amount,
           category: values.category,
           reminderTime: values.reminderTime,
+          timesPerDay: values.timesPerDay,
+          reminderTimes: values.reminderTimes,
           startDate: values.startDate,
           assignedTo: values.assignedTo,
+          isRotating: values.isRotating,
+          rotationMembers: values.rotationMembers,
+          icon: values.icon,
+          alarmEnabled: values.alarmEnabled,
+          note: values.note,
         },
-        { finance: values.finance, shared }
+        { finance: values.finance, shared, householdId: values.householdId }
       );
       if (ok) {
         showToast(translate('taskCreated'));
@@ -134,19 +149,22 @@ export default function AddTaskScreen() {
       <View style={styles.shareSection}>
         <Text style={styles.shareTitle}>{translate('shareHousehold')}</Text>
         <View style={styles.shareChipsRow}>
-          {shared.map((s) => (
-            <Card key={s.phone} style={styles.chipCard} mode="elevated">
-              <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                <View style={styles.chipContent}>
-                  <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                    <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
+          {shared.map((s) => {
+            const memberKey = s.code || s.userId || s.phone;
+            return (
+              <Card key={memberKey} style={styles.chipCard} mode="elevated">
+                <TouchableRipple onPress={() => removeContact(memberKey)} style={styles.chipRipple} borderless>
+                  <View style={styles.chipContent}>
+                    <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
+                      <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
+                    </View>
+                    <Text style={styles.chipText}>{s.name}</Text>
+                    <Text style={styles.chipRemove}>×</Text>
                   </View>
-                  <Text style={styles.chipText}>{s.name}</Text>
-                  <Text style={styles.chipRemove}>×</Text>
-                </View>
-              </TouchableRipple>
-            </Card>
-          ))}
+                </TouchableRipple>
+              </Card>
+            );
+          })}
           <Card style={styles.addChipCard} mode="elevated">
             <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
               <Text style={styles.addChipText}>{translate('addContact')}</Text>

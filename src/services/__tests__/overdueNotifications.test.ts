@@ -152,12 +152,13 @@ describe('services/notifications — overdue helpers', () => {
         (args) => (args[0] as CallArg).identifier === `overdue-${task.id}-d2`
       )![0] as CallArg).trigger.date;
 
-      const today = new Date();
-      const tomorrowDate = today.getDate() + 1;
-      const dayAfterDate = today.getDate() + 2;
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dayAfter = new Date();
+      dayAfter.setDate(dayAfter.getDate() + 2);
 
-      expect(d1.getDate()).toBe(tomorrowDate);
-      expect(d2.getDate()).toBe(dayAfterDate);
+      expect(d1.getDate()).toBe(tomorrow.getDate());
+      expect(d2.getDate()).toBe(dayAfter.getDate());
     });
 
     it('does NOT schedule for archived tasks', async () => {

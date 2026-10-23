@@ -54,15 +54,20 @@ function TaskCardComponent({
       case 'medicines':
       case 'health':
         return { catBg: '#FCE7F3', catColor: '#9D174D' }; // soft pink/magenta
+      case 'gardening':
+        return { catBg: '#ECFDF5', catColor: '#065F46' }; // soft green/emerald
+      case 'maintenance':
+        return { catBg: '#F0FDFA', catColor: '#0F766E' }; // soft teal
       case 'fitness':
-        return { catBg: '#EFF6FF', catColor: '#1E40AF' }; // soft blue
       case 'bills':
       case 'finance':
       case 'work':
+      case 'documents':
         return { catBg: '#EFF6FF', catColor: '#1E40AF' }; // soft blue
       case 'home':
       case 'subs':
       case 'help':
+      case 'supplies':
         return { catBg: '#FFFBEB', catColor: '#B45309' }; // soft yellow/amber
       default:
         return { catBg: '#F3F4F6', catColor: '#374151' }; // soft grey
@@ -391,6 +396,8 @@ export const TaskCard = React.memo(TaskCardComponent, (prev, next) => {
     prev.task.escalationCount === next.task.escalationCount &&
     prev.task.assignedTo === next.task.assignedTo &&
     prev.task.householdId === next.task.householdId &&
+    prev.isOverdue === next.isOverdue &&
+    (prev.task.history?.length ?? 0) === (next.task.history?.length ?? 0) &&
     prev.selected === next.selected &&
     prev.selectionMode === next.selectionMode &&
     prev.language === next.language &&

@@ -1,36 +1,41 @@
-import React, { useState, useMemo } from 'react';
-import {
-  View,
-  StyleSheet,
-  Alert,
-  Platform,
-  Modal,
-  Pressable,
-  KeyboardAvoidingView,
-  ScrollView,
-} from 'react-native';
-import { Text, Card, TouchableRipple, ActivityIndicator } from 'react-native-paper';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { AppIcon } from '@/components/AppIcon';
+import { ArchivedTasksSheet } from '@/components/ArchivedTasksSheet';
+import { Button } from '@/components/Button';
+import { FormField } from '@/components/FormField';
+import { GroupedSettingCard, SettingItem } from '@/components/profile/GroupedSettingCard';
+import { MemberPassModal } from '@/components/profile/MemberPassModal';
+import { PresetLibrarySheet } from '@/components/profile/PresetLibrarySheet';
+import { ManageCategoriesSheet } from '@/components/category/ManageCategoriesSheet';
+import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
+import { Toggle } from '@/components/Toggle';
+import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
+import { initials } from '@/domain/insights';
+import { formatPhone, validateName, validatePhone } from '@/domain/validation';
+import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
-import { useTranslation } from '@/hooks/useTranslation';
-import { ScreenShell, SectionHeader } from '@/components/ScreenShell';
-import { Colors, Radius, Shadows, Typography } from '@/constants/theme';
-import { initials } from '@/domain/insights';
-import { requestNotificationPermission, cancelAllNotifications, scheduleTaskReminder } from '@/services/notifications';
-import { AppIcon } from '@/components/AppIcon';
-import { Button } from '@/components/Button';
-import { FormField } from '@/components/FormField';
-import { Toggle } from '@/components/Toggle';
-import { validateName, validatePhone, formatPhone } from '@/domain/validation';
-import type { Language } from '@/types';
 import { exportCalendar } from '@/services/calendarExport';
-import { ArchivedTasksSheet } from '@/components/ArchivedTasksSheet';
-import { GroupedSettingCard, SettingItem } from '@/components/profile/GroupedSettingCard';
-import { MemberPassModal } from '@/components/profile/MemberPassModal';
+import { cancelAllNotifications, requestNotificationPermission, scheduleTaskReminder } from '@/services/notifications';
+import type { Language } from '@/types';
 import { getAppVersionLabel } from '@/utils/version';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { ActivityIndicator, Card, Text, TouchableRipple } from 'react-native-paper';
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.repeto.tasks';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -42,11 +47,14 @@ export default function ProfileScreen() {
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
   const [showArchivedSheet, setShowArchivedSheet] = useState(false);
+  const [showPresetLibrary, setShowPresetLibrary] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone?.replace('+91 ', '') ?? '');
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [showDeleteReasonModal, setShowDeleteReasonModal] = useState(false);
   const [selectedDeleteReason, setSelectedDeleteReason] = useState<string | null>(null);
 
@@ -57,6 +65,22 @@ export default function ProfileScreen() {
     if (code === userLang) return;
     await setLanguage(code as Language);
     showToast(code === 'hi' ? translate('languageSwitchedHi') : translate('languageSwitched'));
+  };
+
+  const handleShareApp = async () => {
+    try {
+      const codeSnippet = user?.userCode ? `\n(My code: ${user.userCode})` : '';
+      const message = isHi
+        ? `हे! मैं आवर्ती कार्यों, आदतों और घर के कामों को ट्रैक करने के लिए Repeto का उपयोग कर रहा हूँ। इसे आज़माएं:\n👉 डाउनलोड करें: ${PLAY_STORE_URL}${user?.userCode ? `\n(मेरा कोड: ${user.userCode})` : ''}`
+        : `Hey! I'm using Repeto to track repeating chores, habits, and household tasks. It makes staying on track super easy!\n👉 Download Repeto: ${PLAY_STORE_URL}${codeSnippet}`;
+
+      await Share.share({
+        title: isHi ? 'Repeto ऐप शेयर करें' : 'Invite Friends to Repeto',
+        message,
+      });
+    } catch {
+      // Ignored
+    }
   };
 
   const handleOpenEdit = () => {
@@ -99,22 +123,81 @@ export default function ProfileScreen() {
     }
   };
 
+  const [showDeletedNoticeModal, setShowDeletedNoticeModal] = useState(false);
+  const deleteModalResolverRef = useRef<(() => void) | null>(null);
+
   const executeDelete = async (reason: string) => {
     setDeleting(true);
     try {
-      const res = await deleteAccount(reason);
+      const res = await deleteAccount(reason, async () => {
+        setDeleting(false);
+        setShowDeletedNoticeModal(true);
+        await new Promise<void>((resolve) => {
+          deleteModalResolverRef.current = resolve;
+          // Generous timeout fallback so modal doesn't prematurely disappear while reading
+          setTimeout(() => {
+            if (deleteModalResolverRef.current) {
+              deleteModalResolverRef.current();
+              deleteModalResolverRef.current = null;
+            }
+          }, 60000);
+        });
+      });
       if (!res.ok) {
         showToast(translate('deleteAccountError'));
         setDeleting(false);
         return;
       }
       resetTasks();
-      showToast(translate('deleteAccountSuccess'));
     } catch {
       showToast(translate('deleteAccountError'));
       setDeleting(false);
     }
   };
+
+  const handleDismissDeletedNotice = () => {
+    setShowDeletedNoticeModal(false);
+    if (deleteModalResolverRef.current) {
+      deleteModalResolverRef.current();
+      deleteModalResolverRef.current = null;
+    }
+  };
+
+  const renderRecoveryNoticeModal = () => (
+    <Modal
+      visible={showDeletedNoticeModal}
+      transparent
+      animationType="fade"
+      onRequestClose={handleDismissDeletedNotice}
+    >
+      <View style={styles.noticeModalBackdrop} testID="delete-recovery-notice-modal">
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleDismissDeletedNotice} />
+        <Card style={styles.noticeModalCard} mode="elevated">
+          <View style={styles.noticeIconCircle}>
+            <AppIcon name="shield-checkmark" size={36} color={Colors.tealDeep} />
+          </View>
+          <Text style={styles.noticeModalTitle}>
+            {translate('deleteAccountPopupTitle')}
+          </Text>
+          <View style={styles.graceBadge}>
+            <AppIcon name="time-outline" size={16} color={Colors.marigoldDeep} />
+            <Text style={styles.graceBadgeText}>
+              {isHi ? '30 दिन की रिकवरी अवधि' : '30-Day Recovery Window'}
+            </Text>
+          </View>
+          <Text style={styles.noticeModalBody}>
+            {translate('deleteAccountRecoveryNotice')}
+          </Text>
+          <Button
+            title={translate('deleteAccountPopupBtn')}
+            onPress={handleDismissDeletedNotice}
+            style={styles.noticeModalBtn}
+            testID="delete-recovery-popup-ok-btn"
+          />
+        </Card>
+      </View>
+    </Modal>
+  );
 
   // Activity stats calculation
   const stats = useMemo(() => {
@@ -150,6 +233,7 @@ export default function ProfileScreen() {
         <View style={{ padding: 20, alignItems: 'center' }}>
           <Text style={{ fontSize: 14, color: Colors.inkSoft }}>Loading profile...</Text>
         </View>
+        {renderRecoveryNoticeModal()}
       </ScreenShell>
     );
   }
@@ -255,6 +339,30 @@ export default function ProfileScreen() {
         </View>
       </Card>
 
+      {/* ── Referral / Invite Friends Banner ── */}
+      <Card style={styles.referralCard} mode="elevated">
+        <View style={styles.referralInner}>
+          <View style={styles.referralIconCircle}>
+            <AppIcon name="gift" size={20} color={Colors.marigoldDeep} />
+          </View>
+          <View style={styles.referralTextCol}>
+            <Text style={styles.referralTitle}>{translate('inviteFriendsTitle')}</Text>
+            <Text style={styles.referralSubtitle}>{translate('inviteFriendsSub')}</Text>
+          </View>
+          <TouchableRipple
+            style={styles.referralBtn}
+            onPress={handleShareApp}
+            borderless
+            testID="profile-invite-friends-btn"
+          >
+            <View style={styles.referralBtnContent}>
+              <AppIcon name="share-social-outline" size={13} color={Colors.white} />
+              <Text style={styles.referralBtnText}>{translate('inviteFriendsBtn')}</Text>
+            </View>
+          </TouchableRipple>
+        </View>
+      </Card>
+
       {/* ── 3. Section: Preferences ── */}
       <SectionHeader label={translate('preferences')} />
       <GroupedSettingCard>
@@ -271,15 +379,24 @@ export default function ProfileScreen() {
               onValueChange={async (v) => {
                 if (v) {
                   const granted = await requestNotificationPermission();
-                  updateUser({ pushOptIn: true });
-                  if (granted) {
-                    for (const t of tasks) {
-                      if (!t.archived) scheduleTaskReminder(t).catch(() => {});
-                    }
+                  if (!granted) {
+                    showToast(
+                      isHi
+                        ? 'सूचनाएं फ़ोन सेटिंग्स में बंद हैं। कृपया अनुमति दें।'
+                        : 'Notifications are disabled in device settings. Please enable them.'
+                    );
+                    await updateUser({ pushOptIn: false });
+                    return;
                   }
+                  await updateUser({ pushOptIn: true });
+                  for (const t of tasks) {
+                    if (!t.archived) scheduleTaskReminder(t).catch(() => {});
+                  }
+                  showToast(isHi ? 'सूचनाएं चालू कर दी गई हैं' : 'Notifications enabled');
                 } else {
-                  updateUser({ pushOptIn: false });
+                  await updateUser({ pushOptIn: false });
                   await cancelAllNotifications();
+                  showToast(isHi ? 'सूचनाएं बंद कर दी गई हैं' : 'Notifications disabled');
                 }
               }}
               testID="settings-push-toggle"
@@ -326,6 +443,28 @@ export default function ProfileScreen() {
       {/* ── 4. Section: Data & Organization ── */}
       <SectionHeader label={translate('dataAndArchive')} />
       <GroupedSettingCard>
+        {/* Add from Preset */}
+        <SettingItem
+          icon="sparkles"
+          iconColor={Colors.tealDeep}
+          iconBg="rgba(62, 124, 106, 0.12)"
+          title={translate('addFromPreset')}
+          subtitle={translate('browsePresetsSub')}
+          onPress={() => setShowPresetLibrary(true)}
+          testID="settings-preset-library-link"
+        />
+
+        {/* My Custom Categories */}
+        <SettingItem
+          icon="grid-outline"
+          iconColor={Colors.marigoldDeep}
+          iconBg="rgba(232, 163, 61, 0.12)"
+          title={translate('myCategories')}
+          subtitle={translate('myCategoriesSub')}
+          onPress={() => setShowCategoryManager(true)}
+          testID="settings-categories-link"
+        />
+
         {/* Archived Tasks */}
         <SettingItem
           icon="archive-outline"
@@ -415,9 +554,16 @@ export default function ProfileScreen() {
           danger
           showChevron={false}
           onPress={() => {
+            if (loggingOut || deleting) return;
             const performLogout = async () => {
-              await signOut();
-              resetTasks();
+              try {
+                setLoggingOut(true);
+                await signOut();
+                resetTasks();
+              } catch (err) {
+                console.warn('[Repeato] Failed to sign out:', err);
+                setLoggingOut(false);
+              }
             };
             if (Platform.OS === 'web') {
               if (
@@ -483,6 +629,22 @@ export default function ProfileScreen() {
       <ArchivedTasksSheet
         visible={showArchivedSheet}
         onClose={() => setShowArchivedSheet(false)}
+        language={userLang}
+      />
+
+      {/* Preset Library Sheet */}
+      {showPresetLibrary && (
+        <PresetLibrarySheet
+          visible={showPresetLibrary}
+          onClose={() => setShowPresetLibrary(false)}
+          language={userLang}
+        />
+      )}
+
+      {/* Custom Categories Manager Sheet */}
+      <ManageCategoriesSheet
+        visible={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
         language={userLang}
       />
 
@@ -683,12 +845,21 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.deletingSub}>
               {isHi
-                ? 'आपका डेटा सुरक्षित रूप से हटाया जा रहा है और साइन आउट किया जा रहा है...'
-                : 'Safely wiping your data and signing out...'}
+                ? 'आपका डेटा सुरक्षित रूप से हटाया जा रहा है...'
+                : 'Safely scheduling deletion...'}
             </Text>
+            <View style={styles.deletingRecoveryNoticeCard}>
+              <AppIcon name="shield-outline" size={18} color={Colors.marigoldDeep} style={{ marginRight: 6 }} />
+              <Text style={styles.deletingRecoveryNoticeText}>
+                {translate('deleteAccountRecoveryNotice')}
+              </Text>
+            </View>
           </View>
         </View>
       )}
+
+      {/* 30-Day Recovery Notice Modal Popup */}
+      {renderRecoveryNoticeModal()}
     </ScreenShell>
   );
 }
@@ -840,6 +1011,68 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.ivoryLine,
   },
 
+  // Referral / Invite Friends Banner
+  referralCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.28)',
+    elevation: 2,
+    shadowColor: Colors.marigoldDeep,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    overflow: 'hidden',
+  },
+  referralInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  referralIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(232, 163, 61, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralTextCol: {
+    flex: 1,
+  },
+  referralTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.indigo950,
+    marginBottom: 2,
+  },
+  referralSubtitle: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 11,
+    color: Colors.inkSoft,
+    lineHeight: 15,
+  },
+  referralBtn: {
+    backgroundColor: Colors.marigoldDeep,
+    borderRadius: Radius.full,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    elevation: 1,
+  },
+  referralBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  referralBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.white,
+  },
+
   // Language Segment Switcher
   langSegment: {
     flexDirection: 'row',
@@ -874,8 +1107,8 @@ const styles = StyleSheet.create({
   // Footer
   footerContainer: {
     alignItems: 'center',
-    paddingVertical: 16,
-    marginBottom: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   footerVersionText: {
     fontSize: 12,
@@ -1096,6 +1329,82 @@ const styles = StyleSheet.create({
     color: Colors.inkSoft,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  deletingRecoveryNoticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF8EE',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 61, 0.25)',
+    borderRadius: Radius.md,
+    padding: 10,
+    marginTop: 14,
+  },
+  deletingRecoveryNoticeText: {
+    flex: 1,
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: Colors.indigo950,
+    lineHeight: 17,
+  },
+  noticeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(23, 27, 54, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  noticeModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    ...Shadows.md,
+  },
+  noticeIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(20, 110, 120, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  noticeModalTitle: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 20,
+    color: Colors.ink,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  graceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(232, 163, 61, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    gap: 6,
+    marginBottom: 12,
+  },
+  graceBadgeText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12.5,
+    color: Colors.indigo950,
+  },
+  noticeModalBody: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 13.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  noticeModalBtn: {
+    width: '100%',
+    backgroundColor: Colors.white
   },
 });
 

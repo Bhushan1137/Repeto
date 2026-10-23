@@ -12,14 +12,14 @@ import {
   Image,
   Linking,
   KeyboardAvoidingView,
+  TouchableOpacity,
 } from 'react-native';
 import { Text, Card, TouchableRipple } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import type { CompletionStatus, Language, RepeatingTask } from '@/types';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
-import { CATEGORY_MAP } from '@/constants/categories';
+import { getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
 import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, daysPercent } from '@/domain/recurrence';
 import { canSnoozeTask, getTodayDoseProgress } from '@/domain/task';
@@ -102,6 +102,11 @@ function TaskDetailSheetComponent({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [snoozeOptionsVisible, setSnoozeOptionsVisible] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  React.useEffect(() => {
+    setCompleting(false);
+  }, [task?.id, visible]);
 
   const { findMatch, logImpression, logClick } = useRecommendations();
   const match = task ? findMatch(task) : null;
@@ -169,8 +174,6 @@ function TaskDetailSheetComponent({
     return null;
   }, [task]);
 
-  const isCompletedToday = isMultiDose ? Boolean(doseProgress?.isAllDone) : !!todayCompletion;
-
   const assigneeDisplayName = useMemo(() => {
     if (!task?.assignedTo) return language === 'hi' ? 'कोई नहीं (साझा)' : 'Unassigned (Open)';
     if (task.assignedTo === user?.id || task.assignedTo === user?.userCode) {
@@ -183,10 +186,12 @@ function TaskDetailSheetComponent({
 
   if (!task || !visible) return null;
 
-  const cat = CATEGORY_MAP[task.category];
+  const cat = getCategoryDef(task.category);
   const hex = AccentHex[cat.accent];
   const days = daysUntilDue(task.nextDueDate);
   const overdue = days < 0;
+  const isDueTodayOrOverdue = days <= 0;
+  const isCompletedToday = isDueTodayOrOverdue && (isMultiDose ? Boolean(doseProgress?.isAllDone) : !!todayCompletion);
 
   const statusText: Record<CompletionStatus, string> = {
     on_time: translate('completedOnTime'),
@@ -206,25 +211,37 @@ function TaskDetailSheetComponent({
         ? `${doseProgress.nextDoseIndex + 1}/${doseProgress.totalDoses} पूरा करें (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`
         : `Mark ${doseProgress.nextDoseIndex + 1} of ${doseProgress.totalDoses} Done (${formatTime12(doseProgress.times[doseProgress.nextDoseIndex])})`)
     : isEarlyAllowed
-    ? (language === 'hi' ? `समय पूर्व पूरा करें (${days}d)` : `Mark Done Early (${days}d early)`)
+    ? (language === 'hi' ? `समय पूर्व पूरा करें (${days}d)` : `Mark Done Early (${days}d)`)
     : translate('markDone');
 
   const handleMarkDone = () => {
+    if (completing) return;
     if (!noteExpanded) {
       setNoteExpanded(true);
       return;
     }
+    setCompleting(true);
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
-    setNoteText('');
-    setNoteExpanded(false);
+    try {
+      onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
+    } finally {
+      setNoteText('');
+      setNoteExpanded(false);
+      setTimeout(() => setCompleting(false), 500);
+    }
   };
 
   const handleMarkDoneDirectly = () => {
+    if (completing) return;
+    setCompleting(true);
     Keyboard.dismiss();
-    onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
-    setNoteText('');
-    setNoteExpanded(false);
+    try {
+      onComplete(task.id, noteText.trim() || undefined, { maxEarlyDays: 2 });
+    } finally {
+      setNoteText('');
+      setNoteExpanded(false);
+      setTimeout(() => setCompleting(false), 500);
+    }
   };
 
   return (
@@ -271,6 +288,13 @@ function TaskDetailSheetComponent({
                   {hhContext ? `${hhContext.icon || '🏠'} ${hhContext.name}` : '👤 Personal'}
                 </Text>
               </View>
+              {task.alarmEnabled && (
+                <View style={[styles.catPill, { backgroundColor: 'rgba(245, 158, 11, 0.35)' }]}>
+                  <Text style={styles.catBadge}>
+                    🔔 {language === 'hi' ? 'अलार्म' : 'Alarm'}
+                  </Text>
+                </View>
+              )}
             </View>
             <Text style={styles.title} numberOfLines={2}>
               {task.title}
@@ -428,7 +452,34 @@ function TaskDetailSheetComponent({
             </Card>
           )}
 
-          {/* If occurrence is marked done today, show completed status & undo option only */}
+          {/* Earlier today completion alert banner when viewing an upcoming occurrence */}
+          {todayCompletion && days > 0 && (
+            <View style={styles.earlierDoneBanner}>
+              <View style={styles.earlierDoneLeft}>
+                <AppIcon name="checkmark-circle" size={16} color="#059669" />
+                <Text style={styles.earlierDoneText}>
+                  {language === 'hi'
+                    ? `आज का कार्य संपन्न (${formatTime12(todayCompletion.completedAt ?? '')}) • अगली देय: ${dayLabel(days, language)}`
+                    : `Completed earlier today at ${formatTime12(todayCompletion.completedAt ?? '')} • Next due: ${dayLabel(days, language)}`}
+                </Text>
+              </View>
+              {onUndoComplete && (
+                <TouchableOpacity
+                  onPress={() => {
+                    onClose();
+                    onUndoComplete(task.id);
+                  }}
+                  hitSlop={8}
+                >
+                  <Text style={styles.earlierDoneUndoText}>
+                    {language === 'hi' ? 'पूर्ववत करें' : 'Undo'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* If occurrence is marked done today, show completed status & undo option */}
           {isCompletedToday ? (
             <Card style={styles.completedOccurrenceCard} mode="elevated">
               <Card.Content style={styles.completedOccurrenceContent}>
@@ -473,6 +524,25 @@ function TaskDetailSheetComponent({
                     </View>
                   </TouchableRipple>
                 )}
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <ActionChip
+                    icon="create-outline"
+                    label={language === 'hi' ? 'संपादित करें' : 'Edit Task'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      onEdit?.(task.id);
+                    }}
+                  />
+                  <ActionChip
+                    icon="calendar-outline"
+                    label={language === 'hi' ? 'तारीख बदलें' : 'Reschedule'}
+                    onPress={() => {
+                      setSnoozeOptionsVisible(false);
+                      setShowDatePicker(true);
+                    }}
+                  />
+                </View>
               </Card.Content>
             </Card>
           ) : isFutureTask ? (
@@ -607,6 +677,8 @@ function TaskDetailSheetComponent({
                               <Button
                                 title={language === 'hi' ? 'पूर्ण करें' : 'Mark Done'}
                                 onPress={handleMarkDoneDirectly}
+                                loading={completing}
+                                disabled={completing}
                                 style={styles.multiDoseQuickDoneBtn}
                               />
                             )}
@@ -647,6 +719,8 @@ function TaskDetailSheetComponent({
                         <Button
                           title={markDoneButtonTitle}
                           onPress={handleMarkDoneDirectly}
+                          loading={completing}
+                          disabled={completing}
                           style={styles.noteConfirmBtn}
                         />
                       </View>
@@ -656,12 +730,16 @@ function TaskDetailSheetComponent({
                       <Button
                         title={markDoneButtonTitle}
                         onPress={handleMarkDoneDirectly}
+                        loading={completing}
+                        disabled={completing}
                         style={styles.donePrimaryBtn}
+                        textStyle={{ fontSize: 13 }}
                       />
                       <Button
                         title={language === 'hi' ? 'नोट जोड़ें' : 'Add Note'}
                         variant="outline"
                         onPress={handleMarkDone}
+                        disabled={completing}
                         style={styles.doneSecondaryBtn}
                       />
                     </View>
@@ -1602,11 +1680,12 @@ const styles = StyleSheet.create({
   },
   doneButtonsRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 10,
     width: '100%',
   },
   donePrimaryBtn: {
-    flex: 1,
+    flex: 1.85,
   },
   doneSecondaryBtn: {
     flex: 1,
@@ -1692,6 +1771,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#92400E',
   },
+  earlierDoneBanner: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  earlierDoneLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  earlierDoneText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: '#065F46',
+    flex: 1,
+  },
+  earlierDoneUndoText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: '#B45309',
+    textDecorationLine: 'underline',
+  },
 });
 
 export const TaskDetailSheet = React.memo(TaskDetailSheetComponent, (prev, next) => {
@@ -1701,6 +1811,7 @@ export const TaskDetailSheet = React.memo(TaskDetailSheetComponent, (prev, next)
     prev.task?.updatedAt === next.task?.updatedAt &&
     prev.task?.nextDueDate === next.task?.nextDueDate &&
     prev.task?.title === next.task?.title &&
+    prev.task?.alarmEnabled === next.task?.alarmEnabled &&
     prev.task?.history?.length === next.task?.history?.length &&
     prev.language === next.language
   );

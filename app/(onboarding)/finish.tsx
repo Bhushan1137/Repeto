@@ -9,11 +9,11 @@ import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
 import { SettingRow } from '@/components/SettingRow';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { requestNotificationPermission } from '@/services/notifications';
 import { Colors } from '@/constants/theme';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { OnboardingStepIndicator } from '@/components/OnboardingStepIndicator';
 
 export default function FinishScreen() {
   const router = useRouter();
@@ -47,16 +47,24 @@ export default function FinishScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.container,
-        {
-          paddingTop: Math.max(insets.top, 16) + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 16,
-        },
-      ]}
-    >
-      <OnboardingProgress step={5} />
+    <View style={{ flex: 1, backgroundColor: Colors.surfaceMuted }}>
+      <View style={{ paddingTop: Math.max(insets.top, 16) }}>
+        <OnboardingStepIndicator
+          currentStep={5}
+          totalSteps={5}
+          stepLabel={language === 'hi' ? 'समाप्त' : 'All Set'}
+          onBack={() => router.replace('/(onboarding)/suggestions')}
+        />
+      </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+      >
       <View style={styles.hero}>
         <View style={styles.celebrationBadge}>
           <Text style={styles.emoji}>🎉</Text>
@@ -87,6 +95,7 @@ export default function FinishScreen() {
         onPress={finish}
       />
     </ScrollView>
+    </View>
   );
 }
 

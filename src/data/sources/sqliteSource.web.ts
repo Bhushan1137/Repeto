@@ -72,6 +72,14 @@ export async function deleteSingleTaskSqlite(userId: string, taskId: string): Pr
   await AsyncStorage.setItem(tasksKey(userId), JSON.stringify(next));
 }
 
+export async function deleteMultipleTasksSqlite(userId: string, taskIds: string[]): Promise<void> {
+  if (!userId || taskIds.length === 0) return;
+  const idSet = new Set(taskIds);
+  const current = await loadTasksSqlite(userId);
+  const next = current.filter((t) => !idSet.has(t.id));
+  await AsyncStorage.setItem(tasksKey(userId), JSON.stringify(next));
+}
+
 export async function enqueueSyncSqlite(
   userId: string,
   op: Omit<SyncOperation, 'id' | 'timestamp'>
@@ -100,7 +108,12 @@ export async function drainSyncQueueSqlite(userId: string): Promise<SyncOperatio
 export async function clearAllSqliteData(userId?: string): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const storageKeys = keys.filter((k) => k.startsWith('@repeato/') || k.startsWith('@repeto/'));
+    const storageKeys = keys.filter((k) =>
+      k === KEYS.user ||
+      (userId
+        ? k === tasksKey(userId) || k === syncKey(userId)
+        : k.startsWith(KEYS.tasksPrefix) || k.startsWith(KEYS.syncPrefix))
+    );
     if (storageKeys.length > 0) {
       await Promise.all(storageKeys.map((k) => AsyncStorage.removeItem(k)));
     }
