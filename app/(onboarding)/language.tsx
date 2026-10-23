@@ -3,19 +3,18 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useOnboarding } from '@/context/OnboardingProvider';
-import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/Button';
 import { LanguagePicker } from '@/components/SettingRow';
-import { ProgressRing } from '@/components/ProgressRing';
-import { OnboardingProgress } from '@/components/OnboardingProgress';
+import { AppIcon } from '@/components/AppIcon';
 import { Colors } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Language } from '@/types';
+import { useAuth } from '@/providers/AuthProvider';
 
 export default function LanguageScreen() {
   const router = useRouter();
   const { language, setLanguage } = useOnboarding();
-  const { translate } = useTranslation(language);
+  const { setLanguage: setAuthLanguage, user } = useAuth();
   const insets = useSafeAreaInsets();
 
   return (
@@ -23,49 +22,92 @@ export default function LanguageScreen() {
       contentContainerStyle={[
         styles.container,
         {
-          paddingTop: Math.max(insets.top, 16) + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 16,
+          paddingTop: Math.max(insets.top, 24) + 24,
+          paddingBottom: Math.max(insets.bottom, 24) + 24,
         },
       ]}
       showsVerticalScrollIndicator={false}
+      testID="language-screen-scroll"
     >
-      <OnboardingProgress step={0} />
-      <View style={styles.hero}>
-        <ProgressRing percent={100} color={Colors.marigold} size={72} stroke={6} />
-        <Text style={styles.heroTitle}>{translate('obWelcomeTitle')}</Text>
+      <View style={styles.hero} testID="language-hero-container">
+        <View style={styles.iconCircle}>
+          <AppIcon name="globe-outline" size={32} color={Colors.marigoldDeep} />
+        </View>
+        <Text style={styles.heroTitle}>
+          {language === 'hi' ? 'भाषा का चयन करें' : 'Choose Your Language'}
+        </Text>
         <Text style={styles.heroSub}>
           {language === 'hi'
-            ? 'वह भाषा चुनें जिसमें Repeato आपसे बात करे — आप इसे कभी भी बदल सकते हैं।'
-            : 'Choose the language Repeato should speak to you in — you can change this anytime.'}
+            ? 'वह भाषा चुनें जिसमें Repeto आपसे बात करे — आप इसे कभी भी बदल सकते हैं।'
+            : 'Select your preferred language for reminders and navigation — you can update this anytime in Settings.'}
         </Text>
       </View>
 
-      <LanguagePicker
-        selected={language}
-        onSelect={(code) => setLanguage(code as Language)}
-        options={[
-          { code: 'en', label: 'English', native: 'English' },
-          { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
-        ]}
-      />
+      <View style={styles.pickerCard}>
+        <LanguagePicker
+          selected={language}
+          onSelect={(code) => {
+            setLanguage(code as Language);
+            setAuthLanguage(code as Language);
+          }}
+          options={[
+            { code: 'en', label: 'English', native: 'English (US/IN)' },
+            { code: 'hi', label: 'Hindi', native: 'हिन्दी (Hindi)' },
+          ]}
+          testID="language-picker"
+        />
+      </View>
 
-      <Button title={translate('continueBtn')} style={styles.cta} onPress={() => router.push('/(onboarding)/sign-in')} />
+      <Button
+        title={language === 'hi' ? 'आगे बढ़ें →' : 'Continue with English →'}
+        style={styles.cta}
+        onPress={async () => {
+          await setAuthLanguage(language);
+          if (!user) {
+            router.replace('/(onboarding)/sign-in');
+          } else if (!user.profileComplete) {
+            router.replace('/(onboarding)/profile');
+          } else {
+            router.replace('/(onboarding)/categories');
+          }
+        }}
+        testID="language-continue-btn"
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, paddingTop: 56, paddingBottom: 40, backgroundColor: Colors.surfaceMuted },
-  hero: { alignItems: 'center', paddingVertical: 26 },
+  container: { paddingHorizontal: 24, backgroundColor: Colors.surfaceMuted, flexGrow: 1, justifyContent: 'center' },
+  hero: { alignItems: 'center', paddingBottom: 24 },
+  iconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FEF3E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   heroTitle: {
     fontFamily: 'Fraunces_700Bold',
-    fontSize: 24,
+    fontSize: 28,
     color: Colors.ink,
-    marginTop: 18,
+    marginTop: 14,
     marginBottom: 8,
     textAlign: 'center',
   },
-  heroSub: { fontSize: 13.5, color: Colors.inkSoft, textAlign: 'center', lineHeight: 21, maxWidth: 280 },
-  cta: { marginTop: 22 },
+  heroSub: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 14,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 320,
+  },
+  pickerCard: {
+    marginVertical: 16,
+  },
+  cta: { marginTop: 24, height: 50, borderRadius: 25 },
 });
 

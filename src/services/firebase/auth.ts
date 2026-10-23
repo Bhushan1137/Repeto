@@ -6,6 +6,9 @@ import {
   getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail as firebaseSendPasswordReset,
   type User,
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -102,6 +105,36 @@ export async function signInWithGoogleNative(): Promise<User> {
   return signInWithGoogleAndroid();
 }
 
+// ---------------------------------------------------------------------------
+// Email/Password authentication
+// ---------------------------------------------------------------------------
+export async function signInWithEmailPassword(
+  email: string,
+  password: string
+): Promise<User> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return result.user;
+}
+
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string
+): Promise<User> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  return result.user;
+}
+
+/** Send a password-reset email */
+export async function sendPasswordResetEmail(email: string): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (!auth) throw new Error('auth_unavailable');
+  await firebaseSendPasswordReset(auth, email);
+}
+
 export async function signOutFirebase(): Promise<void> {
   if (Platform.OS !== 'web') {
     try {
@@ -118,14 +151,27 @@ export async function signOutFirebase(): Promise<void> {
 export function getAuthErrorMessage(code: string): string {
   switch (code) {
     case 'auth/unauthorized-domain':
-      return 'This domain is not authorized. Add it in Firebase Console → Authentication → Settings → Authorized domains.';
     case 'auth/operation-not-allowed':
-      return 'Google Sign-In is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.';
+      return 'Authentication service is currently unavailable. Please try again later.';
     case 'auth/network-request-failed':
       return 'Network error. Check your connection and try again.';
+    case 'auth/user-not-found':
+      return 'No account found with this email. Please check the email or create an account.';
+    case 'auth/wrong-password':
+      return 'Incorrect password. Use "Forgot password?" to reset it.';
+    case 'auth/invalid-credential':
+      return 'Invalid email or password. Please check your credentials.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password is too weak. Please use at least 6 characters.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. Please sign in instead.';
     case 'redirect_pending':
       return 'Redirecting to Google…';
     default:
-      return 'Sign-in failed. Please try again.';
+      return 'Authentication failed. Please try again.';
   }
 }

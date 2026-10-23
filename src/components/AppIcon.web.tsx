@@ -14,6 +14,7 @@ export type AppIconName =
   | 'add'
   | 'close'
   | 'close-circle-outline'
+  | 'alert-circle-outline'
   | 'calendar-outline'
   | 'trash-outline'
   | 'share-outline'
@@ -33,6 +34,13 @@ export type AppIconName =
   | 'filter-outline'
   | 'ellipsis-horizontal'
   | 'star-outline'
+  | 'chevron-back'
+  | 'chevron-forward'
+  | 'chevron-up-outline'
+  | 'camera-outline'
+  | 'mail-outline'
+  | 'logo-google'
+  | 'lock-closed-outline'
   | 'warning-outline';
 
 interface AppIconProps {

@@ -6,6 +6,7 @@ export interface TimeFieldProps {
   value: string | null;
   onChange: (time: string) => void;
   hint?: string;
+  testID?: string;
 }
 
 export function parseTime(value: string | null): Date {
@@ -14,8 +15,10 @@ export function parseTime(value: string | null): Date {
     d.setHours(9, 0, 0, 0);
     return d;
   }
-  const [h, m] = value.split(':').map(Number);
-  d.setHours(h || 9, m || 0, 0, 0);
+  const [hStr, mStr] = value.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  d.setHours(!isNaN(h) ? h : 9, !isNaN(m) ? m : 0, 0, 0);
   return d;
 }
 
@@ -50,22 +53,46 @@ export const timeFieldStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.ivoryLine,
     borderRadius: Radius.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  triggerText: { fontFamily: 'Manrope_600SemiBold', fontSize: 14.5, color: Colors.ink },
-  chevron: { fontSize: 14, color: Colors.inkSoft },
-  hint: { fontSize: 11.5, color: Colors.inkFaint, marginTop: 6 },
+  triggerText: { fontFamily: 'Manrope_700Bold', fontSize: 14, color: Colors.ink },
+  chevron: { fontSize: 16, color: Colors.marigold },
+  hint: {
+    fontSize: 11.5,
+    color: Colors.tealDeep,
+    marginTop: 6,
+    fontFamily: 'Manrope_600SemiBold',
+    fontStyle: 'italic',
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(23,27,54,0.45)' },
   webSheet: {
     position: 'absolute',
-    bottom: '30%',
-    left: '10%',
-    right: '10%',
+    top: 0, bottom: 0, left: 0, right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    pointerEvents: 'box-none' as any,
+  },
+  webCard: {
     backgroundColor: Colors.ivory,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: Radius.md,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
   },
   iosSheet: {
     position: 'absolute',

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { TextInput as PaperInput, HelperText } from 'react-native-paper';
-import { Colors, Typography } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 
 interface FormFieldProps {
   label: string;
@@ -15,7 +15,10 @@ interface FormFieldProps {
   keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad' | 'number-pad';
   maxLength?: number;
   secureTextEntry?: boolean;
+  multiline?: boolean;
+  numberOfLines?: number;
   style?: any;
+  testID?: string;
 }
 
 export function FormField({
@@ -24,10 +27,11 @@ export function FormField({
   hint,
   style,
   editable = true,
+  testID,
   ...props
 }: FormFieldProps) {
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={testID}>
       <PaperInput
         mode="outlined"
         label={label}

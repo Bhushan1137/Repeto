@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { View, StyleSheet, Platform, Pressable, type PressableProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,10 +32,10 @@ function TabIcon({ tab, focused }: { tab: TabKey; focused: boolean }) {
   );
 }
 
-function AddTabButton({ onOpen, ...props }: PressableProps & { onOpen: () => void; children?: React.ReactNode }) {
+function AddTabButton({ onOpen, ..._props }: PressableProps & { onOpen: () => void; children?: React.ReactNode }) {
   return (
-    <Pressable onPress={onOpen} style={styles.addSlot}>
-      <View style={styles.fabOuter}>
+    <Pressable onPress={onOpen} style={styles.addSlot} testID="add-task-fab">
+      <View style={styles.fabOuter} testID="add-task-fab-outer">
         <LinearGradient colors={[...Gradients.marigold]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fab}>
           <AppIcon name="add" size={30} color={Colors.indigo950} />
         </LinearGradient>
@@ -44,12 +44,18 @@ function AddTabButton({ onOpen, ...props }: PressableProps & { onOpen: () => voi
   );
 }
 
+import { useAuth } from '@/providers/AppProviders';
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { translate } = useTranslation();
   const { message } = useToast();
+  const { activeHousehold } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const bottomPad = Math.max(insets.bottom, 12);
+
+  const pathname = usePathname();
+  const isHouseholdTab = !!(pathname && pathname.includes('household'));
 
   return (
     <View style={styles.root}>
@@ -116,7 +122,11 @@ export default function TabLayout() {
       </Tabs>
 
       {/* Modal sheet opened by FAB — no navigation, no reload */}
-      <AddTaskSheet visible={showAdd} onClose={() => setShowAdd(false)} />
+      <AddTaskSheet
+        visible={showAdd}
+        onClose={() => setShowAdd(false)}
+        defaultToHousehold={isHouseholdTab && Boolean(activeHousehold)}
+      />
 
       <Toast message={message} />
     </View>
@@ -148,7 +158,7 @@ const styles = StyleSheet.create({
   },
   fabOuter: {
     position: 'absolute',
-    top: -24,
+    top: -32,
     width: 58,
     height: 58,
     borderRadius: 29,

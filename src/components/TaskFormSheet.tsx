@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Text, Card, TouchableRipple } from 'react-native-paper';
+import { Text, Card } from 'react-native-paper';
 import type { TaskFormValues } from '@/domain/taskForm';
 import {
   applyCategoryChange,
@@ -18,15 +18,14 @@ import {
   type TaskFormState,
 } from '@/domain/taskForm';
 import { TaskFormFields } from '@/components/TaskFormFields';
+import { TaskScopeSection } from '@/components/taskForm/TaskScopeSection';
 import { Button } from '@/components/Button';
-import { Colors, Radius, Typography, Shadows } from '@/constants/theme';
+import { Colors, Radius, AccentHex } from '@/constants/theme';
+import { getCategoryAccent } from '@/constants/categoryHelpers';
 import type { TranslationKey } from '@/i18n';
 import type { Language, SharedMember } from '@/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/providers/ToastProvider';
-import { canShareWith } from '@/domain/task';
-import { initials } from '@/domain/insights';
-import { toSharedMember } from '@/domain/household';
 
 import { Toast } from '@/components/Toast';
 
@@ -39,12 +38,13 @@ interface TaskFormSheetProps {
   mode: 'create' | 'edit';
   saveLabel?: string;
   onClose: () => void;
-  onSave: (values: TaskFormValues, shared?: SharedMember[]) => void;
+  onSave: (values: TaskFormValues, shared?: SharedMember[]) => void | Promise<void | boolean>;
   initialShared?: SharedMember[];
   editingTaskId?: string;
+  defaultToHousehold?: boolean;
 }
 
-export function TaskFormSheet({
+function TaskFormSheetComponent({
   visible,
   language,
   translate,
@@ -56,21 +56,29 @@ export function TaskFormSheet({
   onSave,
   initialShared,
   editingTaskId,
+  defaultToHousehold,
 }: TaskFormSheetProps) {
-  const { user } = useAuth();
+  const { user, activeHousehold } = useAuth();
   const { showToast, message } = useToast();
   const [formState, setFormState] = useState<TaskFormState | null>(null);
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
   const [shared, setShared] = useState<SharedMember[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!initial || !visible) return;
-    setFormState(formStateFromValues(initial));
+    const base = formStateFromValues(initial);
+    const defaultHhId = base.householdId ?? (mode === 'create' && defaultToHousehold && activeHousehold ? activeHousehold.id : null);
+    setFormState({
+      ...base,
+      householdId: defaultHhId,
+    });
     setErrors({});
     setShared(initialShared ?? []);
-  }, [initial, visible, initialShared]);
+    setSaving(false);
+  }, [initial, visible, initialShared, mode, activeHousehold, defaultToHousehold]);
 
-  if (!initial || !formState) return null;
+  if (!visible || !formState) return null;
 
   const patchForm = (patch: Partial<TaskFormState>) => {
     setFormState((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -80,39 +88,23 @@ export function TaskFormSheet({
     setFormState((prev) => (prev ? applyCategoryChange(prev, category) : prev));
   };
 
-  const addContact = () => {
-    const nextShared = [...shared];
-    const members = user?.householdMembers ?? [];
-    if (members.length === 0) {
-      showToast(translate('addHouseholdFirst'));
-      return;
-    }
-    const used = nextShared.map((s) => s.code ?? s.phone);
-    const nextMember = members.find((m) => !used.includes(m.code));
-    const next = nextMember ? toSharedMember(nextMember) : null;
-    if (!next) {
-      showToast(translate('allContactsAdded'));
-      return;
-    }
-    nextShared.push(next);
-    if (!canShareWith(user, nextShared)) {
-      showToast(translate('sharedLimit'));
-      return;
-    }
-    setShared(nextShared);
-  };
-
-  const removeContact = (phone: string) => {
-    setShared(shared.filter((s) => s.phone !== phone));
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     const nextErrors = validateFormState(formState, translate);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    onSave(formStateToValues(formState, language), shared);
-    onClose();
+    setSaving(true);
+    try {
+      await onSave(formStateToValues(formState, language), shared);
+      onClose();
+    } catch (err) {
+      console.warn('[Repeato] TaskFormSheet save failed:', err);
+      showToast(translate('saveError'));
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const categoryAccent = formState ? AccentHex[getCategoryAccent(formState.category)] : Colors.marigold;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -122,9 +114,15 @@ export function TaskFormSheet({
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <Card style={styles.sheet} mode="elevated">
+          <View style={[styles.categoryAccentStrip, { backgroundColor: categoryAccent }]} />
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             <Text style={styles.heading}>{heading}</Text>
+            <Text style={styles.subHeading}>{translate('reviewAndCustomize')}</Text>
 
             <TaskFormFields
               language={language}
@@ -134,44 +132,49 @@ export function TaskFormSheet({
               onCategoryChange={handleCategoryChange}
               errors={errors}
               editingTaskId={editingTaskId}
+              sharedMembers={shared}
             />
 
-            {mode === 'edit' ? (
-              <>
-                <Text style={styles.label}>{translate('shareHousehold')}</Text>
-                <View style={styles.chips}>
-                  {shared.map((s) => (
-                    <Card key={s.phone} style={styles.chipCard} mode="elevated">
-                      <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                        <View style={styles.chipContent}>
-                          <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                            <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
-                          </View>
-                          <Text style={styles.chipText}>{s.name}</Text>
-                          <Text style={styles.chipRemove}>×</Text>
-                        </View>
-                      </TouchableRipple>
-                    </Card>
-                  ))}
-                  <Card style={styles.addChipCard} mode="elevated">
-                    <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
-                      <Text style={styles.addChipText}>{translate('addContact')}</Text>
-                    </TouchableRipple>
-                  </Card>
-                </View>
-              </>
-            ) : null}
+            <TaskScopeSection
+              householdId={formState.householdId}
+              assignedTo={formState.assignedTo}
+              isRotating={formState.isRotating}
+              rotationMembers={formState.rotationMembers}
+              user={user}
+              language={language}
+              translate={translate}
+              onChange={(patch) => {
+                if (patch.shared !== undefined) {
+                  setShared(patch.shared);
+                }
+                patchForm({
+                  householdId: patch.householdId !== undefined ? patch.householdId : formState.householdId,
+                  assignedTo: patch.assignedTo !== undefined ? patch.assignedTo : formState.assignedTo,
+                  isRotating: patch.isRotating !== undefined ? patch.isRotating : formState.isRotating,
+                  rotationMembers: patch.rotationMembers !== undefined ? patch.rotationMembers : formState.rotationMembers,
+                });
+              }}
+            />
 
             <Button
-              title={saveLabel ?? (mode === 'edit' ? translate('savePreset') : translate('addFromPreset'))}
+              title={
+                saving
+                  ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
+                  : (saveLabel ?? (mode === 'edit' ? translate('savePreset') : translate('addFromPreset')))
+              }
               onPress={handleSave}
+              loading={saving}
+              disabled={saving}
               style={{ marginTop: 20 }}
+              testID="task-form-save-btn"
             />
             <Button
               title={translate('backBtn')}
               variant="ghost"
+              disabled={saving}
               style={{ marginTop: 10, marginBottom: 28 }}
               onPress={onClose}
+              testID="task-form-cancel-btn"
             />
           </ScrollView>
         </Card>
@@ -200,6 +203,10 @@ const styles = StyleSheet.create({
     elevation: 8,
     overflow: 'hidden',
   },
+  categoryAccentStrip: {
+    height: 4,
+    width: '100%',
+  },
   handle: {
     width: 36,
     height: 4,
@@ -209,39 +216,10 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 6,
   },
-  body: { paddingHorizontal: 22, paddingBottom: 28 },
-  heading: { fontFamily: 'Fraunces_700Bold', fontSize: 20, color: Colors.ink, marginBottom: 12 },
-  label: { ...Typography.label, color: Colors.inkSoft, marginBottom: 8, marginTop: 16 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, marginTop: 6 },
-  chipCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.full,
-    elevation: 1,
-    overflow: 'hidden',
-  },
-  chipRipple: {
-    paddingVertical: 6,
-    paddingRight: 12,
-    paddingLeft: 6,
-  },
-  chipContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  chipAvatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chipAvatarText: { fontSize: 9.5, color: Colors.white, fontFamily: 'Manrope_800ExtraBold' },
-  chipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
-  chipRemove: { fontSize: 16, color: Colors.inkSoft, marginLeft: 2 },
-  addChipCard: {
-    backgroundColor: Colors.ivoryDim,
-    borderRadius: Radius.full,
-    elevation: 0.5,
-    overflow: 'hidden',
-  },
-  addChipRipple: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  addChipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
+  body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 80 },
+  heading: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.ink, marginBottom: 2 },
+  subHeading: { fontFamily: 'Manrope_500Medium', fontSize: 13, color: Colors.inkSoft, marginBottom: 16 },
 });
+
+export const TaskFormSheet = React.memo(TaskFormSheetComponent);
+

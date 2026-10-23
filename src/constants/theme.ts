@@ -15,16 +15,16 @@ export const Colors = {
   clay: '#C1502E',
   clayDeep: '#9C3D22',
   ink: '#1B1F3B',
-  inkSoft: 'rgba(27,31,59,0.62)',
-  inkFaint: 'rgba(27,31,59,0.4)',
+  inkSoft: 'rgba(27,31,59,0.75)',
+  inkFaint: 'rgba(27,31,59,0.58)',
   ringTrack: 'rgba(27,31,59,0.08)',
   white: '#FFFFFF',
   surface: '#FFFFFF',
   surfaceMuted: '#F8F4EC',
   overlay: 'rgba(23,27,54,0.52)',
   onDark: '#FBF7EF',
-  onDarkMuted: 'rgba(251,247,239,0.65)',
-  onDarkFaint: 'rgba(251,247,239,0.42)',
+  onDarkMuted: 'rgba(251,247,239,0.75)',
+  onDarkFaint: 'rgba(251,247,239,0.60)',
 } as const;
 
 export const Gradients = {

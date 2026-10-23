@@ -1,23 +1,32 @@
-import type { CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 import { getCategoryFormConfig } from '@/constants/categoryFormConfig';
-import { frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
+import { computeNextDueDate, frequencyLabelFromRule, parseFrequencyLabel } from '@/domain/recurrence';
 import type { TranslationKey } from '@/i18n';
+import type { AnyCategoryKey, CategoryKey, Language, ParsedTaskInput, RecurrenceRule, RecurrenceType, RepeatingTask } from '@/types';
 
 export interface TaskFormValues {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrence: RecurrenceRule;
   freq: string;
   amount?: number;
   finance: boolean;
   reminderTime?: string;
+  timesPerDay?: number;
+  reminderTimes?: string[];
   startDate?: string;
   assignedTo?: string;
+  householdId?: string;
+  icon?: string;
+  note?: string;
+  isRotating?: boolean;
+  rotationMembers?: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled?: boolean;
 }
 
 export interface TaskFormState {
   title: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   recurrenceType: RecurrenceType;
   dayOfMonth: number;
   weekday: number;
@@ -27,8 +36,18 @@ export interface TaskFormState {
   amountText: string;
   finance: boolean;
   reminderTime: string | null;
+  isMultiTime: boolean;
+  timesPerDay: number;
+  reminderTimes: string[];
   startDate: string | null;
   assignedTo: string | null;
+  householdId: string | null;
+  icon: string | null;
+  note: string;
+  isRotating: boolean;
+  rotationMembers: string[];
+  /** true = fullscreen native alarm; false = push notification */
+  alarmEnabled: boolean;
 }
 
 export const RECURRENCE_TYPE_OPTIONS: RecurrenceType[] = [
@@ -105,65 +124,157 @@ export function recurrenceToFormState(rule: RecurrenceRule): Pick<
   };
 }
 
-export function defaultFormState(category: CategoryKey = 'bills'): TaskFormState {
+export function getDefaultDoseTimes(timesPerDay: number): string[] {
+  switch (timesPerDay) {
+    case 2:
+      return ['08:00', '20:00'];
+    case 3:
+      return ['08:00', '14:00', '20:00'];
+    case 4:
+      return ['08:00', '12:00', '16:00', '20:00'];
+    case 5:
+      return ['07:00', '10:00', '13:00', '17:00', '21:00'];
+    default:
+      return ['09:00'];
+  }
+}
+
+export function normalizeReminderTimes(timesPerDay?: number, reminderTimes?: string[]): string[] {
+  if (!timesPerDay || timesPerDay <= 1) {
+    return reminderTimes && reminderTimes.length > 0 ? [reminderTimes[0]] : ['09:00'];
+  }
+  const count = Math.min(5, Math.max(2, timesPerDay));
+  const defaults = getDefaultDoseTimes(count);
+  const result: string[] = [];
+  for (let i = 0; i < count; i++) {
+    result.push(reminderTimes && reminderTimes[i] ? reminderTimes[i] : defaults[i]);
+  }
+  return result;
+}
+
+export function defaultFormState(category: AnyCategoryKey = 'bills'): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
+  const now = new Date();
+  const defaultDate = now.toISOString().slice(0, 10);
+  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   return {
     title: '',
     category,
     ...rec,
     amountText: '',
     finance: config.showFinance,
-    reminderTime: config.defaultReminderTime ?? null,
-    startDate: null,
+    reminderTime: defaultTime,
+    isMultiTime: false,
+    timesPerDay: 1,
+    reminderTimes: [defaultTime],
+    startDate: defaultDate,
     assignedTo: null,
+    householdId: null,
+    icon: null,
+    note: '',
+    isRotating: false,
+    rotationMembers: [],
+    alarmEnabled: category === 'medicines',
   };
 }
 
 export function formStateFromValues(values: TaskFormValues): TaskFormState {
   const rec = recurrenceToFormState(values.recurrence);
+  const isMulti = Boolean(values.timesPerDay && values.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, values.timesPerDay || 2)) : 1;
+  const times = isMulti
+    ? (values.reminderTimes && values.reminderTimes.length > 0 ? values.reminderTimes : getDefaultDoseTimes(timesCount))
+    : (values.reminderTime ? [values.reminderTime] : ['09:00']);
+
   return {
     title: values.title,
     category: values.category,
     ...rec,
     amountText: values.amount ? String(values.amount) : '',
     finance: values.finance,
-    reminderTime: values.reminderTime ?? null,
+    reminderTime: values.reminderTime ?? (times[0] || null),
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
     startDate: values.startDate ?? null,
     assignedTo: values.assignedTo ?? null,
+    householdId: values.householdId ?? null,
+    icon: values.icon ?? null,
+    note: values.note ?? '',
+    isRotating: !!values.isRotating,
+    rotationMembers: values.rotationMembers ?? [],
+    // Respect explicit alarmEnabled; fallback to true for medicines, false for others
+    alarmEnabled: values.alarmEnabled !== undefined ? values.alarmEnabled : (values.category === 'medicines'),
   };
 }
 
 export function formStateFromParsed(parsed: ParsedTaskInput): TaskFormState {
   const config = getCategoryFormConfig(parsed.category);
   const rec = recurrenceToFormState(parsed.recurrence);
+  const rule = buildRecurrenceRule(rec);
+  const startDate = computeNextDueDate(rule, new Date()).slice(0, 10);
+  const isMulti = Boolean(parsed.isMultiTime && parsed.timesPerDay && parsed.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, parsed.timesPerDay || 2)) : 1;
+  const defaultTime = parsed.reminderTime ?? config.defaultReminderTime ?? '09:00';
+  const times = isMulti
+    ? (parsed.reminderTimes && parsed.reminderTimes.length > 0 ? parsed.reminderTimes : getDefaultDoseTimes(timesCount))
+    : (parsed.reminderTime ? [parsed.reminderTime] : [defaultTime]);
+
   return {
     title: parsed.title,
     category: parsed.category,
     ...rec,
     amountText: parsed.amount ? String(parsed.amount) : '',
     finance: config.showFinance && !!parsed.amount,
-    reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? null,
-    startDate: null,
+    reminderTime: parsed.reminderTime ?? config.defaultReminderTime ?? (times[0] || null),
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
+    startDate,
     assignedTo: null,
+    householdId: null,
+    icon: parsed.icon ?? null,
+    note: parsed.note ?? '',
+    isRotating: false,
+    rotationMembers: [],
+    // Respect explicit alarm intent from smart input parser; otherwise medicine defaults to ON
+    alarmEnabled: parsed.alarmEnabled !== undefined ? parsed.alarmEnabled : (parsed.category === 'medicines'),
   };
 }
 
 export function formStateFromTask(task: RepeatingTask): TaskFormState {
   const rec = recurrenceToFormState(task.recurrence);
+  const isMulti = Boolean(task.timesPerDay && task.timesPerDay > 1);
+  const timesCount = isMulti ? Math.min(5, Math.max(2, task.timesPerDay || 2)) : 1;
+  const fallbackTime = task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? '09:00';
+  const times = isMulti
+    ? (task.reminderTimes && task.reminderTimes.length > 0 ? task.reminderTimes : getDefaultDoseTimes(timesCount))
+    : [fallbackTime];
+
   return {
     title: task.title,
     category: task.category,
     ...rec,
     amountText: task.amount ? String(task.amount) : '',
     finance: task.finance,
-    reminderTime: task.reminderTime ?? getCategoryFormConfig(task.category).defaultReminderTime ?? null,
-    startDate: null,
+    reminderTime: task.reminderTime ?? fallbackTime,
+    isMultiTime: isMulti,
+    timesPerDay: timesCount,
+    reminderTimes: times,
+    startDate: task.startDate ?? null,
     assignedTo: task.assignedTo ?? null,
+    householdId: task.householdId ?? null,
+    icon: task.icon ?? null,
+    note: task.note ?? '',
+    isRotating: !!task.isRotating,
+    rotationMembers: task.rotationMembers ?? [],
+    // Preserve existing alarmEnabled; medicine defaults to ON for new tasks
+    alarmEnabled: task.alarmEnabled ?? (task.category === 'medicines'),
   };
 }
 
-export function applyCategoryChange(state: TaskFormState, category: CategoryKey): TaskFormState {
+export function applyCategoryChange(state: TaskFormState, category: AnyCategoryKey): TaskFormState {
   const config = getCategoryFormConfig(category);
   const rec = recurrenceToFormState(config.defaultRecurrence);
   const allowed = config.allowedRecurrenceTypes;
@@ -178,37 +289,61 @@ export function applyCategoryChange(state: TaskFormState, category: CategoryKey)
     category,
     ...nextRec,
     finance: config.showFinance ? state.finance || config.showAmount : false,
-    reminderTime: config.showReminderTime ? (state.reminderTime ?? config.defaultReminderTime ?? null) : null,
-    startDate: config.showStartDate ? state.startDate : null,
+    reminderTime: state.reminderTime ?? config.defaultReminderTime ?? null,
+    startDate: state.startDate,
+    // Switch to alarm ON when switching category to medicines
+    alarmEnabled: category === 'medicines' ? true : state.alarmEnabled,
   };
 }
 
 export function formStateToValues(state: TaskFormState, lang: Language): TaskFormValues {
   const recurrence = buildRecurrenceRule(state);
   const amountDigits = state.amountText.replace(/\D/g, '');
-  const amount = amountDigits ? Number(amountDigits) : undefined;
-  const config = getCategoryFormConfig(state.category);
+  const amount = state.finance && amountDigits ? Number(amountDigits) : undefined;
+
+  const isMulti = state.isMultiTime && state.timesPerDay > 1;
+  const timesPerDay = isMulti ? Math.min(5, Math.max(2, state.timesPerDay)) : undefined;
+  const reminderTimes = isMulti
+    ? normalizeReminderTimes(timesPerDay!, state.reminderTimes)
+    : undefined;
+  const primaryReminderTime = isMulti && reminderTimes && reminderTimes.length > 0
+    ? reminderTimes[0]
+    : (state.reminderTime ? state.reminderTime : undefined);
+
+  let freqLabel = frequencyLabelFromRule(recurrence, lang);
+  if (isMulti && timesPerDay && recurrence.type === 'daily') {
+    freqLabel = lang === 'hi' ? `${timesPerDay} बार प्रतिदिन` : `${timesPerDay} times a day`;
+  }
 
   return {
     title: state.title.trim(),
     category: state.category,
     recurrence,
-    freq: frequencyLabelFromRule(recurrence, lang),
+    freq: freqLabel,
     amount,
-    finance: config.showFinance && (state.finance || !!amount),
-    reminderTime: config.showReminderTime && state.reminderTime ? state.reminderTime : undefined,
-    startDate: config.showStartDate && state.startDate ? state.startDate : undefined,
+    finance: state.finance,
+    reminderTime: primaryReminderTime,
+    timesPerDay,
+    reminderTimes,
+    startDate: state.startDate ? state.startDate : undefined,
     assignedTo: state.assignedTo || undefined,
+    householdId: state.householdId || undefined,
+    icon: state.icon || undefined,
+    note: state.note.trim() || undefined,
+    isRotating: state.isRotating,
+    rotationMembers: state.rotationMembers.length > 0 ? state.rotationMembers : undefined,
+    alarmEnabled: state.alarmEnabled,
   };
 }
 
 export function formStateFromLegacyFreq(
   title: string,
   freq: string,
-  category: CategoryKey,
+  category: AnyCategoryKey,
   amount?: number,
   finance?: boolean,
-  lang: Language = 'en'
+  _lang: Language = 'en',
+  icon?: string
 ): TaskFormState {
   const recurrence = parseFrequencyLabel(freq);
   const base = formStateFromValues({
@@ -218,6 +353,7 @@ export function formStateFromLegacyFreq(
     freq,
     amount,
     finance: finance ?? !!amount,
+    icon,
   });
   return base;
 }
@@ -226,6 +362,96 @@ export interface TaskFormErrors {
   title?: string;
   amount?: string;
   recurrence?: string;
+  time?: string;
+  note?: string;
+}
+
+export interface SmartTitleValidation {
+  isValid: boolean;
+  error?: string;
+  warning?: string;
+  sanitized?: string;
+}
+
+export function validateSmartTitle(
+  title: string,
+  lang: Language = 'en'
+): SmartTitleValidation {
+  const trimmed = title.trim();
+
+  if (!trimmed) {
+    return {
+      isValid: false,
+      error: lang === 'hi' ? 'कृपया कार्य का नाम दर्ज करें' : 'Please enter a task name',
+    };
+  }
+
+  // Reject HTML tags, script, or javascript URI patterns
+  if (/<[^>]*>|javascript:|data:/i.test(trimmed)) {
+    return {
+      isValid: false,
+      error: lang === 'hi' ? 'कार्य के नाम में अमान्य वर्ण या HTML टैग हैं' : 'Task name contains unsupported characters or HTML tags',
+    };
+  }
+
+  // Pure digits or currency: e.g. "15000", "₹15,000", "500"
+  const cleanDigits = trimmed.replace(/[₹$,.\s]/g, '');
+  if (/^\d+$/.test(cleanDigits)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'यह केवल एक राशि है! कृपया कार्य का नाम भी लिखें (उदा. "किराया ₹' + cleanDigits + '")'
+        : `Looks like an amount! Please add a task name (e.g. "Rent ₹${cleanDigits}")`,
+    };
+  }
+
+  // Pure symbols or emojis without alphanumeric
+  const hasWordChars = /[\p{L}\p{N}]/u.test(trimmed);
+  if (!hasWordChars) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया कार्य के नाम में शब्द या अक्षर शामिल करें'
+        : 'Please include letters or words for the task name',
+    };
+  }
+
+  // Strip invisible control characters before checking minimum length
+  // eslint-disable-next-line no-control-regex
+  const sanitized = trimmed.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f]/gu, '');
+
+  // Minimum length check
+  if (sanitized.length < 2) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कार्य का नाम कम से कम 2 अक्षरों का होना चाहिए'
+        : 'Task name must be at least 2 characters',
+    };
+  }
+
+  // Pure frequency without task name: e.g. "daily", "monthly", "हर दिन", "हर महीने"
+  const lower = trimmed.toLowerCase();
+  if (/^(daily|everyday|every\s*day|weekly|every\s*week|monthly|every\s*month|yearly|हर\s*दिन|रोज़|रोज|हर\s*महीने|हर\s*हफ्ते)$/i.test(lower)) {
+    return {
+      isValid: false,
+      error: lang === 'hi'
+        ? 'कृपया बताएं कि क्या दोहराना है (उदा. "कसरत हर दिन")'
+        : `Please specify what task to do (e.g. "Workout ${trimmed}")`,
+    };
+  }
+
+  if (trimmed.length > 70) {
+    return {
+      isValid: true,
+      sanitized,
+      warning: lang === 'hi'
+        ? `${80 - trimmed.length} अक्षर शेष`
+        : `${80 - trimmed.length} characters remaining`,
+    };
+  }
+
+  return { isValid: true, sanitized };
 }
 
 export function validateFormState(
@@ -233,14 +459,50 @@ export function validateFormState(
   translate: (key: TranslationKey) => string
 ): TaskFormErrors {
   const errors: TaskFormErrors = {};
-  const config = getCategoryFormConfig(state.category);
 
-  if (state.title.trim().length < 2) errors.title = translate('presetTitleRequired');
-  if (config.showAmount && config.amountRequired && !state.amountText.replace(/\D/g, '')) {
-    errors.amount = translate('amountRequired');
+  const titleValidation = validateSmartTitle(state.title);
+  if (!titleValidation.isValid) {
+    errors.title = translate('presetTitleRequired');
   }
+
+  // Amount is required if Finance is toggled ON
+  if (state.finance) {
+    const digits = state.amountText.replace(/\D/g, '');
+    if (!digits || Number(digits) <= 0) {
+      errors.amount = translate('amountRequired');
+    } else if (Number(digits) > 9999999) {
+      errors.amount = 'Maximum amount allowed is ₹99,99,999';
+    }
+  }
+
   if (state.recurrenceType === 'interval' && state.interval < 1) {
     errors.recurrence = translate('intervalRequired');
+  }
+
+  // Multi-dose time conflict check (VAL-016)
+  if (state.isMultiTime && state.timesPerDay > 1 && state.reminderTimes && state.reminderTimes.length > 1) {
+    const minutesList = state.reminderTimes.slice(0, state.timesPerDay).map((t) => {
+      const [h, m] = t.split(':').map(Number);
+      return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+    });
+    let hasConflict = false;
+    for (let i = 0; i < minutesList.length; i++) {
+      for (let j = i + 1; j < minutesList.length; j++) {
+        if (Math.abs(minutesList[i] - minutesList[j]) < 5) {
+          hasConflict = true;
+          break;
+        }
+      }
+      if (hasConflict) break;
+    }
+    if (hasConflict) {
+      errors.time = 'Reocurrence time must be at least 5 minutes apart';
+    }
+  }
+
+  // Note length validation (VAL-014)
+  if (state.note && state.note.length > 500) {
+    errors.note = 'Note cannot exceed 500 characters';
   }
 
   return errors;
@@ -256,7 +518,11 @@ export function dayOfMonthOptions(): { value: number; labelEn: string; labelHi: 
 export function intervalPresets(category: CategoryKey): number[] {
   switch (category) {
     case 'vehicle':
+    case 'maintenance':
+    case 'documents':
       return [3, 6, 12];
+    case 'supplies':
+    case 'gardening':
     case 'home':
     case 'pets':
     case 'health':

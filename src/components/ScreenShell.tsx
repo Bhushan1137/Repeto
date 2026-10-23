@@ -1,22 +1,21 @@
-import React, { useState } from 'react';
+import { AppIcon } from '@/components/AppIcon';
+import { Colors, Gradients, Layout, Radius, Typography } from '@/constants/theme';
+import { useNotifications } from '@/providers/NotificationProvider';
+import { LinearGradient } from 'expo-linear-gradient';
+import { usePathname, useRouter } from 'expo-router';
+import React, { useRef, useState } from 'react';
 import {
-  View,
+  Animated,
+  Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  Image,
-  Modal,
-  Pressable,
+  View,
   type ScrollViewProps,
   type ViewStyle,
 } from 'react-native';
-import { Text, Card, Surface, IconButton } from 'react-native-paper';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Card, Surface, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Gradients, Layout, Radius, Shadows, Typography } from '@/constants/theme';
-import { useAuth } from '@/providers/AuthProvider';
-import { useTasks } from '@/providers/TaskProvider';
-import { ActivityFeed } from '@/components/ActivityFeed';
-import { AppIcon } from '@/components/AppIcon';
 
 interface ScreenShellProps {
   title: string | React.ReactNode;
@@ -25,8 +24,15 @@ interface ScreenShellProps {
   children: React.ReactNode;
   scroll?: boolean;
   scrollProps?: ScrollViewProps;
+  scrollRef?: React.RefObject<ScrollView | null>;
   contentStyle?: ViewStyle;
   lightHeader?: boolean;
+  showBack?: boolean;
+  onBackPress?: () => void;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
+  hideNotificationBell?: boolean;
+  hasTabs?: boolean;
 }
 
 export function ScreenShell({
@@ -36,118 +42,447 @@ export function ScreenShell({
   children,
   scroll = true,
   scrollProps,
+  scrollRef,
   contentStyle,
   lightHeader = false,
+  showBack = false,
+  onBackPress,
+  onRefresh,
+  refreshing,
+  hideNotificationBell = false,
+  hasTabs,
 }: ScreenShellProps) {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { tasks } = useTasks();
-  const [activityVisible, setActivityVisible] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const { unreadCount } = useNotifications();
+  const [internalRefreshing, setInternalRefreshing] = useState(false);
 
-  const header = lightHeader ? (
-    <View style={[styles.headerLight, { paddingTop: insets.top + 16 }]}>
-      {typeof title === 'string' ? (
-        <Text style={styles.titleLight}>{title}</Text>
-      ) : (
-        title
-      )}
-      {subtitle ? <Text style={styles.subLight}>{subtitle}</Text> : null}
-      {headerExtra}
-    </View>
-  ) : (
-    <LinearGradient
-      colors={[...Gradients.hero]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.header, { paddingTop: insets.top + 16 }]}
-    >
+  const isRefreshing = refreshing ?? internalRefreshing;
+
+  const handleRefresh = React.useCallback(async () => {
+    if (!onRefresh) return;
+    setInternalRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setInternalRefreshing(false);
+    }
+  }, [onRefresh]);
+
+  // ─── Header Metrics ────────────────────────────────────────────────────────
+  const hasExtra = !!headerExtra;
+  const COLLAPSE_DISTANCE = hasExtra ? 130 : 70;
+
+  // ─── Scroll Animation Driver ────────────────────────────────────────────────
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // ─── Animations for Compact Sticky Header Bar ──────────────────────────────
+  // Translucent backdrop while scrolling, becomes solid once fully scrolled
+  const compactBgOpacity = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE * 0.35, COLLAPSE_DISTANCE * 0.85, COLLAPSE_DISTANCE * 1.3],
+    outputRange: [0, 0.35, 0.82, 0.96],
+    extrapolate: 'clamp',
+  });
+
+  const compactShadowOpacity = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.18],
+    extrapolate: 'clamp',
+  });
+
+  // Hairline border appears faintly while scrolling, fully solid when scrolled
+  const separatorOpacity = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE * 0.4, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.35, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Logo stays crisp and prominent (no aggressive shrinking)
+  const logoScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE],
+    outputRange: [1, 0.96],
+    extrapolate: 'clamp',
+  });
+
+  const logoTranslateX = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE],
+    outputRange: [0, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Compact title stays translucent while scrolling, turns crisp 1.0 when fully scrolled
+  const compactTitleOpacity = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.75, COLLAPSE_DISTANCE * 1.2],
+    outputRange: [0, 0.55, 1],
+    extrapolate: 'clamp',
+  });
+
+  const compactTitleTranslateY = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.9],
+    outputRange: [10, 0],
+    extrapolate: 'clamp',
+  });
+
+  const compactTitleScale = scrollY.interpolate({
+    inputRange: [COLLAPSE_DISTANCE * 0.25, COLLAPSE_DISTANCE * 0.9],
+    outputRange: [0.95, 1],
+    extrapolate: 'clamp',
+  });
+
+  const bellScale = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE],
+    outputRange: [1, 0.94],
+    extrapolate: 'clamp',
+  });
+
+  // ─── Animations for Expanded Content (Parallax & Translucency) ───────────────
+  // Expanded header content stays partially visible (translucent) while scrolling down
+  const expandedOpacity = scrollY.interpolate({
+    inputRange: [0, COLLAPSE_DISTANCE * 0.5, COLLAPSE_DISTANCE * 1.1],
+    outputRange: [1, 0.45, 0],
+    extrapolate: 'clamp',
+  });
+
+  const expandedScale = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE, 0, COLLAPSE_DISTANCE],
+    outputRange: [1.08, 1, 0.92],
+    extrapolate: 'clamp',
+  });
+
+  const expandedTranslateY = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE, 0, COLLAPSE_DISTANCE],
+    outputRange: [COLLAPSE_DISTANCE * 0.4, 0, -24],
+    extrapolate: 'clamp',
+  });
+
+  // Background Parallax for pull-to-refresh / overscroll
+  const bgScale = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE * 2, 0],
+    outputRange: [1.4, 1],
+    extrapolate: 'clamp',
+  });
+
+  const bgTranslateY = scrollY.interpolate({
+    inputRange: [-COLLAPSE_DISTANCE * 2, 0],
+    outputRange: [-COLLAPSE_DISTANCE * 0.8, 0],
+    extrapolate: 'clamp',
+  });
+
+  const accentGlowTranslateY = scrollY.interpolate({
+    inputRange: [-100, 0, COLLAPSE_DISTANCE * 2],
+    outputRange: [-30, 0, 40],
+    extrapolate: 'clamp',
+  });
+
+  const compactTitleText =
+    typeof title === 'string'
+      ? (title.includes(',') ? title.split(',').slice(1).join(',').trim() : title)
+      : undefined;
+
+  // ─── Expanded Header Component ───────────────────────────────────────────────
+  const expandedHeaderInner = lightHeader ? null : (
+    <Animated.View style={{ transform: [{ scale: bgScale }, { translateY: bgTranslateY }] }}>
       <LinearGradient
-        colors={[...Gradients.heroAccent]}
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.headerInner}>
-        <View style={styles.brandRow}>
-          <Image
+        colors={[...Gradients.hero]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 64, // Extra breathing room below sticky bar
+            paddingBottom: Layout.contentOverlap + 16,
+          },
+        ]}
+      >
+        {/* Subtle accent gradient overlay */}
+        <LinearGradient
+          colors={[...Gradients.heroAccent]}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+
+        {/* Ambient Glowing Accent Orb */}
+        <Animated.View
+          style={[
+            styles.headerGlowOrb,
+            {
+              transform: [{ translateY: accentGlowTranslateY }],
+              opacity: expandedOpacity,
+            },
+          ]}
+          pointerEvents="none"
+        />
+
+        <View style={styles.headerInner}>
+          {/* Expanded Title */}
+          <Animated.View
+            style={{
+              opacity: expandedOpacity,
+              transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+            }}
+          >
+            {typeof title === 'string' ? (
+              <Text style={styles.title}>{title}</Text>
+            ) : (
+              title
+            )}
+          </Animated.View>
+
+          {/* Subtitle */}
+          {subtitle ? (
+            <Animated.View
+              style={{
+                opacity: expandedOpacity,
+                transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+              }}
+            >
+              <Text style={styles.sub}>{subtitle}</Text>
+            </Animated.View>
+          ) : null}
+
+          {/* Header Extra */}
+          {headerExtra ? (
+            <Animated.View
+              style={{
+                opacity: expandedOpacity,
+                transform: [{ translateY: expandedTranslateY }, { scale: expandedScale }],
+              }}
+            >
+              {headerExtra}
+            </Animated.View>
+          ) : null}
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+
+  // ─── Compact Sticky Header (Overlays ScrollView at zIndex 100) ──────────────
+  const compactStickyHeader = lightHeader ? null : (
+    <Animated.View
+      style={[
+        styles.compactStickyHeader,
+        {
+          paddingTop: insets.top + 8,
+          height: insets.top + 62,
+          shadowOpacity: compactShadowOpacity,
+        },
+      ]}
+    >
+      {/* Sticky solid background gradient */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: compactBgOpacity }]}>
+        <LinearGradient
+          colors={[...Gradients.hero]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        >
+          <LinearGradient
+            colors={['rgba(232,163,61,0.20)', 'transparent']}
+            start={{ x: 1, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </LinearGradient>
+      </Animated.View>
+
+      {/* Brand row elements */}
+      <View style={styles.brandRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {showBack && (
+            <Pressable
+              onPress={() => {
+                if (onBackPress) {
+                  onBackPress();
+                } else if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)');
+                }
+              }}
+              style={styles.backButton}
+              hitSlop={8}
+            >
+              <AppIcon name="chevron-back" size={24} color={Colors.white} />
+            </Pressable>
+          )}
+          <Animated.Image
             source={require('../../assets/images/logo.png')}
-            style={styles.brandLogo}
+            style={[
+              styles.brandLogo,
+              {
+                transform: [
+                  { scale: logoScale },
+                  { translateX: logoTranslateX },
+                ],
+              },
+            ]}
             resizeMode="contain"
           />
-          <IconButton
-            icon="bell-outline"
-            iconColor={Colors.white}
-            size={22}
-            style={styles.bellButton}
-            onPress={() => setActivityVisible(true)}
-          />
         </View>
-        {typeof title === 'string' ? (
-          <Text style={styles.title}>{title}</Text>
+
+        {/* Compact Title (Pill Badge for refined visual balance) */}
+        {compactTitleText ? (
+          <Animated.View
+            style={[
+              styles.compactTitleWrapper,
+              {
+                opacity: compactTitleOpacity,
+                transform: [
+                  { translateY: compactTitleTranslateY },
+                  { scale: compactTitleScale },
+                ],
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View style={styles.compactTitleBadge}>
+              <Text style={styles.compactTitle} numberOfLines={1}>
+                {compactTitleText}
+              </Text>
+            </View>
+          </Animated.View>
+        ) : null}
+
+        {/* Bell notification button */}
+        {!hideNotificationBell && pathname !== '/notifications' ? (
+          <Animated.View style={{ transform: [{ scale: bellScale }] }}>
+            <Pressable
+              style={styles.bellPressable}
+              onPress={() => {
+                if (pathname !== '/notifications') {
+                  router.push('/notifications');
+                }
+              }}
+              hitSlop={8}
+            >
+              <AppIcon name="notifications-outline" size={21} color={Colors.white} />
+              {unreadCount > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
         ) : (
-          title
+          <View style={{ width: 28 }} />
         )}
-        {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
-        {headerExtra}
       </View>
-    </LinearGradient>
+
+      {/* Hairline glowing border at bottom of collapsed header */}
+      <Animated.View
+        style={[styles.headerSeparator, { opacity: separatorOpacity }]}
+        pointerEvents="none"
+      />
+    </Animated.View>
   );
 
   const body = (
-    <View style={[styles.content, lightHeader && styles.contentFlat, contentStyle]}>
+    <View
+      style={[
+        styles.content,
+        !lightHeader && { marginTop: -Layout.contentOverlap },
+        lightHeader && styles.contentFlat,
+        contentStyle,
+      ]}
+    >
       {children}
     </View>
   );
 
+  // Merge external onScroll listener with animation driver using useNativeDriver: true
+  const onScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    {
+      useNativeDriver: true,
+      listener: scrollProps?.onScroll as any,
+    }
+  );
+
+  // Check if current screen is within the tab navigator
+  const isTabPath = (p: string | null | undefined): boolean => {
+    if (!p || p === '/') return true;
+    const clean = p.split('?')[0];
+    return (
+      clean === '/' ||
+      clean.startsWith('/(tabs)') ||
+      clean === '/household' ||
+      clean.startsWith('/household/') ||
+      clean === '/insights' ||
+      clean.startsWith('/insights/') ||
+      clean === '/profile' ||
+      clean.startsWith('/profile/') ||
+      clean === '/add' ||
+      clean.startsWith('/add/')
+    );
+  };
+
+  const isTabScreen = hasTabs !== undefined ? hasTabs : isTabPath(pathname);
+
+  // Floating tab bar clearance:
+  // Layout.tabBarHeight = 72
+  // Floating bottom offset = Math.max(insets.bottom, 12)
+  // Center FAB button extends 32px above the tab bar top edge (total 104px above bottom offset)
+  // We provide a clean 16px buffer above the FAB so all cards clear the floating UI cleanly.
+  // Tab clearance: Math.max(insets.bottom, 12) + 72 + 32 + 16 = Math.max(insets.bottom, 12) + 120.
+  // For non-tab screens: Math.max(insets.bottom, 16) + 16.
+  const bottomClearance = isTabScreen
+    ? Math.max(insets.bottom, 12) + Layout.tabBarHeight + 48
+    : Math.max(insets.bottom, 16) + 16;
+
+  const {
+    onScroll: _externalOnScroll,
+    refreshControl: _externalRefreshControl,
+    contentContainerStyle: _externalContentContainerStyle,
+    ...restScrollProps
+  } = scrollProps ?? {};
+
+  const refreshControlNode = onRefresh ? (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      tintColor={Colors.marigoldDeep}
+      colors={[Colors.marigoldDeep, Colors.tealDeep, Colors.indigo950]}
+      progressViewOffset={insets.top + (lightHeader ? 10 : 25)}
+    />
+  ) : _externalRefreshControl;
+
   return (
     <View style={styles.root}>
-      {header}
       {scroll ? (
-        <ScrollView
+        <Animated.ScrollView
+          ref={scrollRef as any}
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: bottomClearance },
+            _externalContentContainerStyle,
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          {...scrollProps}
+          scrollEventThrottle={16}
+          refreshControl={refreshControlNode}
+          {...restScrollProps}
+          onScroll={onScroll}
         >
+          {expandedHeaderInner}
           {body}
-        </ScrollView>
+        </Animated.ScrollView>
       ) : (
-        body
+        <View style={{ flex: 1, paddingBottom: isTabScreen ? bottomClearance : insets.bottom }}>
+          {expandedHeaderInner}
+          {body}
+        </View>
       )}
 
-      <Modal
-        visible={activityVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setActivityVisible(false)}
-      >
-        <Pressable style={styles.activityBackdrop} onPress={() => setActivityVisible(false)} />
-        <Card style={styles.activitySheet} mode="elevated">
-          <Card.Content style={styles.activityContent}>
-            <View style={styles.activityHeader}>
-              <Text style={styles.activityTitle}>
-                {user?.language === 'hi' ? 'हालिया गतिविधि' : 'Recent Activity'}
-              </Text>
-              <Pressable onPress={() => setActivityVisible(false)} hitSlop={12} style={styles.activityCloseBtn}>
-                <AppIcon name="close" size={20} color={Colors.ink} />
-              </Pressable>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-              <ActivityFeed
-                tasks={tasks}
-                members={user?.householdMembers ?? []}
-                currentUserId={user?.id}
-                currentUserName={user?.name ?? 'You'}
-                language={user?.language ?? 'en'}
-              />
-            </ScrollView>
-          </Card.Content>
-        </Card>
-      </Modal>
+      {/* Compact sticky header overlays ScrollView at zIndex 100 */}
+      {compactStickyHeader}
     </View>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 export function SectionHeader({
   label,
@@ -170,7 +505,15 @@ export function SectionHeader({
   );
 }
 
-export function StatPill({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'warn' }) {
+export function StatPill({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'warn';
+}) {
   return (
     <Card style={[styles.statPill, tone === 'warn' && styles.statPillWarn]} mode="outlined">
       <Card.Content style={styles.statContent}>
@@ -206,49 +549,146 @@ export function EmptyState({
   );
 }
 
+// ─── Enhanced Styles ───────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.surfaceMuted },
+
+  // ── Compact sticky header container ──
+  compactStickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    justifyContent: 'center',
+    paddingHorizontal: Layout.screenPadding,
+    shadowColor: Colors.indigo950,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 8,
+  },
+
+  // ── Gradient header (non-light) ──
   header: {
-    paddingBottom: Layout.contentOverlap + 6,
     paddingHorizontal: Layout.screenPadding,
     overflow: 'hidden',
+    position: 'relative',
   },
+  headerGlowOrb: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(232, 163, 61, 0.14)',
+  },
+  headerInner: {},
+  headerSeparator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 1.5,
+    backgroundColor: 'rgba(232, 163, 61, 0.35)',
+  },
+
+  // ── Light header ──
   headerLight: {
     paddingHorizontal: Layout.screenPadding,
     paddingBottom: 8,
     backgroundColor: Colors.surfaceMuted,
   },
-  headerInner: { position: 'relative' },
+
+  // ── Brand bar ──
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    minHeight: 44,
   },
-  brandLogo: { width: 92, height: 32 },
-  bellButton: {
+  brandLogo: {
+    width: 122,
+    height: 42,
+  },
+  compactTitleWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  compactTitleBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 99,
+    maxWidth: 160,
+  },
+  compactTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12.5,
+    color: Colors.onDark,
+    letterSpacing: 0.1,
+    textAlign: 'center',
+  },
+  bellPressable: {
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(251,247,239,0.18)',
-    backgroundColor: 'rgba(251,247,239,0.06)',
-    margin: 0,
+    borderColor: 'rgba(251,247,239,0.2)',
+    backgroundColor: 'rgba(251,247,239,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
-  title: { ...Typography.displayMd, color: Colors.onDark, marginBottom: 4 },
-  sub: { ...Typography.bodySm, color: Colors.onDarkMuted, maxWidth: 300 },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.marigold,
+    borderRadius: Radius.xs,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 8.5,
+    color: Colors.white,
+  },
+
+  // ── Text layers ──
+  title: {
+    ...Typography.displayMd,
+    color: Colors.onDark,
+    marginBottom: 2,
+  },
+  sub: {
+    ...Typography.bodySm,
+    color: Colors.onDarkMuted,
+    maxWidth: 320,
+    marginTop: 2,
+    marginBottom: 10,
+    lineHeight: 20,
+  },
   titleLight: { ...Typography.displayMd, color: Colors.ink, marginBottom: 4 },
   subLight: { ...Typography.bodySm, color: Colors.inkSoft, marginBottom: 8 },
-  scroll: { flex: 1, marginTop: -Layout.contentOverlap },
-  scrollContent: { paddingBottom: 110 },
+
+  // ── Scroll / content ──
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
   content: {
     backgroundColor: Colors.surfaceMuted,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     paddingHorizontal: Layout.screenPadding,
     paddingTop: Layout.screenPadding,
+    paddingBottom: 0,
     minHeight: 200,
   },
   contentFlat: {
@@ -256,6 +696,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
   },
+
+  // ── Section header ──
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 12 },
   sectionLabel: { ...Typography.label, color: Colors.inkFaint, flex: 1 },
   sectionDanger: { color: Colors.clayDeep },
@@ -268,24 +710,25 @@ const styles = StyleSheet.create({
   countBadgeDanger: { backgroundColor: 'rgba(193,80,46,0.12)' },
   countText: { ...Typography.caption, color: Colors.inkSoft, fontSize: 10 },
   countTextDanger: { color: Colors.clayDeep },
+
+  // ── Stat pill ──
   statPill: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderColor: 'rgba(251,247,239,0.22)',
     borderRadius: Radius.md,
   },
-  statPillWarn: { 
-    backgroundColor: 'rgba(193,80,46,0.15)', 
+  statPillWarn: {
+    backgroundColor: 'rgba(193,80,46,0.15)',
     borderColor: 'rgba(193,80,46,0.3)',
   },
-  statContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
+  statContent: { paddingVertical: 8, paddingHorizontal: 12 },
   statValue: { fontFamily: 'Fraunces_700Bold', fontSize: 22, color: Colors.onDark, marginBottom: 2 },
   statValueWarn: { color: '#FFB89A' },
   statLabel: { ...Typography.caption, color: Colors.onDarkMuted, fontSize: 10.5 },
-  statLabelWarn: { color: 'rgba(255, 255, 255, 0.7)' },
+  statLabelWarn: { color: 'rgba(255,255,255,0.7)' },
+
+  // ── Empty state ──
   emptyCard: {
     backgroundColor: Colors.white,
     borderRadius: Radius.md,
@@ -308,7 +751,16 @@ const styles = StyleSheet.create({
   },
   emptyIcon: { fontSize: 32 },
   emptyTitle: { ...Typography.displaySm, color: Colors.ink, marginBottom: 8, textAlign: 'center' },
-  emptySub: { ...Typography.bodySm, color: Colors.inkSoft, textAlign: 'center', lineHeight: 21, marginBottom: 20, maxWidth: 280 },
+  emptySub: {
+    ...Typography.bodySm,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 20,
+    maxWidth: 280,
+  },
+
+  // ── Activity modal ──
   activityBackdrop: {
     position: 'absolute',
     top: 0,
@@ -328,10 +780,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: 'hidden',
   },
-  activityContent: {
-    flex: 1,
-    padding: 20,
-  },
+  activityContent: { flex: 1, padding: 20 },
   activityHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -346,8 +795,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.indigo950,
   },
-  activityCloseBtn: {
-    padding: 4,
+  activityCloseBtn: { padding: 4 },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -4,
   },
 });
-

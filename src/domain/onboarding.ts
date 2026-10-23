@@ -1,4 +1,4 @@
-import type { CategoryKey } from '@/types';
+import type { AnyCategoryKey, CategoryKey } from '@/types';
 import { PRESETS, type TaskPreset } from '@/constants/presets';
 
 export interface OnboardingSuggestion {
@@ -6,10 +6,11 @@ export interface OnboardingSuggestion {
   titleHi: string;
   freq: string;
   freqHi: string;
-  category: CategoryKey;
+  category: AnyCategoryKey;
   amount?: number;
   finance?: boolean;
   accepted: boolean;
+  icon?: string;
 }
 
 export function buildOnboardingSuggestions(categories: CategoryKey[]): OnboardingSuggestion[] {
@@ -22,7 +23,8 @@ export function buildOnboardingSuggestions(categories: CategoryKey[]): Onboardin
       category: cat,
       amount: p.amount,
       finance: p.finance,
-      accepted: true,
+      accepted: false,
+      icon: p.icon,
     }))
   );
 }

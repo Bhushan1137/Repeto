@@ -1,156 +1,161 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
   StyleSheet,
   ScrollView,
   Pressable,
+  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Text, Card, TextInput as PaperInput, TouchableRipple } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { Text, Card } from 'react-native-paper';
+import { AppIcon } from '@/components/AppIcon';
+import { TaskFormFields } from '@/components/TaskFormFields';
+import { TaskScopeSection } from '@/components/taskForm/TaskScopeSection';
 import { useTasks } from '@/providers/TaskProvider';
 import { useToast } from '@/providers/ToastProvider';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useTaskParser } from '@/hooks/useTaskParser';
-import { Button } from '@/components/Button';
-import { SettingRow } from '@/components/SettingRow';
-import { TaskFormFields } from '@/components/TaskFormFields';
-import { AppIcon } from '@/components/AppIcon';
-import { AccentHex, Colors, Radius, Typography, Shadows } from '@/constants/theme';
-import { CATEGORY_MAP } from '@/constants/categories';
-import { getCategoryLabel } from '@/constants/categoryHelpers';
+import { Colors, Radius, Typography } from '@/constants/theme';
 import { useAuth } from '@/providers/AuthProvider';
-import { canShareWith } from '@/domain/task';
-import { initials } from '@/domain/insights';
 import { toSharedMember } from '@/domain/household';
+import { Button } from '@/components/Button';
 import {
+  defaultFormState,
   applyCategoryChange,
-  formStateFromParsed,
   formStateToValues,
   validateFormState,
   type TaskFormState,
 } from '@/domain/taskForm';
+import { parseTaskInput } from '@/domain/parser';
 import type { SharedMember } from '@/types';
 
+import { usePathname } from 'expo-router';
 import { Toast } from '@/components/Toast';
 
-interface AddTaskSheetProps {
+export interface AddTaskSheetProps {
   visible: boolean;
   onClose: () => void;
+  defaultToHousehold?: boolean;
 }
 
-export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
-  const router = useRouter();
-  const { user } = useAuth();
+export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSheetProps) {
+  const pathname = usePathname();
+  const { user, activeHousehold } = useAuth();
+  const shouldDefaultHousehold = defaultToHousehold !== undefined
+    ? defaultToHousehold
+    : !!(pathname && pathname.includes('household') && activeHousehold);
+
   const { addTask } = useTasks();
   const { showToast, message } = useToast();
   const { translate, language } = useTranslation();
   
-  const [text, setText] = useState('');
-  const [formState, setFormState] = useState<TaskFormState | null>(null);
-  const [finance, setFinance] = useState(false);
+  const [formState, setFormState] = useState<TaskFormState>(() => defaultFormState('bills'));
   const [shared, setShared] = useState<SharedMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<ReturnType<typeof validateFormState>>({});
-  const lastParsedText = useRef('');
 
-  const parsed = useTaskParser(text);
-
-  // Reset fields when sheet opens/closes
   useEffect(() => {
-    if (!visible) {
-      setText('');
-      setFormState(null);
-      setFinance(false);
-      setShared([]);
+    if (visible) {
+      const initialHhId = shouldDefaultHousehold ? (activeHousehold?.id ?? null) : null;
+      const initialShared = shouldDefaultHousehold && activeHousehold?.members
+        ? activeHousehold.members.map(toSharedMember)
+        : [];
+      setFormState({
+        ...defaultFormState('bills'),
+        householdId: initialHhId,
+      });
+      setShared(initialShared);
       setErrors({});
-      lastParsedText.current = '';
     }
-  }, [visible]);
-
-  useEffect(() => {
-    if (!text.trim()) {
-      setFormState(null);
-      lastParsedText.current = '';
-      return;
-    }
-    if (!parsed || text === lastParsedText.current) return;
-
-    lastParsedText.current = text;
-    const next = formStateFromParsed(parsed);
-    setFormState(next);
-    if (parsed.amount) setFinance(true);
-    setErrors({});
-  }, [text, parsed]);
+  }, [visible, activeHousehold, shouldDefaultHousehold]);
 
   const patchForm = (patch: Partial<TaskFormState>) => {
-    setFormState((prev) => (prev ? { ...prev, ...patch } : prev));
+    setFormState((prev) => ({ ...prev, ...patch }));
+  };
+
+  const handleScopeChange = (targetHhId: string | null) => {
+    if (!targetHhId) {
+      setShared([]);
+      patchForm({
+        householdId: null,
+        assignedTo: null,
+        isRotating: false,
+        rotationMembers: [],
+      });
+    } else {
+      const targetHh = (user?.households ?? []).find((h) => h.id === targetHhId) || activeHousehold;
+      const nextShared = (targetHh?.members ?? []).map(toSharedMember);
+      setShared(nextShared);
+      patchForm({
+        householdId: targetHhId,
+        assignedTo: null,
+        isRotating: false,
+        rotationMembers: [],
+      });
+    }
   };
 
   const handleCategoryChange = (category: TaskFormState['category']) => {
-    setFormState((prev) => (prev ? applyCategoryChange(prev, category) : prev));
-  };
-
-  const addContact = () => {
-    const nextShared = [...shared];
-    const members = user?.householdMembers ?? [];
-    if (members.length === 0) {
-      showToast(translate('addHouseholdFirst'));
-      onClose();
-      router.push('/(tabs)/household');
-      return;
-    }
-    const used = nextShared.map((s) => s.code ?? s.phone);
-    const nextMember = members.find((m) => !used.includes(m.code));
-    const next = nextMember ? toSharedMember(nextMember) : null;
-    if (!next) {
-      showToast(translate('allContactsAdded'));
-      return;
-    }
-    nextShared.push(next);
-    if (!canShareWith(user, nextShared)) {
-      showToast(translate('sharedLimit'));
-      return;
-    }
-    setShared(nextShared);
-  };
-
-  const removeContact = (phone: string) => {
-    setShared(shared.filter((s) => s.phone !== phone));
+    setFormState((prev) => applyCategoryChange(prev, category));
   };
 
   const save = async () => {
-    if (!text.trim()) {
-      showToast(translate('typeFirst'));
-      return;
-    }
-    if (!formState) return;
-
     const nextErrors = validateFormState(formState, translate);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) {
+      showToast(language === 'hi' ? 'कृपया सभी त्रुटियां ठीक करें' : 'Please fix all errors first');
+      return;
+    }
 
-    const values = formStateToValues(formState, language);
+    let activeState = formState;
+    const parsed = parseTaskInput(formState.title, language);
+    if (
+      parsed.detectedTokens &&
+      parsed.detectedTokens.length > 1 &&
+      parsed.title &&
+      parsed.title.trim().length >= 2 &&
+      parsed.title.trim().toLowerCase() !== formState.title.trim().toLowerCase()
+    ) {
+      activeState = { ...formState, title: parsed.title.trim() };
+    }
+
+    const values = formStateToValues(activeState, language);
 
     setLoading(true);
-    const ok = await addTask(
-      {
-        title: values.title,
-        frequencyLabel: values.freq,
-        recurrence: values.recurrence,
-        amount: values.amount,
-        category: values.category,
-        reminderTime: values.reminderTime,
-        assignedTo: values.assignedTo,
-      },
-      { finance: finance || values.finance || !!values.amount, shared }
-    );
-    setLoading(false);
-    if (ok) {
-      showToast(translate('taskCreated'));
-      onClose();
+    try {
+      const ok = await addTask(
+        {
+          title: values.title,
+          frequencyLabel: values.freq,
+          recurrence: values.recurrence,
+          amount: values.amount,
+          category: values.category,
+          reminderTime: values.reminderTime,
+          timesPerDay: values.timesPerDay,
+          reminderTimes: values.reminderTimes,
+          startDate: values.startDate,
+          assignedTo: values.assignedTo,
+          isRotating: values.isRotating,
+          rotationMembers: values.rotationMembers,
+          icon: values.icon,
+          alarmEnabled: values.alarmEnabled,
+        },
+        {
+          finance: values.finance,
+          shared,
+          householdId: formState.householdId,
+        }
+      );
+      if (ok) {
+        showToast(translate('taskCreated'));
+        onClose();
+      }
+    } catch (err) {
+      console.warn('[Repeato] AddTaskSheet save failed:', err);
+      showToast(translate('saveError'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -163,120 +168,116 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
         <Pressable style={styles.backdrop} onPress={onClose} />
         <Card style={styles.sheet} mode="elevated">
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <Text style={styles.heading}>{translate('addTitle')}</Text>
 
-            <Text style={styles.label}>{translate('describeTask')}</Text>
-            <PaperInput
-              mode="outlined"
-              multiline
-              numberOfLines={3}
-              placeholder="e.g. Pay maid's salary every 1st of month, ₹3500"
-              value={text}
-              onChangeText={setText}
-              outlineColor={Colors.ivoryLine}
-              activeOutlineColor={Colors.marigoldDeep}
-              textColor={Colors.ink}
-              style={styles.textarea}
-              theme={{
-                colors: {
-                  background: Colors.white,
-                },
-              }}
-            />
+          {/* Dedicated Sheet Header with Close Button */}
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetHeaderLeft}>
+              <View style={styles.sheetHeaderBadge}>
+                <AppIcon name="sparkles" size={18} color={Colors.marigoldDeep} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heading}>
+                  {language === 'hi' ? 'नया कार्य जोड़ें' : 'Create New Task'}
+                </Text>
+                <Text style={styles.subHeading}>
+                  {language === 'hi' ? 'आवर्ती कार्य और अनुसूची सेट करें' : 'Schedule routine & repeating tasks'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.closeBtn} testID="add-task-sheet-close">
+              <AppIcon name="close" size={18} color={Colors.inkSoft} />
+            </TouchableOpacity>
+          </View>
 
-            {parsed ? (
-              <View style={styles.parsedTagsRow}>
-                <Text style={styles.parsedTagsLabel}>{translate('parseReviewHeading')}:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.parsedTagsContent}>
-                  <View style={[styles.tag, { backgroundColor: `${AccentHex[CATEGORY_MAP[parsed.category].accent]}15`, borderColor: AccentHex[CATEGORY_MAP[parsed.category].accent] }]}>
-                    <Text style={styles.tagText}>{CATEGORY_MAP[parsed.category].icon} {getCategoryLabel(parsed.category, language)}</Text>
-                  </View>
-                  <View style={[styles.tag, styles.neutralTag]}>
-                    <Text style={styles.tagText}>📅 {parsed.frequencyLabel}</Text>
-                  </View>
-                  {parsed.amount ? (
-                    <View style={[styles.tag, styles.financeTag]}>
-                      <Text style={styles.tagText}>💰 ₹{parsed.amount.toLocaleString('en-IN')}</Text>
-                    </View>
-                  ) : null}
-                  {parsed.reminderTime ? (
-                    <View style={[styles.tag, styles.timeTag]}>
-                      <Text style={styles.tagText}>⏱ {parsed.reminderTime}</Text>
-                    </View>
-                  ) : null}
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Top Destination / Scope Selector Bar if user belongs to households */}
+            {user?.households && user.households.length > 0 && (
+              <View style={styles.topScopeBar}>
+                <Text style={styles.topScopeLabel}>
+                  {language === 'hi' ? 'स्थान:' : 'Destination:'}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topScopeChips}>
+                  {user.households.map((hh) => {
+                    const isSelected = formState.householdId === hh.id;
+                    return (
+                      <TouchableOpacity
+                        key={hh.id}
+                        onPress={() => handleScopeChange(hh.id)}
+                        style={[styles.topScopeChip, isSelected && styles.topScopeChipActive]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.topScopeChipIcon}>{hh.icon || '🏠'}</Text>
+                        <Text style={[styles.topScopeChipText, isSelected && styles.topScopeChipTextActive]}>
+                          {hh.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    onPress={() => handleScopeChange(null)}
+                    style={[styles.topScopeChip, !formState.householdId && styles.topScopeChipActive]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.topScopeChipIcon}>👤</Text>
+                    <Text style={[styles.topScopeChipText, !formState.householdId && styles.topScopeChipTextActive]}>
+                      {translate('scopePersonal')}
+                    </Text>
+                  </TouchableOpacity>
                 </ScrollView>
               </View>
-            ) : null}
-
-            {formState ? (
-              <Card style={styles.preview} mode="elevated">
-                <Card.Content>
-                  <Text style={styles.previewHeading}>{translate('parseReviewHeading')}</Text>
-                  <Text style={styles.previewSub}>{translate('parseReviewSub')}</Text>
-                  <TaskFormFields
-                    language={language}
-                    translate={translate}
-                    state={formState}
-                    onChange={patchForm}
-                    onCategoryChange={handleCategoryChange}
-                    errors={errors}
-                  />
-                </Card.Content>
-              </Card>
-            ) : (
-              <Card style={styles.emptyCard} mode="elevated">
-                <Card.Content style={styles.empty}>
-                  <Text style={styles.emptyIcon}>✍️</Text>
-                  <Text style={styles.emptyText}>{translate('emptyParse')}</Text>
-                </Card.Content>
-              </Card>
             )}
-
-            <SettingRow label={translate('tagFinance')} sub={translate('tagFinanceSub')} value={finance} onValueChange={setFinance} />
-
-            <Text style={styles.label}>{translate('shareHousehold')}</Text>
-            <View style={styles.chips}>
-              {shared.map((s) => (
-                <Card key={s.phone} style={styles.chipCard} mode="elevated">
-                  <TouchableRipple onPress={() => removeContact(s.phone)} style={styles.chipRipple} borderless>
-                    <View style={styles.chipContent}>
-                      <View style={[styles.chipAvatar, { backgroundColor: s.color }]}>
-                        <Text style={styles.chipAvatarText}>{initials(s.name)}</Text>
-                      </View>
-                      <Text style={styles.chipText}>{s.name}</Text>
-                      <Text style={styles.chipRemove}>×</Text>
-                    </View>
-                  </TouchableRipple>
-                </Card>
-              ))}
-              <Card style={styles.addChipCard} mode="elevated">
-                <TouchableRipple style={styles.addChipRipple} onPress={addContact} borderless>
-                  <Text style={styles.addChipText}>{translate('addContact')}</Text>
-                </TouchableRipple>
-              </Card>
-            </View>
-
-            <Button
-              title={translate('createTask')}
-              loading={loading}
-              onPress={save}
-              disabled={!formState}
-              style={{ marginTop: 16 }}
+            <TaskFormFields
+              language={language}
+              translate={translate}
+              state={formState}
+              onChange={patchForm}
+              onCategoryChange={handleCategoryChange}
+              errors={errors}
+              sharedMembers={shared}
             />
-            <Button
-              title={translate('browsePresets')}
-              variant="outline"
-              style={{ marginTop: 10 }}
-              onPress={() => {
-                onClose();
-                router.push('/presets');
+
+            <TaskScopeSection
+              householdId={formState.householdId}
+              assignedTo={formState.assignedTo}
+              isRotating={formState.isRotating}
+              rotationMembers={formState.rotationMembers}
+              user={user}
+              language={language}
+              translate={translate}
+              onChange={(patch) => {
+                if (patch.shared !== undefined) {
+                  setShared(patch.shared);
+                }
+                patchForm({
+                  householdId: patch.householdId !== undefined ? patch.householdId : formState.householdId,
+                  assignedTo: patch.assignedTo !== undefined ? patch.assignedTo : formState.assignedTo,
+                  isRotating: patch.isRotating !== undefined ? patch.isRotating : formState.isRotating,
+                  rotationMembers: patch.rotationMembers !== undefined ? patch.rotationMembers : formState.rotationMembers,
+                });
               }}
+            />
+
+            <Button
+              title={
+                loading
+                  ? (language === 'hi' ? 'सहेज रहे हैं...' : 'Saving...')
+                  : (language === 'hi' ? '✓ कार्य बनाएं' : '✓ Create Task')
+              }
+              style={{ marginTop: 20, marginBottom: 8 }}
+              loading={loading}
+              disabled={loading}
+              onPress={save}
             />
             <Button
               title={translate('backBtn')}
               variant="ghost"
-              style={{ marginTop: 10, marginBottom: 24 }}
+              disabled={loading}
+              style={{ marginBottom: 20 }}
               onPress={onClose}
             />
           </ScrollView>
@@ -289,8 +290,12 @@ export function AddTaskSheet({ visible, onClose }: AddTaskSheetProps) {
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(23,27,54,0.45)'
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(23,27,54,0.48)',
   },
   modalContainer: {
     flex: 1,
@@ -302,119 +307,545 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.xl,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    maxHeight: '92%',
-    elevation: 8,
+    maxHeight: '94%',
+    elevation: 10,
     overflow: 'hidden',
   },
   handle: {
-    width: 36,
-    height: 4,
+    width: 40,
+    height: 4.5,
     backgroundColor: Colors.ivoryLine,
     borderRadius: 4,
     alignSelf: 'center',
     marginTop: 10,
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  body: { paddingHorizontal: 22, paddingBottom: 28 },
-  heading: { fontFamily: 'Fraunces_700Bold', fontSize: 20, color: Colors.ink, marginBottom: 12 },
-  label: { ...Typography.label, color: Colors.inkSoft, marginBottom: 8, marginTop: 12 },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(228, 219, 199, 0.6)',
+  },
+  sheetHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  sheetHeaderBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(232, 163, 61, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  heading: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 19,
+    color: Colors.ink,
+    lineHeight: 23,
+  },
+  subHeading: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
+  body: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 90,
+  },
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 12,
+    gap: 6,
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.ivoryLine,
+  },
+  stepDotActive: {
+    backgroundColor: Colors.marigoldDeep,
+  },
+  stepIndicatorText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    marginLeft: 8,
+  },
+  serifHeading: {
+    fontFamily: 'Fraunces_700Bold',
+    fontSize: 24,
+    color: Colors.ink,
+    marginBottom: 4,
+  },
+  subText: {
+    fontFamily: 'Manrope_500Medium',
+    fontSize: 14,
+    color: Colors.inkSoft,
+    marginBottom: 20,
+  },
   textarea: {
     fontSize: 15,
     fontFamily: 'Manrope_500Medium',
   },
-  preview: {
+  presetLibraryCard: {
     backgroundColor: Colors.white,
+    borderColor: Colors.ivoryLine,
     borderRadius: Radius.md,
-    marginVertical: 16,
-    elevation: 1.5,
-  },
-  previewHeading: { ...Typography.title, fontSize: 14, color: Colors.ink, marginBottom: 4 },
-  previewSub: { ...Typography.bodySm, color: Colors.inkSoft, marginBottom: 12, lineHeight: 18 },
-  emptyCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.md,
-    marginVertical: 16,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    overflow: 'hidden',
     elevation: 1,
   },
-  empty: { alignItems: 'center', paddingVertical: 24 },
-  emptyIcon: { fontSize: 36, marginBottom: 10, textAlign: 'center' },
-  emptyText: { ...Typography.bodySm, color: Colors.inkFaint, textAlign: 'center' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, marginTop: 6 },
-  chipCard: {
+  presetLibraryCardInner: {
+    padding: 16,
+  },
+  presetLibraryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  presetIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(232, 163, 61, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetIcon: {
+    fontSize: 18,
+  },
+  presetTextContainer: {
+    flex: 1,
+  },
+  presetTitleText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 14,
+    color: Colors.ink,
+  },
+  presetSubText: {
+    fontFamily: 'Manrope_400Regular',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
+  presetArrow: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 20,
+    color: Colors.marigold,
+  },
+  optionSelectionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.ivoryLine,
+    borderRadius: Radius.md,
+    padding: 16,
+    marginBottom: 12,
+  },
+  optionSelectionCardActive: {
+    borderColor: Colors.marigoldDeep,
+    backgroundColor: 'rgba(232, 163, 61, 0.03)',
+    borderStyle: 'dashed',
+  },
+  optionCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  optionEmojiCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.ivoryDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionEmojiCircleActive: {
+    backgroundColor: 'rgba(232, 163, 61, 0.08)',
+  },
+  optionEmoji: {
+    fontSize: 18,
+  },
+  optionCardTextWrap: {
+    flex: 1,
+  },
+  optionCardTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 14.5,
+    color: Colors.ink,
+  },
+  optionCardSub: {
+    fontFamily: 'Manrope_400Regular',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    marginTop: 2,
+  },
+  optionRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.ivoryLine,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionRadioActive: {
+    borderColor: Colors.marigoldDeep,
+  },
+  optionRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.marigoldDeep,
+  },
+  inlineCalendarContainer: {
+    backgroundColor: 'rgba(232, 163, 61, 0.07)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(232, 163, 61, 0.35)',
+    borderRadius: Radius.sm,
+    padding: 14,
+    marginBottom: 16,
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  inlineCalendarHeader: {
+    flex: 1,
+  },
+  inlineCalendarTitle: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  inlineCalendarValue: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 13.5,
+    color: Colors.marigoldDeep,
+  },
+  inlineCalendarChangeBtn: {
+    backgroundColor: Colors.marigoldDeep,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: Radius.full,
-    elevation: 1,
+  },
+  inlineCalendarChangeBtnText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11.5,
+    color: Colors.white,
+  },
+  inlineIntervalCard: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.ivoryLine,
+    borderRadius: Radius.sm,
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  navRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  navBtn: {
+    flex: 1,
+  },
+  ctaInline: {
+    flex: 1.5,
+  },
+  summaryCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    marginBottom: 20,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    position: 'relative',
     overflow: 'hidden',
   },
-  chipRipple: {
-    paddingVertical: 6,
-    paddingRight: 12,
-    paddingLeft: 6,
+  summaryCardAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: Colors.marigoldDeep,
   },
-  chipContent: {
+  summaryCardContent: {
+    paddingLeft: 20,
+    paddingVertical: 14,
+  },
+  summaryTitleRow: {
+    marginBottom: 6,
+  },
+  summaryTitleInput: {
+    fontSize: 16,
+    fontFamily: 'Manrope_800ExtraBold',
+    color: Colors.ink,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+  },
+  summaryFreqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  summaryFreqText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.marigoldDeep,
+  },
+  optionalSectionTitle: {
+    fontFamily: 'Manrope_800ExtraBold',
+    fontSize: 11.5,
+    color: Colors.inkSoft,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  shareSection: {
+    marginBottom: 16,
+  },
+  shareTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  shareChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  advancedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.ivoryLine,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  advancedTitle: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.tealDeep,
+  },
+  advancedChevron: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.tealDeep,
+  },
+  advancedContent: {
+    marginBottom: 16,
+    paddingTop: 8,
+  },
+  sectionLabel: {
+    fontSize: 11.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkSoft,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  groupBlock: { marginBottom: 12 },
+  groupLabel: {
+    fontSize: 10.5,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.inkFaint,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catChip: {
+    width: '31%',
+    minWidth: 96,
+    flexGrow: 1,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+    elevation: 1,
+  },
+  catChipActive: { borderColor: Colors.marigold, backgroundColor: 'rgba(232,163,61,0.04)' },
+  catChipInner: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  catContent: {
+    alignItems: 'center',
+  },
+  catChipIcon: { fontSize: 20, marginBottom: 4 },
+  catChipText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 10.5,
+    color: Colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  catChipTextActive: { color: Colors.ink, fontFamily: 'Manrope_700Bold' },
+  intervalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  presetChip: {
+    borderRadius: 999,
+    backgroundColor: Colors.ivoryDim,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+    elevation: 0.5,
+  },
+  presetChipActive: { borderColor: Colors.marigold, backgroundColor: 'rgba(232,163,61,0.1)' },
+  presetChipInner: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  presetChipText: { fontFamily: 'Manrope_600SemiBold', fontSize: 12, color: Colors.inkSoft },
+  presetChipTextActive: { color: Colors.ink, fontFamily: 'Manrope_700Bold' },
+  emojiContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  emojiList: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  emojiBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.ivoryDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  emojiBtnActive: {
+    borderColor: Colors.marigold,
+    backgroundColor: 'rgba(232, 163, 61, 0.08)',
+  },
+  emojiText: {
+    fontSize: 20,
+  },
+  quickChipsRow: {
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+  },
+  quickChip: {
+    backgroundColor: Colors.ivoryDim,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    borderRadius: Radius.full,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  quickChipText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 12,
+    color: Colors.ink,
+  },
+  orDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: 16,
+  },
+  orDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.ivoryLine,
+  },
+  orDividerText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 11,
+    color: Colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  topScopeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: 'rgba(235, 237, 243, 0.45)',
+    borderRadius: Radius.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 8,
+  },
+  topScopeLabel: {
+    ...Typography.caption,
+    color: Colors.inkSoft,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  topScopeChips: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  chipAvatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chipAvatarText: { fontSize: 9.5, color: Colors.white, fontFamily: 'Manrope_800ExtraBold' },
-  chipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
-  chipRemove: { fontSize: 16, color: Colors.inkSoft, marginLeft: 2 },
-  addChipCard: {
-    backgroundColor: Colors.ivoryDim,
-    borderRadius: Radius.full,
-    elevation: 0.5,
-    overflow: 'hidden',
-  },
-  addChipRipple: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  addChipText: { ...Typography.caption, color: Colors.ink, fontFamily: 'Manrope_700Bold' },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  parsedTagsRow: {
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  parsedTagsLabel: {
-    ...Typography.caption,
-    fontSize: 10,
-    color: Colors.inkSoft,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    fontFamily: 'Manrope_700Bold',
-  },
-  parsedTagsContent: {
-    gap: 8,
-    paddingVertical: 4,
-  },
-  tag: {
+  topScopeChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
     paddingVertical: 6,
-    paddingHorizontal: 12,
     borderRadius: Radius.full,
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: 'transparent',
-    marginRight: 6,
+    borderColor: 'rgba(228, 219, 199, 0.7)',
   },
-  tagText: {
-    ...Typography.caption,
-    color: Colors.ink,
-    fontSize: 11.5,
-    fontFamily: 'Manrope_700Bold',
+  topScopeChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#363E71',
   },
-  neutralTag: {
-    backgroundColor: 'rgba(27,31,59,0.06)',
-    borderColor: Colors.ivoryLine,
+  topScopeChipIcon: {
+    fontSize: 13,
   },
-  financeTag: {
-    backgroundColor: 'rgba(62,124,106,0.08)',
-    borderColor: Colors.tealLight,
+  topScopeChipText: {
+    fontSize: 12,
+    color: Colors.inkSoft,
+    fontWeight: '600',
   },
-  timeTag: {
-    backgroundColor: 'rgba(232,163,61,0.08)',
-    borderColor: Colors.marigold,
+  topScopeChipTextActive: {
+    color: '#363E71',
+    fontWeight: '700',
   },
 });

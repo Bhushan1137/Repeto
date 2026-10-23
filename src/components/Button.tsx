@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, type TextStyle } from 'react-native';
+import { StyleSheet, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Button as PaperButton } from 'react-native-paper';
 import { Colors, Radius, Typography } from '@/constants/theme';
 
@@ -10,9 +10,12 @@ interface ButtonProps {
   variant?: Variant;
   loading?: boolean;
   disabled?: boolean;
+  compact?: boolean;
   onPress?: () => void;
-  style?: any;
+  style?: StyleProp<ViewStyle>;
+  contentStyle?: StyleProp<ViewStyle>;
   textStyle?: TextStyle;
+  testID?: string;
 }
 
 export function Button({
@@ -20,7 +23,9 @@ export function Button({
   variant = 'primary',
   loading,
   disabled,
+  compact,
   style,
+  contentStyle,
   textStyle,
   onPress,
   ...rest
@@ -48,17 +53,25 @@ export function Button({
     <PaperButton
       mode={mode}
       loading={loading}
-      disabled={disabled}
+      textColor={textColor}
+      disabled={disabled || loading}
       onPress={onPress}
-      contentStyle={styles.content}
+      contentStyle={[
+        styles.content,
+        compact && styles.compactContent,
+        contentStyle,
+      ]}
       style={[
         styles.button,
+        compact && styles.compactButton,
         !isOutline && { backgroundColor: buttonColor },
         isOutline && styles.outlinedBorder,
+        (disabled || loading) && { opacity: 0.8 },
         style,
       ]}
       labelStyle={[
         styles.label,
+        compact && styles.compactLabel,
         { color: textColor },
         textStyle,
       ]}
@@ -74,6 +87,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     marginVertical: 4,
   },
+  compactButton: {
+    borderRadius: Radius.full,
+    marginVertical: 0,
+    minHeight: 32,
+  },
   outlinedBorder: {
     borderColor: Colors.ivoryLine,
     borderWidth: 1.5,
@@ -84,10 +102,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  compactContent: {
+    paddingVertical: 0,
+    height: 32,
+    paddingHorizontal: 8,
+  },
   label: {
     ...Typography.title,
     fontSize: 14.5,
     marginVertical: 4,
+  },
+  compactLabel: {
+    fontSize: 12.5,
+    marginVertical: 0,
+    marginHorizontal: 4,
+    lineHeight: 16,
   },
 });
 

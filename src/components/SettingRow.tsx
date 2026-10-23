@@ -9,17 +9,19 @@ interface SettingRowProps {
   sub?: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
+  flat?: boolean;
+  testID?: string;
 }
 
-export function SettingRow({ label, sub, value, onValueChange }: SettingRowProps) {
+export function SettingRow({ label, sub, value, onValueChange, flat = false, testID }: SettingRowProps) {
   return (
-    <Card style={styles.card} mode="elevated">
+    <Card style={[styles.card, flat && styles.cardFlat]} mode={flat ? 'contained' : 'elevated'} testID={testID}>
       <Card.Content style={styles.cardContent}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={styles.label}>{label}</Text>
           {sub ? <Text style={styles.sub}>{sub}</Text> : null}
         </View>
-        <Toggle value={value} onValueChange={onValueChange} />
+        <Toggle value={value} onValueChange={onValueChange} testID={testID ? `${testID}-toggle` : undefined} />
       </Card.Content>
     </Card>
   );
@@ -29,22 +31,24 @@ interface LanguagePickerProps {
   options: Array<{ code: string; label: string; native: string }>;
   selected: string;
   onSelect: (code: string) => void;
+  testID?: string;
 }
 
-export function LanguagePicker({ options, selected, onSelect }: LanguagePickerProps) {
+export function LanguagePicker({ options, selected, onSelect, testID }: LanguagePickerProps) {
   return (
     <>
       {options.map((opt) => {
         const active = selected === opt.code;
         return (
-          <Card
+          <View
             key={opt.code}
-            style={[styles.langCard, active && styles.langCardActive]}
-            mode="elevated"
+            style={[styles.langCard, active ? styles.langCardActive : styles.langCardInactive]}
+            testID={testID ? `${testID}-card-${opt.code}` : undefined}
           >
             <TouchableRipple
               onPress={() => onSelect(opt.code)}
               style={styles.ripple}
+              testID={testID ? `${testID}-btn-${opt.code}` : undefined}
               borderless
             >
               <View style={styles.langInner}>
@@ -52,10 +56,16 @@ export function LanguagePicker({ options, selected, onSelect }: LanguagePickerPr
                   <Text style={styles.langName}>{opt.label}</Text>
                   <Text style={styles.langNative}>{opt.native}</Text>
                 </View>
-                {active ? <Text style={styles.langCheck}>✓</Text> : null}
+                {active ? (
+                  <View style={styles.checkCircle}>
+                    <Text style={styles.checkIcon}>✓</Text>
+                  </View>
+                ) : (
+                  <View style={styles.checkCircleEmpty} />
+                )}
               </View>
             </TouchableRipple>
-          </Card>
+          </View>
         );
       })}
     </>
@@ -69,6 +79,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     elevation: 1,
   },
+  cardFlat: {
+    elevation: 0,
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
+  },
   cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -81,14 +97,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: Radius.md,
     marginBottom: 12,
-    elevation: 1,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
     overflow: 'hidden',
   },
+  langCardInactive: {
+    borderWidth: 1,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: Colors.white,
+  },
   langCardActive: {
+    borderWidth: 1.5,
     borderColor: Colors.marigold,
-    backgroundColor: 'rgba(232,163,61,0.04)',
+    backgroundColor: 'rgba(232,163,61,0.06)',
   },
   ripple: {
     padding: 16,
@@ -100,6 +119,27 @@ const styles = StyleSheet.create({
   },
   langName: { ...Typography.title, fontSize: 15, color: Colors.ink },
   langNative: { fontFamily: 'Fraunces_600SemiBold', fontSize: 13, color: Colors.inkSoft, marginTop: 2 },
-  langCheck: { fontSize: 18, color: Colors.tealDeep, fontFamily: 'Manrope_800ExtraBold' },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.marigold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkIcon: {
+    color: Colors.white,
+    fontSize: 12,
+    fontFamily: 'Manrope_800ExtraBold',
+    lineHeight: 14,
+  },
+  checkCircleEmpty: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: Colors.ivoryLine,
+    backgroundColor: 'transparent',
+  },
 });
 

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CategoryKey, Language } from '@/types';
 import { buildOnboardingSuggestions, type OnboardingSuggestion } from '@/domain/onboarding';
 
@@ -24,13 +25,30 @@ interface OnboardingContextValue {
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguage] = useState<Language>('en');
+  const [language, setLanguageState] = useState<Language>('en');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [categories, setCategories] = useState<CategoryKey[]>([]);
   const [suggestions, setSuggestions] = useState<OnboardingSuggestion[]>([]);
   const [pushOptIn, setPushOptIn] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@repeato/selected_language').then((val) => {
+      if (val) {
+        setLanguageState(val as Language);
+      }
+    });
+  }, []);
+
+  const setLanguage = async (l: Language) => {
+    setLanguageState(l);
+    try {
+      await AsyncStorage.setItem('@repeato/selected_language', l);
+    } catch (err) {
+      console.warn('[Repeato] Failed to save onboarding language selection', err);
+    }
+  };
 
   const toggleCategory = (key: CategoryKey) => {
     setCategories((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));

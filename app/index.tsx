@@ -5,7 +5,7 @@ import { Colors } from '@/constants/theme';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 
 export default function Index() {
-  const { ready, user } = useAuth();
+  const { ready, user, deletedAccountInfo } = useAuth();
 
   if (!ready) {
     return (
@@ -15,7 +15,9 @@ export default function Index() {
     );
   }
 
-  if (!user) return <Redirect href="/(onboarding)/language" />;
+  if (deletedAccountInfo) return <Redirect href="/(onboarding)/account-recovery" />;
+  if (!user) return <Redirect href="/(onboarding)/sign-in" />;
+  if (!user.languageSelected) return <Redirect href="/(onboarding)/language" />;
   if (!user.profileComplete) return <Redirect href="/(onboarding)/profile" />;
   if (!user.onboardingComplete) return <Redirect href="/(onboarding)/categories" />;
   return <Redirect href="/(tabs)" />;

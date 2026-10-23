@@ -1,18 +1,62 @@
-import type { UserProfile } from '@/types';
+import type { UserProfile, HouseholdContext } from '@/types';
 import { loadUser, saveUser, clearUserData } from '@/data/sources/localSource';
-import { saveUserRemote, loadUserRemote, loadHouseholdInviteRemote } from '@/services/firebase/firestore';
+import {
+  saveUserRemote,
+  loadUserRemote,
+  saveUserCodeRemote,
+  loadUserCodeRemote,
+  saveHouseholdRemote,
+  deleteHouseholdRemote,
+  loadHouseholdRemote,
+  listenUserHouseholdsRemote,
+  loadHouseholdInviteRemote,
+  saveOtherUserRemote,
+  saveNotificationRemote,
+  listenNotificationsRemote,
+  deleteNotificationRemote,
+  saveHouseholdCodeRemote,
+  deleteHouseholdCodeRemote,
+  resolveHouseholdCodeRemote,
+  findHouseholdCodeByOwnerRemote,
+  type HouseholdCodeRecord,
+} from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
-import { signOutFirebase } from '@/services/firebase/auth';
 import { normalizeHouseholdProfile } from '@/domain/household';
+import type { AppNotification } from '@/types/notification';
 
 function remoteEnabled(): boolean {
   return isFirebaseConfigured() && initFirebase();
 }
 
 async function syncRemote(user: UserProfile): Promise<void> {
+  if (user.isDeleted) return;
   try {
-    await saveUserRemote(normalizeHouseholdProfile(user));
+    const normalized = normalizeHouseholdProfile(user);
+    await saveUserRemote(normalized);
+    const activeHh = (normalized.households ?? []).find(h => h.id === normalized.activeHouseholdId)
+      ?? normalized.households?.[0];
+
+    if (normalized.userCode && normalized.id) {
+      await saveUserCodeRemote({
+        userCode: normalized.userCode,
+        userId: normalized.id,
+        name: normalized.name || 'Repeato user',
+        color: normalized.householdMembers?.[0]?.color || '#E8A33D',
+        photoUrl: normalized.photoUrl,
+        activeHouseholdCode: activeHh?.code,
+        activeHouseholdId: activeHh?.id,
+      });
+    }
+
+    // Ensure all user-owned households are published to /householdCodes
+    if (normalized.households && normalized.households.length > 0) {
+      for (const hh of normalized.households) {
+        if ((hh.ownerUid === normalized.id || !hh.ownerUid) && hh.code) {
+          await saveHouseholdCodeRemote(hh).catch(() => {});
+        }
+      }
+    }
   } catch (cause) {
     // Local save already succeeded — don't block the user for cloud sync issues
     console.warn('[Repeato] Profile cloud sync failed:', cause);
@@ -32,7 +76,7 @@ export const userRepository = {
   async save(user: UserProfile | null): Promise<void> {
     const normalized = user ? normalizeHouseholdProfile(user) : null;
     await saveUser(normalized);
-    if (normalized && remoteEnabled()) {
+    if (normalized && !normalized.isDeleted && remoteEnabled()) {
       await syncRemote(normalized);
     }
   },
@@ -49,14 +93,97 @@ export const userRepository = {
   },
 
   async clear(userId?: string): Promise<void> {
+    await clearUserData(userId);
+  },
+
+  async resolveUserCode(code: string) {
+    if (!remoteEnabled()) return null;
+    try {
+      return await loadUserCodeRemote(code);
+    } catch (cause) {
+      console.warn('[Repeato] User code lookup failed:', cause);
+      return null;
+    }
+  },
+
+  async saveHousehold(household: HouseholdContext): Promise<void> {
     if (remoteEnabled()) {
       try {
-        await signOutFirebase();
-      } catch {
-        // Best-effort sign out
+        await saveHouseholdRemote(household);
+      } catch (err) {
+        console.warn('[Repeato] saveHousehold failed:', err);
       }
     }
-    await clearUserData(userId);
+  },
+
+  async deleteHousehold(householdId: string, code?: string): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await deleteHouseholdRemote(householdId, code);
+      } catch (err) {
+        console.warn('[Repeato] deleteHousehold failed:', err);
+      }
+    }
+  },
+
+  async saveHouseholdCode(household: HouseholdContext): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await saveHouseholdCodeRemote(household);
+      } catch (err) {
+        console.warn('[Repeato] saveHouseholdCode failed:', err);
+      }
+    }
+  },
+
+  async deleteHouseholdCode(code: string): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await deleteHouseholdCodeRemote(code);
+      } catch (err) {
+        console.warn('[Repeato] deleteHouseholdCode failed:', err);
+      }
+    }
+  },
+
+  async resolveHouseholdCode(code: string): Promise<HouseholdCodeRecord | null> {
+    if (!remoteEnabled()) return null;
+    try {
+      return await resolveHouseholdCodeRemote(code);
+    } catch (cause) {
+      console.warn('[Repeato] Household code lookup failed:', cause);
+      return null;
+    }
+  },
+
+  async findHouseholdCodeByOwner(ownerUid: string): Promise<HouseholdCodeRecord | null> {
+    if (!remoteEnabled()) return null;
+    try {
+      return await findHouseholdCodeByOwnerRemote(ownerUid);
+    } catch (cause) {
+      console.warn('[Repeato] findHouseholdCodeByOwner failed:', cause);
+      return null;
+    }
+  },
+
+  async loadHousehold(householdId: string): Promise<HouseholdContext | null> {
+    if (!remoteEnabled()) return null;
+    try {
+      return await loadHouseholdRemote(householdId);
+    } catch (err) {
+      console.warn('[Repeato] loadHousehold failed:', err);
+      return null;
+    }
+  },
+
+  listenHouseholds(userId: string, callback: (households: HouseholdContext[]) => void): () => void {
+    if (!remoteEnabled()) return () => {};
+    try {
+      return listenUserHouseholdsRemote(userId, callback);
+    } catch (err) {
+      console.warn('[Repeato] listenHouseholds failed:', err);
+      return () => {};
+    }
   },
 
   async resolveHouseholdInvite(code: string) {
@@ -66,6 +193,43 @@ export const userRepository = {
     } catch (cause) {
       console.warn('[Repeato] Household invite lookup failed:', cause);
       return null;
+    }
+  },
+
+  async saveOther(userId: string, user: UserProfile): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await saveOtherUserRemote(userId, normalizeHouseholdProfile(user));
+      } catch (err) {
+        console.warn('[Repeato] saveOther failed:', err);
+      }
+    }
+  },
+
+  async saveNotification(userId: string, notif: AppNotification): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await saveNotificationRemote(userId, notif);
+      } catch (err) {
+        console.warn('[Repeato] saveNotification failed:', err);
+      }
+    }
+  },
+
+  listenNotifications(userId: string, callback: (notifs: AppNotification[]) => void): () => void {
+    if (remoteEnabled()) {
+      return listenNotificationsRemote(userId, callback);
+    }
+    return () => {};
+  },
+
+  async deleteNotification(userId: string, notifId: string): Promise<void> {
+    if (remoteEnabled()) {
+      try {
+        await deleteNotificationRemote(userId, notifId);
+      } catch (err) {
+        console.warn('[Repeato] deleteNotification failed:', err);
+      }
     }
   },
 };
