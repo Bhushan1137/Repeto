@@ -112,11 +112,10 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. Not logged in -> MUST be on sign-in or language (allow help-support for FAQs)
+    // 1. Not logged in -> MUST be on sign-in (allow help-support for FAQs)
     if (!user) {
       if (rootSegment === 'help-support') return;
-      const isAllowedUnauthScreen = currentScreen === 'sign-in' || currentScreen === 'language';
-      if (!isInsideOnboarding || !isAllowedUnauthScreen) {
+      if (!isInsideOnboarding || currentScreen !== 'sign-in') {
         safeReplace('/(onboarding)/sign-in');
       }
       return;
@@ -218,8 +217,8 @@ export default function RootLayout() {
               <AlarmOverlay />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.surfaceMuted } }}>
                 <Stack.Screen name="index" />
-                <Stack.Screen name="(onboarding)" />
-                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
+                <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
                 <Stack.Screen name="help-support" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="notifications" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="presets" options={{ presentation: 'modal' }} />

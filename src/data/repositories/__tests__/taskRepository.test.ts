@@ -64,6 +64,13 @@ describe('data/repositories/taskRepository', () => {
     expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'delete', taskId: 't1' });
   });
 
+  it('deleteMany deletes multiple tasks locally and enqueues sync when remote is disabled', async () => {
+    await taskRepository.deleteMany(['t1', 't2'], 'u1');
+    expect(localSource.deleteMultipleTasksLocal).toHaveBeenCalledWith('u1', ['t1', 't2']);
+    expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'delete', taskId: 't1' });
+    expect(localSource.enqueueSync).toHaveBeenCalledWith('u1', { type: 'delete', taskId: 't2' });
+  });
+
   it('load merges inMemoryTasks with SQLite tasks when provided', async () => {
     const memoryTask: RepeatingTask = {
       ...dummyTask,

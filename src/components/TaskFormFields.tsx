@@ -29,6 +29,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Card, Text, TouchableRipple } from 'react-native-paper';
 
+const getTokenStyle = (id: string) => {
+  switch (id) {
+    case 'amount':
+      return { bg: '#E8F5E9', border: '#A5D6A7', text: '#1B5E20' };
+    case 'recurrence':
+      return { bg: '#E3F2FD', border: '#90CAF9', text: '#0D47A1' };
+    case 'time':
+    case 'doses':
+      return { bg: '#FFF8E1', border: '#FFE082', text: '#E65100' };
+    case 'alarm':
+      return { bg: '#EDE7F6', border: '#B39DDB', text: '#4A148C' };
+    case 'category':
+    default:
+      return { bg: '#FFF3E0', border: '#FFCC80', text: '#B7791F' };
+  }
+};
+
 interface TaskFormFieldsProps {
   language: Language;
   translate: (key: TranslationKey, params?: Record<string, string | number>) => string;
@@ -330,6 +347,33 @@ export function TaskFormFields({
           <Text style={styles.smartWarningText}>{liveTitleValidation.warning}</Text>
         ) : null}
 
+        {/* Clean Title Preview Banner */}
+        {cleanTitleCandidate &&
+          cleanTitleCandidate.trim().toLowerCase() !== state.title.trim().toLowerCase() &&
+          cleanTitleCandidate.trim().length >= 2 && (
+            <View style={styles.cleanTitleCard}>
+              <View style={styles.cleanTitleLeft}>
+                <AppIcon name="sparkles" size={15} color={Colors.tealDeep} />
+                <View style={styles.cleanTitleTextCol}>
+                  <Text style={styles.cleanTitleLabel}>
+                    {language === 'hi' ? 'स्मार्ट संक्षिप्त नाम' : 'Clean Title Preview'}
+                  </Text>
+                  <Text style={styles.cleanTitleValue}>{`"${cleanTitleCandidate}"`}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.cleanTitleActionBtn}
+                onPress={() => onChange({ title: cleanTitleCandidate })}
+                activeOpacity={0.7}
+              >
+                <AppIcon name="checkmark" size={13} color={Colors.white} />
+                <Text style={styles.cleanTitleActionText}>
+                  {language === 'hi' ? 'अपनाएं' : 'Use Clean'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
         {/* Live Detected Tokens Badges */}
         {detectedTokens.length > 0 && (
           <View style={styles.detectedContainer}>
@@ -337,30 +381,29 @@ export function TaskFormFields({
               <Text style={styles.detectedTitle}>
                 ⚡ {language === 'hi' ? 'ऑटो-पहचाने गए फ़ील्ड:' : 'Auto-detected:'}
               </Text>
-              {cleanTitleCandidate && cleanTitleCandidate !== state.title && (
-                <TouchableOpacity
-                  style={styles.cleanTitleBtn}
-                  onPress={() => onChange({ title: cleanTitleCandidate })}
-                >
-                  <Text style={styles.cleanTitleBtnText}>
-                    ✂️ {language === 'hi' ? `नाम: "${cleanTitleCandidate}"` : `Keep clean: "${cleanTitleCandidate}"`}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.detectedTokensRow}>
-              {detectedTokens.map((token) => (
-                <View key={token.id} style={styles.tokenBadge}>
-                  <Text style={styles.tokenBadgeText}>
-                    {token.icon} {token.label}
-                  </Text>
-                  {token.id !== 'category' && (
-                    <TouchableOpacity onPress={() => dismissToken(token.id)} hitSlop={6} style={styles.tokenCloseBtn}>
-                      <Text style={styles.tokenCloseText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
+              {detectedTokens.map((token) => {
+                const tokenColors = getTokenStyle(token.id);
+                return (
+                  <View
+                    key={token.id}
+                    style={[
+                      styles.tokenBadge,
+                      { backgroundColor: tokenColors.bg, borderColor: tokenColors.border },
+                    ]}
+                  >
+                    <Text style={[styles.tokenBadgeText, { color: tokenColors.text }]}>
+                      {token.icon} {token.label}
+                    </Text>
+                    {token.id !== 'category' && (
+                      <TouchableOpacity onPress={() => dismissToken(token.id)} hitSlop={6} style={styles.tokenCloseBtn}>
+                        <Text style={[styles.tokenCloseText, { color: tokenColors.text }]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -375,7 +418,7 @@ export function TaskFormFields({
               style={styles.inspirationChip}
               onPress={() => applyInspirationPrompt(language === 'hi' ? 'पौधों को पानी रोज़ सुबह 8 बजे' : 'Water plants daily at 8am')}
             >
-              <Text style={styles.inspirationChipText}>🪴 {language === 'hi' ? 'पौधे (रोज़)' : 'Water plants (Daily)'}</Text>
+              <Text style={styles.inspirationChipText}>🪴 {language === 'hi' ? 'पौधे (रोज़ 8am)' : 'Water plants (Daily 8am)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
@@ -385,21 +428,21 @@ export function TaskFormFields({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'जिम कसरत रोज़ सुबह 7 बजे' : 'Gym workout daily at 7am')}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'दवा सुबह और रात अलार्म के साथ' : 'Medicine morning and night with alarm')}
             >
-              <Text style={styles.inspirationChipText}>💪 {language === 'hi' ? 'जिम (रोज़ 7am)' : 'Gym (Daily 7am)'}</Text>
+              <Text style={styles.inspirationChipText}>💊 {language === 'hi' ? 'दवा (सुबह-रात + अलार्म)' : 'Medicine (Morn/Night + Alarm)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'जिम कसरत एक दिन छोड़कर सुबह 6:30 बजे' : 'Gym workout alternate days at 6:30am')}
+            >
+              <Text style={styles.inspirationChipText}>💪 {language === 'hi' ? 'जिम (एक दिन छोड़कर)' : 'Gym (Alternate days)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
               onPress={() => applyInspirationPrompt(language === 'hi' ? 'कामवाली वेतन ₹4000 हर महीने 1 तारीख' : 'Maid salary ₹4000 monthly on 1st')}
             >
               <Text style={styles.inspirationChipText}>🧹 {language === 'hi' ? 'कामवाली ₹4,000 (1 तारीख)' : 'Maid ₹4,000 (1st)'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.inspirationChip}
-              onPress={() => applyInspirationPrompt(language === 'hi' ? 'दवा दिन में 2 बार सुबह 8 बजे' : 'Medicine twice daily at 8am')}
-            >
-              <Text style={styles.inspirationChipText}>💊 {language === 'hi' ? 'दवा (2 बार रोज़)' : 'Medicine (2x daily)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
@@ -412,6 +455,12 @@ export function TaskFormFields({
               onPress={() => applyInspirationPrompt(language === 'hi' ? 'विटामिन डी हर रविवार सुबह 10 बजे' : 'Vitamin D every sunday at 10am')}
             >
               <Text style={styles.inspirationChipText}>☀️ {language === 'hi' ? 'विटामिन डी (रविवार)' : 'Vitamin D (Sunday)'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.inspirationChip}
+              onPress={() => applyInspirationPrompt(language === 'hi' ? 'कार सर्विस हर 6 महीने' : 'Car service every 6 months')}
+            >
+              <Text style={styles.inspirationChipText}>🚗 {language === 'hi' ? 'कार सर्विस (6 महीने)' : 'Car service (6m)'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.inspirationChip}
@@ -1345,6 +1394,59 @@ const styles = StyleSheet.create({
     color: Colors.inkFaint,
     marginTop: 2,
     marginBottom: 6,
+  },
+
+  // Live Detected Tokens Badges
+  // Clean Title Card
+  cleanTitleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#E6FFFA',
+    borderRadius: Radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#81E6D9',
+    marginTop: 8,
+    marginBottom: 4,
+    gap: 8,
+  },
+  cleanTitleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  cleanTitleTextCol: {
+    flex: 1,
+  },
+  cleanTitleLabel: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 10,
+    color: Colors.tealDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cleanTitleValue: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+    color: Colors.ink,
+    marginTop: 1,
+  },
+  cleanTitleActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.tealDeep,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+  },
+  cleanTitleActionText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 11,
+    color: Colors.white,
   },
 
   // Live Detected Tokens Badges

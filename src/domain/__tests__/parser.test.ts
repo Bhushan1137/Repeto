@@ -319,4 +319,174 @@ describe('parseTaskInput natural language engine', () => {
       expect(r3.category).toBe('gardening');
     });
   });
+
+  describe('Enhanced Natural Language & Smart Input Parsing', () => {
+    describe('Alternate days & Fortnightly', () => {
+      it('parses "alternate days" and "every other day"', () => {
+        const r1 = parseTaskInput('Gym workout alternate days at 6:30am');
+        expect(r1.title).toBe('Gym workout');
+        expect(r1.recurrence).toEqual({ type: 'interval', interval: 2, intervalUnit: 'days' });
+        expect(r1.reminderTime).toBe('06:30');
+
+        const r2 = parseTaskInput('Water garden every other day');
+        expect(r2.title).toBe('Water garden');
+        expect(r2.recurrence).toEqual({ type: 'interval', interval: 2, intervalUnit: 'days' });
+      });
+
+      it('parses Hindi/Hinglish alternate days ("ek din chhod kar", "har dusre din")', () => {
+        const r1 = parseTaskInput('पौधों में पानी एक दिन छोड़कर', 'hi');
+        expect(r1.recurrence).toEqual({ type: 'interval', interval: 2, intervalUnit: 'days' });
+
+        const r2 = parseTaskInput('Gym workout har dusre din');
+        expect(r2.recurrence).toEqual({ type: 'interval', interval: 2, intervalUnit: 'days' });
+      });
+
+      it('parses bi-weekly and fortnightly recurrence ("every 2 weeks", "fortnightly", "har 2 hafte")', () => {
+        const r1 = parseTaskInput('Deep house cleaning every 2 weeks');
+        expect(r1.title).toBe('Deep house cleaning');
+        expect(r1.recurrence).toEqual({ type: 'interval', interval: 14, intervalUnit: 'days' });
+
+        const r2 = parseTaskInput('Lawn mowing fortnightly');
+        expect(r2.recurrence).toEqual({ type: 'interval', interval: 14, intervalUnit: 'days' });
+
+        const r3 = parseTaskInput('बेडशीट बदलना har 2 hafte', 'hi');
+        expect(r3.recurrence).toEqual({ type: 'interval', interval: 14, intervalUnit: 'days' });
+      });
+    });
+
+    describe('Quarterly, Half-Yearly & Month End', () => {
+      it('parses quarterly & half-yearly', () => {
+        const r1 = parseTaskInput('Water purifier service quarterly');
+        expect(r1.title).toBe('Water purifier service');
+        expect(r1.recurrence).toEqual({ type: 'interval', interval: 3, intervalUnit: 'months' });
+
+        const r2 = parseTaskInput('Car servicing half-yearly');
+        expect(r2.title).toBe('Car servicing');
+        expect(r2.recurrence).toEqual({ type: 'interval', interval: 6, intervalUnit: 'months' });
+
+        const r3 = parseTaskInput('Dental checkup every 6 months');
+        expect(r3.recurrence).toEqual({ type: 'interval', interval: 6, intervalUnit: 'months' });
+      });
+
+      it('parses month end ("month end", "end of month", "mahine ke aakhri din")', () => {
+        const r1 = parseTaskInput('Credit card bill payment month end');
+        expect(r1.title).toBe('Credit card bill payment');
+        expect(r1.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 31 });
+
+        const r2 = parseTaskInput('Account settlement end of month');
+        expect(r2.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 31 });
+      });
+
+      it('parses standalone monthly days ("on 5th", "on the 10th", "every 1st")', () => {
+        const r1 = parseTaskInput('House maintenance ₹3000 on 5th');
+        expect(r1.title).toBe('House maintenance');
+        expect(r1.amount).toBe(3000);
+        expect(r1.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+
+        const r2 = parseTaskInput('SIP mutual fund ₹5000 on the 10th');
+        expect(r2.title).toBe('SIP mutual fund');
+        expect(r2.amount).toBe(5000);
+        expect(r2.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 10 });
+      });
+    });
+
+    describe('Indian Amount Formats', () => {
+      it('parses "/-" suffix amounts', () => {
+        const r1 = parseTaskInput('Rent 15000/- monthly');
+        expect(r1.amount).toBe(15000);
+        expect(r1.title).toBe('Rent');
+
+        const r2 = parseTaskInput('Maid 4000/- monthly 1st');
+        expect(r2.amount).toBe(4000);
+        expect(r2.title).toBe('Maid');
+      });
+
+      it('parses Hindi words for thousands ("hazar", "hazaar", "sau")', () => {
+        const r1 = parseTaskInput('Cook salary 4 hazar monthly');
+        expect(r1.amount).toBe(4000);
+        expect(r1.title).toBe('Cook salary');
+
+        const r2 = parseTaskInput('Dhobi 5 sau monthly');
+        expect(r2.amount).toBe(500);
+      });
+
+      it('parses rate suffixes ("/mo", "/month", "/day")', () => {
+        const r1 = parseTaskInput('Broadband internet ₹999/mo');
+        expect(r1.amount).toBe(999);
+        expect(r1.title).toBe('Broadband internet');
+
+        const r2 = parseTaskInput('Milk bill 60/day');
+        expect(r2.amount).toBe(60);
+      });
+    });
+
+    describe('Hinglish Times & Semantic Times', () => {
+      it('parses Hinglish "baje" times', () => {
+        const r1 = parseTaskInput('Yoga daily subah 6 baje');
+        expect(r1.reminderTime).toBe('06:00');
+        expect(r1.title).toBe('Yoga');
+
+        const r2 = parseTaskInput('Walk daily shaam 7:30 baje');
+        expect(r2.reminderTime).toBe('19:30');
+
+        const r3 = parseTaskInput('Milk delivery 7 baje daily');
+        expect(r3.reminderTime).toBe('07:00');
+      });
+
+      it('parses casual English periods ("in the morning", "in the evening", "at night")', () => {
+        const r1 = parseTaskInput('Jogging daily 7 in the morning');
+        expect(r1.reminderTime).toBe('07:00');
+
+        const r2 = parseTaskInput('Reading daily 9 at night');
+        expect(r2.reminderTime).toBe('21:00');
+      });
+
+      it('parses semantic time periods when no numeric time is given', () => {
+        const r1 = parseTaskInput('Meditation daily morning');
+        expect(r1.reminderTime).toBe('08:00');
+
+        const r2 = parseTaskInput('Badminton daily evening');
+        expect(r2.reminderTime).toBe('19:00');
+
+        const r3 = parseTaskInput('Warm milk daily at night');
+        expect(r3.reminderTime).toBe('21:30');
+      });
+
+      it('parses multi-dose natural phrases ("morning and night", "morning and evening")', () => {
+        const r1 = parseTaskInput('Calcium medicine morning and night');
+        expect(r1.isMultiTime).toBe(true);
+        expect(r1.timesPerDay).toBe(2);
+        expect(r1.reminderTimes).toEqual(['08:00', '20:00']);
+
+        const r2 = parseTaskInput('Antibiotic morning and evening');
+        expect(r2.isMultiTime).toBe(true);
+        expect(r2.timesPerDay).toBe(2);
+      });
+    });
+
+    describe('Clean Title & Detected Tokens', () => {
+      it('produces clean concise titles and populated detectedTokens', () => {
+        const res = parseTaskInput('House rent ₹15,000 monthly on 5th at 9am with alarm');
+        expect(res.title).toBe('House rent');
+        expect(res.amount).toBe(15000);
+        expect(res.recurrence).toEqual({ type: 'monthDay', dayOfMonth: 5 });
+        expect(res.reminderTime).toBe('09:00');
+        expect(res.alarmEnabled).toBe(true);
+
+        const tokenIds = res.detectedTokens?.map((t) => t.id);
+        expect(tokenIds).toContain('category');
+        expect(tokenIds).toContain('amount');
+        expect(tokenIds).toContain('recurrence');
+        expect(tokenIds).toContain('time');
+        expect(tokenIds).toContain('alarm');
+      });
+
+      it('preserves clean title without leaving trailing prepositions or symbols', () => {
+        const res = parseTaskInput('Pay electricity bill for ₹2400 on 15th at 10am');
+        expect(res.title).toBe('Pay electricity bill');
+        expect(res.amount).toBe(2400);
+        expect(res.reminderTime).toBe('10:00');
+      });
+    });
+  });
 });

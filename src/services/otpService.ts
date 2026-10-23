@@ -157,3 +157,120 @@ export async function verifySignupOtp(
     };
   }
 }
+
+/**
+ * Dispatches a password recovery OTP to the user's email.
+ */
+export async function requestPasswordResetOtp(email: string): Promise<OtpSendResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const endpoint = `${FUNCTIONS_BASE_URL}/sendResetPasswordOtp`;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-repeto-client-secret': CLIENT_SECRET,
+      },
+      body: JSON.stringify({ email: normalizedEmail }),
+    });
+
+    const data = await safeParseResponse(res);
+
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        code: data.code,
+        cooldownSeconds: data.cooldownSeconds,
+        message: data.message || 'Failed to send recovery code. Please check your email.',
+      };
+    }
+
+    return {
+      ok: true,
+      token: data.token,
+      cooldownSeconds: data.cooldownSeconds || 60,
+      message: data.message,
+    };
+  } catch (err: unknown) {
+    console.warn('[Repeto OTP Service] Network error calling sendResetPasswordOtp:', err);
+
+    if (__DEV__) {
+      console.log('[Repeto OTP Dev Fallback] Simulating Reset OTP for:', normalizedEmail);
+      const devExpiresAt = Date.now() + 5 * 60 * 1000;
+      return {
+        ok: true,
+        token: `${devExpiresAt}.0.dev_mock_sig_a.dev_mock_sig_b`,
+        cooldownSeconds: 60,
+        message: 'Dev Mode: Simulated Reset OTP (use 123456)',
+      };
+    }
+
+    return {
+      ok: false,
+      message: 'Network error. Please check your internet connection and try again.',
+    };
+  }
+}
+
+/**
+ * Validates recovery OTP and resets the account password.
+ */
+export async function resetPasswordWithOtp(
+  email: string,
+  otp: string,
+  token: string,
+  newPassword: string
+): Promise<OtpVerifyResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const endpoint = `${FUNCTIONS_BASE_URL}/resetPasswordWithOtp`;
+
+  if (__DEV__ && token.includes('dev_mock_sig')) {
+    if (otp === '123456') {
+      return { ok: true, verified: true, message: 'Password reset successfully (Dev Mode)!' };
+    }
+    return { ok: false, message: 'Dev Mode: Please enter code 123456' };
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-repeto-client-secret': CLIENT_SECRET,
+      },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        otp: otp.trim(),
+        token,
+        newPassword,
+      }),
+    });
+
+    const data = await safeParseResponse(res);
+
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        verified: false,
+        token: data.token || token,
+        remainingAttempts: data.remainingAttempts,
+        message: data.message || 'Password reset failed. Please check your code and password.',
+      };
+    }
+
+    return {
+      ok: true,
+      verified: true,
+      message: data.message || 'Password has been reset successfully!',
+    };
+  } catch (err: unknown) {
+    console.warn('[Repeto OTP Service] Network error calling resetPasswordWithOtp:', err);
+    return {
+      ok: false,
+      verified: false,
+      message: 'Network error resetting password. Please try again.',
+    };
+  }
+}
+

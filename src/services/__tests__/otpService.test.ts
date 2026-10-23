@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestSignupOtp, verifySignupOtp } from '@/services/otpService';
+import { requestPasswordResetOtp, requestSignupOtp, resetPasswordWithOtp, verifySignupOtp } from '@/services/otpService';
 
 describe('OTP Service (requestSignupOtp & verifySignupOtp)', () => {
   beforeEach(() => {
@@ -127,4 +127,92 @@ describe('OTP Service (requestSignupOtp & verifySignupOtp)', () => {
     const invalidRes = await verifySignupOtp('dev@repeato.app', '999999', devToken);
     expect(invalidRes.ok).toBe(false);
   });
+
+  it('successfully requests password reset OTP', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        token: '1727289000000.0.reset_signature',
+        cooldownSeconds: 60,
+        message: 'Password recovery code sent to your email.',
+      }),
+    });
+
+    const res = await requestPasswordResetOtp('user@repeato.app');
+
+    expect(res.ok).toBe(true);
+    expect(res.token).toBe('1727289000000.0.reset_signature');
+    expect(res.cooldownSeconds).toBe(60);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/sendResetPasswordOtp'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'user@repeato.app' }),
+      })
+    );
+  });
+
+  it('handles user-not-found on password reset OTP request', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        ok: false,
+        code: 'auth/user-not-found',
+        message: 'No account found with this email address.',
+      }),
+    });
+
+    const res = await requestPasswordResetOtp('unknown@repeato.app');
+
+    expect(res.ok).toBe(false);
+    expect(res.code).toBe('auth/user-not-found');
+    expect(res.message).toContain('No account found');
+  });
+
+  it('successfully resets password with valid OTP and new password', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        verified: true,
+        message: 'Password has been reset successfully!',
+      }),
+    });
+
+    const res = await resetPasswordWithOtp(
+      'user@repeato.app',
+      '654321',
+      '1727289000000.0.reset_signature',
+      'newSecurePass123'
+    );
+
+    expect(res.ok).toBe(true);
+    expect(res.verified).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/resetPasswordWithOtp'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'user@repeato.app',
+          otp: '654321',
+          token: '1727289000000.0.reset_signature',
+          newPassword: 'newSecurePass123',
+        }),
+      })
+    );
+  });
+
+  it('handles dev simulation mode for password reset with code 123456', async () => {
+    const devToken = '1727289000000.0.dev_mock_signature';
+
+    const validRes = await resetPasswordWithOtp('dev@repeato.app', '123456', devToken, 'pass123');
+    expect(validRes.ok).toBe(true);
+    expect(validRes.verified).toBe(true);
+
+    const invalidRes = await resetPasswordWithOtp('dev@repeato.app', '000000', devToken, 'pass123');
+    expect(invalidRes.ok).toBe(false);
+  });
 });
+

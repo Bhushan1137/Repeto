@@ -120,6 +120,24 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const wasOfflineRef = useRef<boolean>(false);
   const tasksRef = useRef<RepeatingTask[]>(tasks);
   const inFlightMutationsRef = useRef<Set<string>>(new Set());
+  const recentlyDeletedIdsRef = useRef<Map<string, number>>(new Map());
+
+  const markRecentlyDeleted = useCallback((ids: string[]) => {
+    const now = Date.now();
+    for (const id of ids) {
+      recentlyDeletedIdsRef.current.set(id, now);
+    }
+  }, []);
+
+  const isRecentlyDeleted = useCallback((id: string): boolean => {
+    const deletedAt = recentlyDeletedIdsRef.current.get(id);
+    if (!deletedAt) return false;
+    if (Date.now() - deletedAt > 30000) {
+      recentlyDeletedIdsRef.current.delete(id);
+      return false;
+    }
+    return true;
+  }, []);
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -206,13 +224,16 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         householdIds,
         async (remoteTasks) => {
           if (!cancelled && userIdRef.current === user.id) {
-            // Strip out any stale household tasks from local state before merging
+            // Strip out any recently deleted tasks to prevent intermediate snapshots from resurrecting them
+            const activeRemote = remoteTasks.filter((t) => !isRecentlyDeleted(t.id));
+
+            // Strip out any stale household tasks or recently deleted tasks from local state before merging
             const currentLocal = tasksRef.current.filter(
-              (t) => !t.householdId || userHhIds.has(t.householdId)
+              (t) => (!t.householdId || userHhIds.has(t.householdId)) && !isRecentlyDeleted(t.id)
             );
-            const { merged, newerLocalTasks } = mergeTasksLocalAndRemote(currentLocal, remoteTasks, userHhIds);
+            const { merged, newerLocalTasks } = mergeTasksLocalAndRemote(currentLocal, activeRemote, userHhIds);
             const validMerged = merged.filter(
-              (t) => !t.householdId || userHhIds.has(t.householdId)
+              (t) => (!t.householdId || userHhIds.has(t.householdId)) && !isRecentlyDeleted(t.id)
             );
             await taskRepository.saveAll(validMerged, user.id);
             setTasks(validMerged);
@@ -231,7 +252,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             }
 
             const validNewerLocal = newerLocalTasks.filter(
-              (t) => !t.householdId || userHhIds.has(t.householdId)
+              (t) => (!t.householdId || userHhIds.has(t.householdId)) && !isRecentlyDeleted(t.id)
             );
             if (validNewerLocal.length > 0) {
               Promise.all(validNewerLocal.map((t) => taskRepository.saveOne(t, user.id, 'update'))).catch(() => {});
@@ -267,7 +288,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       if (unsubscribeRemote) unsubscribeRemote();
     };
-  }, [user?.id, householdIdsKey, firebaseReady, isOnline, showToast, translate]);
+  }, [user?.id, householdIdsKey, firebaseReady, isOnline, showToast, translate, isRecentlyDeleted, user]);
 
   const persistAll = useCallback(
     async (next: RepeatingTask[]) => {
@@ -737,6 +758,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback(
     async (taskId: string) => {
       if (!user?.id) return;
+      markRecentlyDeleted([taskId]);
       const currentTasks = tasksRef.current;
       const targetTask = currentTasks.find((t) => t.id === taskId);
       try {
@@ -744,6 +766,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         setTasks(next);
         tasksRef.current = next;
         showToast(translate('taskDeleted'));
+
+        await persistAll(next);
 
         taskRepository.deleteOne(taskId, user.id).catch((err) => {
           console.warn('[Repeato] Local delete error:', err);
@@ -774,11 +798,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         }
 
         cancelTaskReminder(taskId).catch(() => {});
+        cancelOverdueReminders(taskId).catch(() => {});
       } catch {
         showToast(translate('saveError'));
       }
     },
-    [user?.id, showToast, translate]
+    [user?.id, user?.name, markRecentlyDeleted, persistAll, showToast, translate]
   );
 
   const completeOnboarding = useCallback(
@@ -1035,18 +1060,31 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const deleteTasks = useCallback(
     async (taskIds: string[]) => {
-      if (!user?.id) return;
+      if (!user?.id || taskIds.length === 0) return;
+      markRecentlyDeleted(taskIds);
+
       const currentTasks = tasksRef.current;
       const tasksToDelete = currentTasks.filter((t) => taskIds.includes(t.id));
       const next = currentTasks.filter((t) => !taskIds.includes(t.id));
+
       try {
         setTasks(next);
         tasksRef.current = next;
         showToast(translate('taskDeleted'));
+
         await persistAll(next);
+
+        // 1. Batch delete from repository (local SQLite + remote Firestore writeBatch)
+        await taskRepository.deleteMany(taskIds, user.id);
+
+        // 2. Group and batch delete household tasks, shared copies, and cancel reminders
+        const householdGroups = new Map<string, string[]>();
         for (const t of tasksToDelete) {
-          taskRepository.deleteOne(t.id, user.id).catch(() => {});
           if (t.householdId) {
+            const list = householdGroups.get(t.householdId) || [];
+            list.push(t.id);
+            householdGroups.set(t.householdId, list);
+
             recordHouseholdActivity({
               householdId: t.householdId,
               action: 'task_deleted',
@@ -1055,16 +1093,27 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               actorId: user.id,
               actorName: user.name || 'Member',
             }).catch(() => {});
-
-            taskRepository.deleteOneHousehold(t.id, t.householdId, user.id).catch(() => {});
           }
+
+          for (const member of t.sharedWith || []) {
+            if (member.userId && member.userId !== user.id) {
+              taskRepository.deleteOne(t.id, member.userId).catch(() => {});
+            }
+          }
+
           cancelTaskReminder(t.id).catch(() => {});
+          cancelOverdueReminders(t.id).catch(() => {});
         }
-      } catch {
+
+        for (const [hhId, hhTaskIds] of householdGroups.entries()) {
+          taskRepository.deleteManyHousehold(hhTaskIds, hhId, user.id).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('[Repeato] deleteTasks error:', err);
         showToast(translate('saveError'));
       }
     },
-    [user?.id, persistAll, showToast, translate]
+    [user?.id, user?.name, markRecentlyDeleted, persistAll, showToast, translate]
   );
 
   const archiveTasks = useCallback(

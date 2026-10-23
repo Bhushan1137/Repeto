@@ -216,7 +216,12 @@ function verifyOtpToken(
 }
 
 // ─── Branded HTML Email Template ─────────────────────────────────────────────
-function buildOtpEmailHtml(otp: string): string {
+function buildOtpEmailHtml(
+  otp: string,
+  heading = 'Verify Your Email Address',
+  message = 'Welcome to Repeto! Use the 6-digit verification code below to complete creating your account:',
+  footerNote = "If you didn't create a Repeto account, you can safely ignore this message."
+): string {
   return `
   <!DOCTYPE html>
   <html>
@@ -248,9 +253,9 @@ function buildOtpEmailHtml(otp: string): string {
             <!-- Content -->
             <tr>
               <td style="padding: 28px 32px 32px 32px; text-align: center;">
-                <h2 style="margin: 0 0 10px 0; color: #FFFFFF; font-size: 18px; font-weight: 700;">Verify Your Email Address</h2>
+                <h2 style="margin: 0 0 10px 0; color: #FFFFFF; font-size: 18px; font-weight: 700;">${heading}</h2>
                 <p style="margin: 0 0 24px 0; color: #C5CAE9; font-size: 14px; line-height: 20px;">
-                  Welcome to Repeto! Use the 6-digit verification code below to complete creating your account:
+                  ${message}
                 </p>
 
                 <!-- Code Badge -->
@@ -264,7 +269,7 @@ function buildOtpEmailHtml(otp: string): string {
                   ⏱ This code is valid for <strong>5 minutes</strong>.
                 </p>
                 <p style="margin: 0; color: #6C7293; font-size: 12px; line-height: 18px;">
-                  If you didn't create a Repeto account, you can safely ignore this message.
+                  ${footerNote}
                 </p>
               </td>
             </tr>
@@ -594,3 +599,296 @@ export const verifySignupOtp = onRequest({
     message: 'Invalid verification token. Please request a new code.'
   });
 });
+
+// ─── Endpoint 3: sendResetPasswordOtp ────────────────────────────────────────
+export const sendResetPasswordOtp = onRequest({
+  region: 'asia-south1',
+  invoker: 'public',
+  cors: true,
+  maxInstances: 5,
+  secrets: ['SMTP_EMAIL', 'SMTP_APP_PASSWORD', 'HMAC_SECRET'],
+}, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    return;
+  }
+
+  const clientSecret = req.headers['x-repeto-client-secret'];
+  if (clientSecret !== CLIENT_SECRET) {
+    res.status(403).json({ ok: false, message: 'Forbidden: unauthorized client origin' });
+    return;
+  }
+
+  const { email } = req.body || {};
+  if (!email || typeof email !== 'string') {
+    res.status(400).json({ ok: false, message: 'Email is required' });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!isValidEmail(normalizedEmail)) {
+    res.status(400).json({ ok: false, message: 'Please provide a valid email address' });
+    return;
+  }
+
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  cleanupStaleLimits(now);
+
+  // 1. IP Rate Limiting (Max 5 requests per IP per 10 minutes)
+  const ipRecord = ipRateLimits.get(clientIp) || { timestamps: [] };
+  ipRecord.timestamps = ipRecord.timestamps.filter((t) => now - t < 10 * 60 * 1000);
+  if (ipRecord.timestamps.length >= 5) {
+    res.status(429).json({
+      ok: false,
+      message: 'Too many requests from this network. Please wait a few minutes before trying again.'
+    });
+    return;
+  }
+  ipRecord.timestamps.push(now);
+  ipRateLimits.set(clientIp, ipRecord);
+
+  // 2. Check if user exists in Firebase Auth
+  try {
+    const auth = getAdminAuth();
+    await auth.getUserByEmail(normalizedEmail);
+  } catch (authErr: any) {
+    if (authErr?.code === 'auth/user-not-found') {
+      res.status(404).json({
+        ok: false,
+        code: 'auth/user-not-found',
+        message: 'No account found with this email address. Please check your email or create an account.'
+      });
+      return;
+    }
+    console.error('[sendResetPasswordOtp] Firebase Auth lookup error:', authErr);
+    res.status(500).json({
+      ok: false,
+      message: 'Unable to process password reset at this time. Please try again shortly.'
+    });
+    return;
+  }
+
+  // 3. Email Rate Limiting (60s cooldown, max 3 per 15 min)
+  const emailRecord = emailRateLimits.get(normalizedEmail) || { lastSentAt: 0, timestamps: [] };
+  const timeSinceLast = now - emailRecord.lastSentAt;
+  if (timeSinceLast < RESEND_COOLDOWN_MS) {
+    const remainingCooldown = Math.ceil((RESEND_COOLDOWN_MS - timeSinceLast) / 1000);
+    res.status(429).json({
+      ok: false,
+      cooldownSeconds: remainingCooldown,
+      message: `Please wait ${remainingCooldown}s before requesting another reset code.`
+    });
+    return;
+  }
+
+  emailRecord.timestamps = emailRecord.timestamps.filter((t) => now - t < 15 * 60 * 1000);
+  if (emailRecord.timestamps.length >= MAX_REQUESTS_PER_15_MIN) {
+    res.status(429).json({
+      ok: false,
+      message: 'Too many reset requests. For your security, please wait 15 minutes before trying again.'
+    });
+    return;
+  }
+
+  const otpCode = crypto.randomInt(100000, 1000000).toString();
+  const expiresAt = now + OTP_VALIDITY_MS;
+  const token = generateOtpToken(normalizedEmail, otpCode, expiresAt, 0);
+
+  emailRecord.lastSentAt = now;
+  emailRecord.timestamps.push(now);
+  emailRateLimits.set(normalizedEmail, emailRecord);
+
+  const smtpEmail = process.env.SMTP_EMAIL || SMTP_EMAIL;
+  const smtpPassword = process.env.SMTP_APP_PASSWORD || SMTP_APP_PASSWORD;
+
+  if (!smtpEmail || !smtpPassword) {
+    console.warn(`[Repeto OTP Service] Missing SMTP credentials! Dev reset code for ${normalizedEmail}: ${otpCode}`);
+    res.status(200).json({
+      ok: true,
+      token,
+      cooldownSeconds: 60,
+      devMode: true,
+      message: 'Password reset code generated (Dev mode).'
+    });
+    return;
+  }
+
+  if (!canSendDailyEmail()) {
+    res.status(429).json({
+      ok: false,
+      message: 'Daily email capacity reached. Please try again tomorrow or contact support.'
+    });
+    return;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtpEmail,
+        pass: smtpPassword,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Repeto Security" <${smtpEmail}>`,
+      to: normalizedEmail,
+      subject: `${otpCode} is your Repeto password recovery code`,
+      text: `Your Repeto password recovery code is: ${otpCode}. It will expire in 5 minutes.`,
+      html: buildOtpEmailHtml(
+        otpCode,
+        'Reset Your Password',
+        'We received a request to reset your Repeto password. Use the 6-digit recovery code below to choose a new password:',
+        'If you did not request a password reset, you can safely ignore this email.'
+      ),
+    });
+
+    dailySentCount += 1;
+
+    res.status(200).json({
+      ok: true,
+      token,
+      cooldownSeconds: 60,
+      message: 'Password recovery code sent to your email.'
+    });
+  } catch (error: any) {
+    console.error('[Repeto OTP Service] Failed to send reset email via SMTP:', error);
+    emailRecord.timestamps.pop();
+    emailRecord.lastSentAt = emailRecord.timestamps[emailRecord.timestamps.length - 1] || 0;
+    res.status(500).json({
+      ok: false,
+      message: 'Failed to deliver reset email. Please check your email address or try again shortly.'
+    });
+  }
+});
+
+// ─── Endpoint 4: resetPasswordWithOtp ────────────────────────────────────────
+export const resetPasswordWithOtp = onRequest({
+  region: 'asia-south1',
+  invoker: 'public',
+  cors: true,
+  maxInstances: 5,
+  secrets: ['HMAC_SECRET'],
+}, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, message: 'Method Not Allowed' });
+    return;
+  }
+
+  const clientSecret = req.headers['x-repeto-client-secret'];
+  if (clientSecret !== CLIENT_SECRET) {
+    res.status(403).json({ ok: false, message: 'Forbidden' });
+    return;
+  }
+
+  const { email, otp, token, newPassword } = req.body || {};
+  if (!email || !otp || !token || !newPassword) {
+    res.status(400).json({ ok: false, message: 'Email, code, token, and new password are required' });
+    return;
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    res.status(400).json({ ok: false, message: 'Password must be at least 6 characters long.' });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedOtp = otp.toString().trim();
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+  cleanupStaleLimits(now);
+
+  // 1. IP Rate Limiting for Verification (Max 15 calls per 5 min)
+  const ipRecord = ipVerifyLimits.get(clientIp) || { timestamps: [] };
+  ipRecord.timestamps = ipRecord.timestamps.filter((t) => now - t < 5 * 60 * 1000);
+  if (ipRecord.timestamps.length >= 15) {
+    res.status(429).json({
+      ok: false,
+      message: 'Too many verification attempts from this network. Please wait a few minutes.'
+    });
+    return;
+  }
+  ipRecord.timestamps.push(now);
+  ipVerifyLimits.set(clientIp, ipRecord);
+
+  // 2. Email Failed-Attempts Limiter
+  const emailFailedRecord = emailFailedVerifyLimits.get(normalizedEmail);
+  if (emailFailedRecord && emailFailedRecord.count >= 5) {
+    if (now - emailFailedRecord.firstFailedAt < 10 * 60 * 1000) {
+      res.status(429).json({
+        ok: false,
+        message: 'Too many failed attempts for this email. Please request a new code after 10 minutes.'
+      });
+      return;
+    }
+    emailFailedVerifyLimits.delete(normalizedEmail);
+  }
+
+  const result = verifyOtpToken(normalizedEmail, normalizedOtp, token);
+
+  if (result.valid) {
+    try {
+      const auth = getAdminAuth();
+      const existingUser = await auth.getUserByEmail(normalizedEmail);
+      await auth.updateUser(existingUser.uid, { password: newPassword });
+
+      emailRateLimits.delete(normalizedEmail);
+      emailFailedVerifyLimits.delete(normalizedEmail);
+
+      res.status(200).json({
+        ok: true,
+        message: 'Password has been reset successfully! You can now sign in with your new password.'
+      });
+      return;
+    } catch (err: any) {
+      console.error('[resetPasswordWithOtp] Firebase Auth password update error:', err);
+      res.status(500).json({
+        ok: false,
+        message: 'Failed to update password. Please try again shortly.'
+      });
+      return;
+    }
+  }
+
+  // Failed verification attempt handling
+  const existingFail = emailFailedVerifyLimits.get(normalizedEmail) || { count: 0, firstFailedAt: now };
+  existingFail.count += 1;
+  emailFailedVerifyLimits.set(normalizedEmail, existingFail);
+
+  if (result.reason === 'expired') {
+    res.status(400).json({
+      ok: false,
+      reason: 'expired',
+      message: 'Recovery code has expired. Please request a new one.'
+    });
+    return;
+  }
+
+  if (result.reason === 'max_attempts_exceeded') {
+    res.status(400).json({
+      ok: false,
+      reason: 'max_attempts_exceeded',
+      message: 'Too many incorrect attempts. Please request a new recovery code.'
+    });
+    return;
+  }
+
+  if (result.reason === 'incorrect_code') {
+    const remaining = result.remainingAttempts ?? 0;
+    res.status(400).json({
+      ok: false,
+      reason: 'incorrect_code',
+      token: result.nextToken,
+      remainingAttempts: remaining,
+      message: `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+    });
+    return;
+  }
+
+  res.status(400).json({
+    ok: false,
+    message: 'Invalid verification token. Please request a new recovery code.'
+  });
+});
+

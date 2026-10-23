@@ -4,6 +4,7 @@ import {
   saveTasksForUser,
   saveSingleTaskLocal,
   deleteSingleTaskLocal,
+  deleteMultipleTasksLocal,
   enqueueSync,
   drainSyncQueue,
   requeueSyncOps,
@@ -12,8 +13,10 @@ import {
   saveTaskRemote,
   loadTasksRemote,
   deleteTaskRemote,
+  deleteTasksRemote,
   saveHouseholdTaskRemote,
   deleteHouseholdTaskRemote,
+  deleteHouseholdTasksRemote,
 } from '@/services/firebase/firestore';
 import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
@@ -136,6 +139,42 @@ export const taskRepository = {
       }
     } else {
       await enqueueSync(userId, { type: 'delete', taskId, householdId });
+    }
+  },
+
+  async deleteMany(taskIds: string[], userId: string): Promise<void> {
+    if (!userId || taskIds.length === 0) return;
+    await deleteMultipleTasksLocal(userId, taskIds);
+    if (remoteEnabled()) {
+      try {
+        await deleteTasksRemote(userId, taskIds);
+      } catch {
+        for (const taskId of taskIds) {
+          await enqueueSync(userId, { type: 'delete', taskId });
+        }
+      }
+    } else {
+      for (const taskId of taskIds) {
+        await enqueueSync(userId, { type: 'delete', taskId });
+      }
+    }
+  },
+
+  async deleteManyHousehold(taskIds: string[], householdId: string, userId: string): Promise<void> {
+    if (!userId || taskIds.length === 0) return;
+    await deleteMultipleTasksLocal(userId, taskIds);
+    if (remoteEnabled()) {
+      try {
+        await deleteHouseholdTasksRemote(householdId, taskIds);
+      } catch {
+        for (const taskId of taskIds) {
+          await enqueueSync(userId, { type: 'delete', taskId, householdId });
+        }
+      }
+    } else {
+      for (const taskId of taskIds) {
+        await enqueueSync(userId, { type: 'delete', taskId, householdId });
+      }
     }
   },
 

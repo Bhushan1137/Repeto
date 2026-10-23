@@ -5,8 +5,7 @@ import { useOnboarding } from '@/context/OnboardingProvider';
 import { validateEmail, validateName } from '@/domain/validation';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/providers/AuthProvider';
-import { sendPasswordResetEmail } from '@/services/firebase/auth';
-import { requestSignupOtp, verifySignupOtp } from '@/services/otpService';
+import { requestPasswordResetOtp, requestSignupOtp, resetPasswordWithOtp, verifySignupOtp } from '@/services/otpService';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
@@ -49,8 +48,8 @@ export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  // Mode: 'signin' | 'signup'
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  // Mode: 'signin' | 'signup' | 'forgot'
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
 
   // Sign-up OTP verification state
   const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
@@ -58,6 +57,16 @@ export default function SignInScreen() {
   const [otpVal, setOtpVal] = useState('');
   const [otpError, setOtpError] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
+
+  // Forgot password OTP state
+  const [forgotStep, setForgotStep] = useState<'email' | 'otp'>('email');
+  const [forgotToken, setForgotToken] = useState('');
+  const [forgotOtpVal, setForgotOtpVal] = useState('');
+  const [newPasswordVal, setNewPasswordVal] = useState('');
+  const [confirmNewPasswordVal, setConfirmNewPasswordVal] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
 
   // Form state
   const [nameVal, setNameVal] = useState('');
@@ -72,7 +81,26 @@ export default function SignInScreen() {
   const [resetSent, setResetSent] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const confirmPasswordInputRef = useRef<TextInput>(null);
+  const newPasswordInputRef = useRef<TextInput>(null);
+  const confirmNewPasswordInputRef = useRef<TextInput>(null);
+  const focusedInputRef = useRef<string | null>(null);
   const isSubmittingRef = useRef(false);
+
+  const handleScrollToEnd = () => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 250);
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 450);
+  };
 
   // Resend countdown timer
   useEffect(() => {
@@ -86,26 +114,43 @@ export default function SignInScreen() {
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setKeyboardOpen(true);
+      if (
+        focusedInputRef.current === 'confirmPassword' ||
+        (mode === 'signup' && focusedInputRef.current === 'password')
+      ) {
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 80);
+      }
+    });
     const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
     return () => {
       showSub.remove();
       hideSub.remove();
     };
-  }, []);
+  }, [mode]);
 
   const isLargeScreen = width > 768;
 
-  const handleSwitchMode = (newMode: 'signin' | 'signup') => {
+  const handleSwitchMode = (newMode: 'signin' | 'signup' | 'forgot') => {
     setMode(newMode);
     setSignupStep('form');
+    setForgotStep('email');
     setOtpVal('');
     setOtpError('');
+    setForgotOtpVal('');
+    setForgotToken('');
+    setNewPasswordVal('');
+    setConfirmNewPasswordVal('');
     setFormError('');
     setIsEmailInUse(false);
     setResetSent(false);
     setShowPassword(false);
     setShowConfirmPass(false);
+    setShowNewPassword(false);
+    setShowConfirmNewPassword(false);
   };
 
   const handleSignInSubmit = async () => {
@@ -296,25 +341,98 @@ export default function SignInScreen() {
     setOtpError('');
   };
 
-  const handleForgotPassword = async () => {
+  const handleRequestForgotOtp = async () => {
+    if (isSubmittingRef.current || loading) return;
     const cleanEmail = emailVal.trim().toLowerCase();
     if (!cleanEmail) {
-      setFormError('Please enter your email above to receive a reset link.');
+      setFormError('Please enter your email address.');
       return;
     }
     const emailValidation = validateEmail(cleanEmail);
     if (!emailValidation.valid) {
-      setFormError('Please enter a valid email address to receive a reset link.');
+      setFormError('Please enter a valid email address.');
       return;
     }
+    isSubmittingRef.current = true;
+    setLoading(true);
+    setFormError('');
+    setResetSuccessMessage('');
+    try {
+      const res = await requestPasswordResetOtp(cleanEmail);
+      if (!res.ok) {
+        setFormError(res.message || 'Failed to send recovery code. Please check your email.');
+        return;
+      }
+      setForgotToken(res.token || '');
+      setResendSeconds(res.cooldownSeconds || 60);
+      setForgotStep('otp');
+      setForgotOtpVal('');
+    } catch {
+      setFormError('Failed to send recovery code. Please check your connection.');
+    } finally {
+      isSubmittingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleResendForgotOtp = async () => {
+    if (resendSeconds > 0 || loading) return;
     setLoading(true);
     setFormError('');
     try {
-      await sendPasswordResetEmail(emailVal.trim().toLowerCase());
-      setResetSent(true);
+      const res = await requestPasswordResetOtp(emailVal.trim());
+      if (!res.ok) {
+        setFormError(res.message || 'Failed to resend recovery code.');
+        return;
+      }
+      setForgotToken(res.token || '');
+      setResendSeconds(res.cooldownSeconds || 60);
+      setForgotOtpVal('');
     } catch {
-      setFormError('Failed to send reset email. Please check your email address.');
+      setFormError('Failed to resend recovery code. Please try again.');
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    if (isSubmittingRef.current || loading) return;
+    if (forgotOtpVal.trim().length < 6) {
+      setFormError('Please enter the 6-digit verification code.');
+      return;
+    }
+    if (!newPasswordVal) {
+      setFormError('Please enter a new password.');
+      return;
+    }
+    if (newPasswordVal.length < 6) {
+      setFormError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (newPasswordVal !== confirmNewPasswordVal) {
+      setFormError('Passwords do not match. Please re-enter.');
+      return;
+    }
+    isSubmittingRef.current = true;
+    setLoading(true);
+    setFormError('');
+    try {
+      const cleanEmail = emailVal.trim().toLowerCase();
+      const res = await resetPasswordWithOtp(cleanEmail, forgotOtpVal.trim(), forgotToken, newPasswordVal);
+      if (!res.ok) {
+        setFormError(res.message || 'Password reset failed. Please check your code.');
+        if (res.token) {
+          setForgotToken(res.token);
+        }
+        return;
+      }
+      // Success! Switch back to Sign In with success banner
+      handleSwitchMode('signin');
+      setResetSuccessMessage('Password reset successfully! Please sign in with your new password.');
+    } catch {
+      setFormError('Network error resetting password. Please try again.');
+    } finally {
+      isSubmittingRef.current = false;
       setLoading(false);
     }
   };
@@ -347,13 +465,12 @@ export default function SignInScreen() {
           styles.scrollContent,
           {
             paddingTop: Math.max(insets.top, 16) + (keyboardOpen ? 4 : 8),
-            paddingBottom: Math.max(insets.bottom, 16) + (keyboardOpen ? 24 : 32),
-            justifyContent: 'center',
+            paddingBottom: Math.max(insets.bottom, 16) + (keyboardOpen ? (mode === 'signup' || mode === 'forgot' ? 140 : 80) : 32),
+            justifyContent: keyboardOpen ? 'flex-start' : 'center',
           },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={true}
       >
         <View style={[styles.contentWrapper, { maxWidth: isLargeScreen ? 820 : 440 }]}>
 
@@ -486,6 +603,204 @@ export default function SignInScreen() {
                       </Text>
                     </Pressable>
                   </View>
+                ) : mode === 'forgot' ? (
+                  <View style={styles.otpSection}>
+                    <Pressable
+                      onPress={() => handleSwitchMode('signin')}
+                      style={styles.backLinkRow}
+                      hitSlop={10}
+                      testID="forgot-back-btn"
+                    >
+                      <AppIcon name="chevron-back" size={15} color={Colors.tealDeep} />
+                      <Text style={styles.backLinkText}>Back to Sign In</Text>
+                    </Pressable>
+
+                    <View style={styles.otpBadgeContainer}>
+                      <View style={styles.otpIconBadge}>
+                        <AppIcon name={forgotStep === 'email' ? 'lock-closed-outline' : 'shield-checkmark-outline'} size={26} color={Colors.tealDeep} />
+                      </View>
+                    </View>
+
+                    <Text style={styles.cardHeaderTitle}>
+                      {forgotStep === 'email' ? 'Reset Password' : 'Set New Password'}
+                    </Text>
+
+                    {forgotStep === 'email' ? (
+                      <>
+                        <Text style={styles.otpInstructionText}>
+                          Enter your account email to receive a 6-digit recovery code:
+                        </Text>
+
+                        <View style={styles.formContainer}>
+                          <View style={styles.inputWrapper}>
+                            <AppIcon name="mail-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
+                            <TextInput
+                              testID="forgot-email-input"
+                              style={styles.textInput}
+                              placeholder="Email address"
+                              placeholderTextColor={Colors.inkSoft}
+                              value={emailVal}
+                              onChangeText={(v) => { setEmailVal(v); setFormError(''); }}
+                              autoCapitalize="none"
+                              keyboardType="email-address"
+                              autoComplete="email"
+                              returnKeyType="done"
+                              onSubmitEditing={handleRequestForgotOtp}
+                            />
+                          </View>
+
+                          {formError ? (
+                            <View style={styles.errorAlert} testID="forgot-error-text">
+                              <AppIcon name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                              <Text style={styles.errorAlertText}>{formError}</Text>
+                            </View>
+                          ) : null}
+
+                          <Pressable
+                            testID="forgot-send-btn"
+                            onPress={handleRequestForgotOtp}
+                            disabled={loading || !emailVal.trim()}
+                            style={({ pressed }) => [
+                              styles.primaryActionBtn,
+                              (loading || !emailVal.trim()) && { opacity: 0.65 },
+                              pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
+                            ]}
+                          >
+                            <Text style={styles.primaryActionBtnText}>
+                              {loading ? 'Sending code…' : 'Send Recovery Code'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.emailPill}>
+                          <AppIcon name="mail-outline" size={13} color={Colors.tealDeep} style={{ marginRight: 6 }} />
+                          <Text style={styles.emailPillText} numberOfLines={1}>{emailVal.trim()}</Text>
+                          <Pressable onPress={() => { setForgotStep('email'); setFormError(''); }} hitSlop={8} style={styles.emailPillEdit}>
+                            <AppIcon name="create-outline" size={13} color={Colors.marigoldDeep} />
+                          </Pressable>
+                        </View>
+
+                        <Text style={styles.otpInstructionText}>
+                          Enter the 6-digit recovery code and choose a new password:
+                        </Text>
+
+                        <OtpInput
+                          length={6}
+                          value={forgotOtpVal}
+                          onChange={(v: string) => {
+                            setForgotOtpVal(v);
+                            setFormError('');
+                          }}
+                          disabled={loading}
+                          error={Boolean(formError && forgotOtpVal.length < 6)}
+                        />
+
+                        <View style={styles.resendRow}>
+                          {resendSeconds > 0 ? (
+                            <Text style={styles.resendTimerText}>
+                              Resend code in{' '}
+                              <Text style={{ fontFamily: 'Manrope_700Bold', color: Colors.indigo950 }}>
+                                {resendSeconds}s
+                              </Text>
+                            </Text>
+                          ) : (
+                            <Pressable onPress={handleResendForgotOtp} disabled={loading} hitSlop={10}>
+                              <Text style={styles.resendBtnText}>Resend Code</Text>
+                            </Pressable>
+                          )}
+                        </View>
+
+                        <View style={styles.formContainer}>
+                          {/* New Password */}
+                          <View style={styles.inputWrapper}>
+                            <AppIcon name="lock-closed-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
+                            <TextInput
+                              ref={newPasswordInputRef}
+                              testID="new-password-input"
+                              style={[styles.textInput, { flex: 1 }]}
+                              placeholder="New password"
+                              placeholderTextColor={Colors.inkSoft}
+                              value={newPasswordVal}
+                              onChangeText={(v) => { setNewPasswordVal(v); setFormError(''); }}
+                              secureTextEntry={!showNewPassword}
+                              autoComplete="new-password"
+                              returnKeyType="next"
+                              onSubmitEditing={() => confirmNewPasswordInputRef.current?.focus()}
+                            />
+                            <Pressable onPress={() => setShowNewPassword(v => !v)} hitSlop={10}>
+                              <AppIcon
+                                name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                                size={18}
+                                color={Colors.inkSoft}
+                              />
+                            </Pressable>
+                          </View>
+
+                          {/* Confirm New Password */}
+                          <View style={styles.inputWrapper}>
+                            <AppIcon name="shield-checkmark-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
+                            <TextInput
+                              ref={confirmNewPasswordInputRef}
+                              testID="confirm-new-password-input"
+                              style={[styles.textInput, { flex: 1 }]}
+                              placeholder="Confirm new password"
+                              placeholderTextColor={Colors.inkSoft}
+                              value={confirmNewPasswordVal}
+                              onChangeText={(v) => { setConfirmNewPasswordVal(v); setFormError(''); }}
+                              secureTextEntry={!showConfirmNewPassword}
+                              autoComplete="new-password"
+                              returnKeyType="done"
+                              onFocus={() => {
+                                focusedInputRef.current = 'confirmPassword';
+                                handleScrollToEnd();
+                              }}
+                              onBlur={() => {
+                                if (focusedInputRef.current === 'confirmPassword') {
+                                  focusedInputRef.current = null;
+                                }
+                              }}
+                              onSubmitEditing={handleResetPasswordSubmit}
+                            />
+                            <Pressable onPress={() => setShowConfirmNewPassword(v => !v)} hitSlop={10}>
+                              <AppIcon
+                                name={showConfirmNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                                size={18}
+                                color={Colors.inkSoft}
+                              />
+                            </Pressable>
+                          </View>
+
+                          <Text style={styles.hintText}>
+                            Password must be at least 6 characters long.
+                          </Text>
+
+                          {formError ? (
+                            <View style={styles.errorAlert} testID="forgot-error-text">
+                              <AppIcon name="alert-circle-outline" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                              <Text style={styles.errorAlertText}>{formError}</Text>
+                            </View>
+                          ) : null}
+
+                          <Pressable
+                            testID="forgot-submit-btn"
+                            onPress={handleResetPasswordSubmit}
+                            disabled={loading || forgotOtpVal.length < 6 || !newPasswordVal}
+                            style={({ pressed }) => [
+                              styles.primaryActionBtn,
+                              (loading || forgotOtpVal.length < 6 || !newPasswordVal) && { opacity: 0.65 },
+                              pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
+                            ]}
+                          >
+                            <Text style={styles.primaryActionBtnText}>
+                              {loading ? 'Updating…' : 'Reset & Save Password'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
+                  </View>
                 ) : (
                   <>
                     {/* Premium Segmented Switch */}
@@ -533,6 +848,8 @@ export default function SignInScreen() {
                             value={nameVal}
                             onChangeText={setNameVal}
                             autoCapitalize="words"
+                            returnKeyType="next"
+                            onSubmitEditing={() => emailInputRef.current?.focus()}
                           />
                         </View>
                       )}
@@ -541,6 +858,7 @@ export default function SignInScreen() {
                       <View style={styles.inputWrapper}>
                         <AppIcon name="mail-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
                         <TextInput
+                          ref={emailInputRef}
                           testID="email-input"
                           style={styles.textInput}
                           placeholder="Email address"
@@ -550,6 +868,8 @@ export default function SignInScreen() {
                           autoCapitalize="none"
                           keyboardType="email-address"
                           autoComplete="email"
+                          returnKeyType="next"
+                          onSubmitEditing={() => passwordInputRef.current?.focus()}
                         />
                       </View>
 
@@ -557,6 +877,7 @@ export default function SignInScreen() {
                       <View style={styles.inputWrapper}>
                         <AppIcon name="lock-closed-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
                         <TextInput
+                          ref={passwordInputRef}
                           testID="password-input"
                           style={[styles.textInput, { flex: 1 }]}
                           placeholder="Password"
@@ -565,6 +886,25 @@ export default function SignInScreen() {
                           onChangeText={(v) => { setPasswordVal(v); setFormError(''); }}
                           secureTextEntry={!showPassword}
                           autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                          returnKeyType={mode === 'signup' ? 'next' : 'done'}
+                          onFocus={() => {
+                            focusedInputRef.current = 'password';
+                            if (mode === 'signup') {
+                              handleScrollToEnd();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (focusedInputRef.current === 'password') {
+                              focusedInputRef.current = null;
+                            }
+                          }}
+                          onSubmitEditing={() => {
+                            if (mode === 'signup') {
+                              confirmPasswordInputRef.current?.focus();
+                            } else {
+                              handleSignInSubmit();
+                            }
+                          }}
                         />
                         <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={10} testID="password-toggle">
                           <AppIcon
@@ -580,6 +920,8 @@ export default function SignInScreen() {
                         <View style={styles.inputWrapper}>
                           <AppIcon name="shield-checkmark-outline" size={17} color={Colors.inkSoft} style={styles.inputIcon} />
                           <TextInput
+                            ref={confirmPasswordInputRef}
+                            testID="confirm-password-input"
                             style={[styles.textInput, { flex: 1 }]}
                             placeholder="Confirm password"
                             placeholderTextColor={Colors.inkSoft}
@@ -587,6 +929,17 @@ export default function SignInScreen() {
                             onChangeText={(v) => { setConfirmPassVal(v); setFormError(''); }}
                             secureTextEntry={!showConfirmPass}
                             autoComplete="new-password"
+                            returnKeyType="done"
+                            onFocus={() => {
+                              focusedInputRef.current = 'confirmPassword';
+                              handleScrollToEnd();
+                            }}
+                            onBlur={() => {
+                              if (focusedInputRef.current === 'confirmPassword') {
+                                focusedInputRef.current = null;
+                              }
+                            }}
+                            onSubmitEditing={handleSignUpSubmit}
                           />
                           <Pressable onPress={() => setShowConfirmPass(v => !v)} hitSlop={10}>
                             <AppIcon
@@ -610,13 +963,24 @@ export default function SignInScreen() {
                         <View style={styles.forgotPasswordContainer}>
                           <Pressable
                             testID="forgot-password-btn"
-                            onPress={handleForgotPassword}
+                            onPress={() => {
+                              handleSwitchMode('forgot');
+                              setResetSuccessMessage('');
+                            }}
                             disabled={loading}
                           >
                             <Text style={styles.forgotPasswordText}>Forgot password?</Text>
                           </Pressable>
                         </View>
                       )}
+
+                      {/* Success Alert Banner for Password Reset */}
+                      {resetSuccessMessage ? (
+                        <View style={styles.successAlert} testID="reset-success-alert">
+                          <AppIcon name="checkmark-circle-outline" size={16} color={Colors.tealDeep} style={{ marginRight: 6 }} />
+                          <Text style={styles.successAlertText}>{resetSuccessMessage}</Text>
+                        </View>
+                      ) : null}
 
                       {/* Error Banner */}
                       {formError ? (
@@ -712,7 +1076,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    justifyContent: 'center',
   },
   contentWrapper: {
     width: '100%',

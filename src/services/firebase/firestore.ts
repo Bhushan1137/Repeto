@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, where, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit, onSnapshot, updateDoc, increment } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getFirestoreDb, getFirebaseAuth } from './app';
 import type { RepeatingTask, UserProfile } from '@/types';
@@ -104,6 +104,22 @@ export async function deleteTaskRemote(userId: string, taskId: string): Promise<
 
   await waitForAuthUid();
   await deleteDoc(doc(db, 'users', userId, 'tasks', taskId));
+}
+
+export async function deleteTasksRemote(userId: string, taskIds: string[]): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db || taskIds.length === 0) return;
+
+  await waitForAuthUid();
+  const batchSize = 400;
+  for (let i = 0; i < taskIds.length; i += batchSize) {
+    const chunk = taskIds.slice(i, i + batchSize);
+    const batch = writeBatch(db);
+    for (const taskId of chunk) {
+      batch.delete(doc(db, 'users', userId, 'tasks', taskId));
+    }
+    await batch.commit();
+  }
 }
 
 export async function saveUserCodeRemote(profile: {
@@ -324,6 +340,22 @@ export async function deleteHouseholdTaskRemote(householdId: string, taskId: str
   if (!db) return;
   await waitForAuthUid();
   await deleteDoc(doc(db, 'households', householdId, 'tasks', taskId));
+}
+
+export async function deleteHouseholdTasksRemote(householdId: string, taskIds: string[]): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db || taskIds.length === 0) return;
+
+  await waitForAuthUid();
+  const batchSize = 400;
+  for (let i = 0; i < taskIds.length; i += batchSize) {
+    const chunk = taskIds.slice(i, i + batchSize);
+    const batch = writeBatch(db);
+    for (const taskId of chunk) {
+      batch.delete(doc(db, 'households', householdId, 'tasks', taskId));
+    }
+    await batch.commit();
+  }
 }
 
 export async function saveHouseholdInviteRemote(user: UserProfile): Promise<void> {

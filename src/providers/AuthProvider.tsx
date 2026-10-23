@@ -7,7 +7,7 @@ import { isFirebaseConfigured } from '@/services/firebase/config';
 import { initFirebase } from '@/services/firebase/app';
 import { subscribeToAuth, configureGoogleSignIn, completeGoogleRedirectSignIn, signOutFirebase } from '@/services/firebase/auth';
 import { normalizeHouseholdProfile, migrateLegacyHousehold, getActiveHousehold, createHouseholdContext, MAX_HOUSEHOLDS, removeMemberFromHousehold as removeMemberFromHouseholdDomain, normalizeInviteCode, generateUserCode, memberColor } from '@/domain/household';
-import { onSnapshot, doc, collection, query, where, or } from 'firebase/firestore';
+import { onSnapshot, doc, collection, query, where, or, setDoc } from 'firebase/firestore';
 import { restoreUserRemote, purgeUserDataRemote, loadHouseholdTasksRemote, saveHouseholdTaskRemote } from '@/services/firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '@/services/firebase/app';
 import { useNetworkStatus } from './NetworkProvider';
@@ -83,6 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isDeletingAccountRef = useRef(false);
   const isAccountActionInProgressRef = useRef(false);
+  const isSigningOutRef = useRef(false);
+  const localUserRef = useRef<UserProfile | null>(null);
   const unsubscribeProfileRef = useRef<(() => void) | null>(null);
   const unsubscribeHouseholdsRef = useRef<(() => void) | null>(null);
   const joiningCodesInFlightRef = useRef<Map<string, Promise<{ ok: boolean; household?: HouseholdContext; alreadyMember?: boolean; error?: string }>>>(new Map());
@@ -123,11 +125,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 2. Load local user from SQLite/AsyncStorage
-      let localUser: UserProfile | null = null;
       try {
-        localUser = await userRepository.load();
-        if (!cancelled && localUser) {
-          setUser(localUser);
+        const loadedUser = await userRepository.load();
+        localUserRef.current = loadedUser;
+        if (!cancelled && loadedUser) {
+          setUser(loadedUser);
         }
       } catch (err) {
         console.warn('[Repeato] Failed to load local user', err);
@@ -163,7 +165,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const unsubscribeAuth = subscribeToAuth((firebaseUser) => {
         clearTimeout(authTimeout);
         if (cancelled) return;
-        if (isDeletingAccountRef.current || isAccountActionInProgressRef.current) return;
+        if (isDeletingAccountRef.current || isAccountActionInProgressRef.current || isSigningOutRef.current) {
+          if (!firebaseUser) {
+            localUserRef.current = null;
+            setUser(null);
+            setDeletedAccountInfoPersisted(null);
+            settleReady();
+          }
+          return;
+        }
 
         if (unsubscribeProfile) {
           unsubscribeProfile();
@@ -178,14 +188,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!firebaseUser) {
           // If offline and we have an existing local user session, retain it
-          if (!isOnline && localUser) {
-            setUser(localUser);
+          if (!isOnline && localUserRef.current) {
+            setUser(localUserRef.current);
             settleReady();
             return;
           }
           // Do NOT wipe the local SQLite database here!
           // userRepository.clear() should only be called on explicit signOut() or deleteAccount().
-          localUser = null;
+          localUserRef.current = null;
           setUser(null);
           // If there is no authenticated Firebase user, we cannot be in recovery mode.
           // Clear any stale deletedAccountInfo so user can authenticate cleanly.
@@ -195,19 +205,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Ensure cached local profile belongs to the currently signed-in Firebase account
-        if (localUser && localUser.id !== firebaseUser.uid) {
-          const staleId = localUser.id;
-          localUser = null;
+        if (localUserRef.current && localUserRef.current.id !== firebaseUser.uid) {
+          const staleId = localUserRef.current.id;
+          localUserRef.current = null;
           userRepository.clear(staleId).catch(() => {});
-        } else if (localUser && localUser.id === firebaseUser.uid) {
+        } else if (localUserRef.current && localUserRef.current.id === firebaseUser.uid) {
           // Local cached user matches! Settle ready immediately so dashboard loads with 0ms delay.
-          setUser(localUser);
+          setUser(localUserRef.current);
           settleReady();
         }
 
         if (!isOnline) {
-          if (localUser && localUser.id === firebaseUser.uid) {
-            setUser(localUser);
+          if (localUserRef.current && localUserRef.current.id === firebaseUser.uid) {
+            setUser(localUserRef.current);
           } else {
             setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
           }
@@ -218,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const db = getFirestoreDb();
         if (db) {
           unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
-            if (cancelled || isDeletingAccountRef.current || isAccountActionInProgressRef.current) return;
+            if (cancelled || isDeletingAccountRef.current || isAccountActionInProgressRef.current || isSigningOutRef.current) return;
 
             try {
               const remote = snap.exists() ? (snap.data() as UserProfile) : null;
@@ -254,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return;
               }
 
-              const matchingLocal = localUser && localUser.id === firebaseUser.uid ? localUser : null;
+              const matchingLocal = localUserRef.current && localUserRef.current.id === firebaseUser.uid ? localUserRef.current : null;
               const fallback = matchingLocal ?? profileFromFirebaseUser(firebaseUser, language);
               const base = remote
                 ? {
@@ -320,8 +330,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             } catch (err) {
               console.warn('[Repeato] Error loading snapshot profile data', err);
-              if (localUser) {
-                setUser(localUser);
+              if (localUserRef.current) {
+                setUser(localUserRef.current);
               } else {
                 setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
               }
@@ -338,8 +348,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               settleReady();
               return;
             }
-            if (localUser) {
-              setUser(localUser);
+            if (localUserRef.current) {
+              setUser(localUserRef.current);
             } else {
               setUser(normalizeHouseholdProfile(profileFromFirebaseUser(firebaseUser, language)));
             }
@@ -356,7 +366,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             )
           );
           unsubscribeHouseholds = onSnapshot(hhQuery, (snap) => {
-            if (cancelled || isDeletingAccountRef.current) return;
+            if (cancelled || isDeletingAccountRef.current || isAccountActionInProgressRef.current || isSigningOutRef.current) return;
             const remoteHhs = snap.docs.map((d) => d.data() as HouseholdContext);
             setUser((prevUser) => {
               if (!prevUser) return null;
@@ -576,25 +586,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    isSigningOutRef.current = true;
+    isAccountActionInProgressRef.current = true;
+
+    // 1. Immediately unsubscribe from real-time snapshot listeners
+    // to prevent any incoming Firestore events from resurrecting user state
+    const unsubProfile = unsubscribeProfileRef.current;
+    if (unsubProfile) {
+      unsubProfile();
+      unsubscribeProfileRef.current = null;
+    }
+    const unsubHouseholds = unsubscribeHouseholdsRef.current;
+    if (unsubHouseholds) {
+      unsubHouseholds();
+      unsubscribeHouseholdsRef.current = null;
+    }
+
     const userId = user?.id ?? deletedAccountInfo?.userId;
-    if (user?.id && user?.expoPushToken) {
+
+    // 2. Best-effort push token clearance remotely without mutating local user state or triggering re-renders
+    if (userId && user?.expoPushToken) {
       try {
-        await updateUser({ expoPushToken: '' });
+        const db = getFirestoreDb();
+        if (db) {
+          await setDoc(doc(db, 'users', userId), { expoPushToken: '' }, { merge: true }).catch(() => {});
+        }
       } catch (err) {
         console.warn('[Repeato] Failed to clear push token on sign out:', err);
       }
     }
+
+    // 3. Clear local in-memory state
+    localUserRef.current = null;
     setDeletedAccountInfoPersisted(null);
     setUser(null);
-    // Guard against undefined userId if both user and deletedAccountInfo are null (edge case)
-    if (userId) await userRepository.clear(userId);
-    await cancelAllNotifications();
+
+    // 4. Clear storage & notifications & sign out from Firebase
     try {
-      await signOutFirebase();
-    } catch (err) {
-      console.warn('[Repeato] Firebase sign out error:', err);
+      if (userId) await userRepository.clear(userId).catch(() => {});
+      await cancelAllNotifications().catch(() => {});
+      await signOutFirebase().catch(() => {});
+    } finally {
+      // Keep guard up briefly to absorb any delayed auth/network events
+      setTimeout(() => {
+        isSigningOutRef.current = false;
+        isAccountActionInProgressRef.current = false;
+      }, 1500);
     }
-  }, [user?.id, user?.expoPushToken, updateUser, deletedAccountInfo?.userId, setDeletedAccountInfoPersisted]);
+  }, [user?.id, user?.expoPushToken, deletedAccountInfo?.userId, setDeletedAccountInfoPersisted]);
 
   const activeHousehold = useMemo(() => {
     if (!user) return null;
@@ -1018,12 +1057,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         // 1. Immediately unsubscribe real-time Firestore listeners
         // This prevents the snapshot listener from firing on the soft-delete marker and flashing the recovery screen
-        if (unsubscribeProfileRef.current) {
-          unsubscribeProfileRef.current();
+        const unsubProfile = unsubscribeProfileRef.current;
+        if (unsubProfile) {
+          unsubProfile();
           unsubscribeProfileRef.current = null;
         }
-        if (unsubscribeHouseholdsRef.current) {
-          unsubscribeHouseholdsRef.current();
+        const unsubHouseholds = unsubscribeHouseholdsRef.current;
+        if (unsubHouseholds) {
+          unsubHouseholds();
           unsubscribeHouseholdsRef.current = null;
         }
 
@@ -1135,6 +1176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // 5. Clear local data and session BEFORE signing out Firebase Auth
         // Ensures child listeners unmount cleanly while auth credentials are still valid
+        localUserRef.current = null;
         setUser(null);
         setDeletedAccountInfoPersisted(null);
         await userRepository.clear(userId).catch(() => {});

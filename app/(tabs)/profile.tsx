@@ -54,6 +54,7 @@ export default function ProfileScreen() {
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [showDeleteReasonModal, setShowDeleteReasonModal] = useState(false);
   const [selectedDeleteReason, setSelectedDeleteReason] = useState<string | null>(null);
 
@@ -553,9 +554,16 @@ export default function ProfileScreen() {
           danger
           showChevron={false}
           onPress={() => {
+            if (loggingOut || deleting) return;
             const performLogout = async () => {
-              await signOut();
-              resetTasks();
+              try {
+                setLoggingOut(true);
+                await signOut();
+                resetTasks();
+              } catch (err) {
+                console.warn('[Repeato] Failed to sign out:', err);
+                setLoggingOut(false);
+              }
             };
             if (Platform.OS === 'web') {
               if (

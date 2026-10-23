@@ -155,4 +155,72 @@ describe('End-to-End Auth Flow (Sign-Up, Sign-In, Sign-Out)', () => {
       expect(firebaseAuth.signOutFirebase).toHaveBeenCalled();
     });
   });
+
+  describe('4. OTP-Based Password Reset Flow (End-to-End)', () => {
+    it('completes the full flow: request reset OTP -> reset password with code -> sign in with new password', async () => {
+      // Step A: Request OTP
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/sendResetPasswordOtp')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              token: '1727289000000.0.reset_token_sig',
+              cooldownSeconds: 60,
+              message: 'Password recovery code sent to your email.',
+            }),
+          });
+        }
+        if (url.includes('/resetPasswordWithOtp')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              verified: true,
+              message: 'Password has been reset successfully!',
+            }),
+          });
+        }
+        return Promise.reject(new Error('Unknown url'));
+      });
+
+      const { requestPasswordResetOtp, resetPasswordWithOtp } = await import('@/services/otpService');
+
+      // 1. Request recovery code
+      const requestRes = await requestPasswordResetOtp('tester@repeto.app');
+      expect(requestRes.ok).toBe(true);
+      expect(requestRes.token).toBe('1727289000000.0.reset_token_sig');
+
+      // 2. Reset password using received token and code
+      const resetRes = await resetPasswordWithOtp(
+        'tester@repeto.app',
+        '847291',
+        requestRes.token!,
+        'NewStrongPassword123'
+      );
+      expect(resetRes.ok).toBe(true);
+      expect(resetRes.verified).toBe(true);
+
+      // 3. User signs in with newly reset password
+      vi.mocked(firebaseAuth.signInWithEmailPassword).mockResolvedValue(mockUser);
+      vi.mocked(firestoreService.loadUserRemote).mockResolvedValue({
+        id: 'test-user-123',
+        name: 'Test User',
+        email: 'tester@repeto.app',
+        phone: '',
+        language: 'en',
+        languageSelected: true,
+        pushOptIn: true,
+        profileComplete: true,
+        onboardingComplete: true,
+        plan: 'free',
+        households: [],
+      });
+
+      const signInResult = await signInWithEmail('tester@repeto.app', 'NewStrongPassword123', 'en');
+      expect(signInResult.ok).toBe(true);
+      expect(signInResult.user?.id).toBe('test-user-123');
+    });
+  });
 });
+

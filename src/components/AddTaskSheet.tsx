@@ -27,6 +27,7 @@ import {
   validateFormState,
   type TaskFormState,
 } from '@/domain/taskForm';
+import { parseTaskInput } from '@/domain/parser';
 import type { SharedMember } from '@/types';
 
 import { usePathname } from 'expo-router';
@@ -107,7 +108,19 @@ export function AddTaskSheet({ visible, onClose, defaultToHousehold }: AddTaskSh
       return;
     }
 
-    const values = formStateToValues(formState, language);
+    let activeState = formState;
+    const parsed = parseTaskInput(formState.title, language);
+    if (
+      parsed.detectedTokens &&
+      parsed.detectedTokens.length > 1 &&
+      parsed.title &&
+      parsed.title.trim().length >= 2 &&
+      parsed.title.trim().toLowerCase() !== formState.title.trim().toLowerCase()
+    ) {
+      activeState = { ...formState, title: parsed.title.trim() };
+    }
+
+    const values = formStateToValues(activeState, language);
 
     setLoading(true);
     try {
