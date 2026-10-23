@@ -24,11 +24,9 @@ import { Colors, Radius, Typography } from '@/constants/theme';
 import { userRepository } from '@/data/repositories/userRepository';
 import {
   addMemberToHousehold,
-  HOUSEHOLD_COLORS,
   householdMemberFromInvite,
   isValidInviteCode,
   listHouseholds,
-  memberColor,
   normalizeInviteCode,
   pendingMemberFromCode,
 } from '@/domain/household';
@@ -39,7 +37,6 @@ import { useHousehold } from '@/hooks/useInsights';
 import { useNudge } from '@/hooks/useNudge';
 import { useNotifications } from '@/providers/NotificationProvider';
 import type { CategoryKey, HouseholdContext, HouseholdMemberProfile, RepeatingTask } from '@/types';
-import type { AppNotification } from '@/types/notification';
 import { broadcastMemberJoinedHousehold } from '@/services/householdBroadcastService';
 import { subscribeHouseholdActivities, type HouseholdActivityItem } from '@/services/householdActivityService';
 import * as Clipboard from 'expo-clipboard';
@@ -1565,7 +1562,7 @@ function ZeroHouseholdCard({
   const isAddingCodeRef = useRef(false);
   const hasScannedRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
-  const { updateUser, createHousehold, joinHouseholdByCode } = useAuth();
+  const { joinHouseholdByCode } = useAuth();
 
   const addByCode = async (customCode?: string) => {
     if (isAddingCodeRef.current || addingCode) return;

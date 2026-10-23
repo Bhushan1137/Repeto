@@ -17,7 +17,6 @@ import { Button } from '@/components/Button';
 import { Colors, Radius, Typography } from '@/constants/theme';
 import {
   parseLegalMarkdown,
-  type LegalSection,
   type LegalBlock,
   type TextSpan,
 } from '@/utils/legalParser';

@@ -32,7 +32,6 @@ import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { AppIcon } from '@/components/AppIcon';
 import { Colors, Radius } from '@/constants/theme';
 import { getCategoryLabel } from '@/constants/categoryHelpers';
-import { CATEGORY_MAP } from '@/constants/categories';
 import { getCategoryDef } from '@/constants/categoryHelpers';
 
 const EMPTY_TASKS: RepeatingTask[] = [];

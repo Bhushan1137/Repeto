@@ -20,7 +20,6 @@ import { AppIcon, type AppIconName } from '@/components/AppIcon';
 import { useRecommendations } from '@/providers/RecommendationProvider';
 import type { CompletionStatus, Language, RepeatingTask } from '@/types';
 import { getCategoryDef, getCategoryLabel } from '@/constants/categoryHelpers';
-import { CATEGORY_MAP } from '@/constants/categories';
 import { AccentHex, Colors, Gradients, Radius, Typography } from '@/constants/theme';
 import { daysUntilDue, dayLabel, daysPercent } from '@/domain/recurrence';
 import { canSnoozeTask, getTodayDoseProgress } from '@/domain/task';
